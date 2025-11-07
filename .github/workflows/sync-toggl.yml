@@ -28,7 +28,7 @@ jobs:
           TOGGL_API_TOKEN: ${{ secrets.TOGGL_API_TOKEN }}
           TOGGL_WORKSPACE_ID: ${{ secrets.TOGGL_WORKSPACE_ID }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
 
       - name: Show sync result
         if: always()
