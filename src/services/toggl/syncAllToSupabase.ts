@@ -1,124 +1,174 @@
 import "https://deno.land/std@0.203.0/dotenv/load.ts";
-import { syncEntriesByDateRange } from "./syncToSupabase.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import { TogglReportsEntry } from "./types.ts";
+import { getEntries } from "./getEntries.ts";
+
+// --- Get environment variables ---
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  throw new Error("SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set in .env");
+}
+
+// --- Create Supabase client ---
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 /**
- * Sleep for specified milliseconds
+ * Transform TogglReportsEntry to database row format
  */
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function transformEntryForDB(entry: TogglReportsEntry) {
+  return {
+    id: entry.id,
+    pid: entry.pid,
+    tid: entry.tid,
+    uid: entry.uid,
+    description: entry.description,
+    start: entry.start,
+    end: entry.end,
+    updated: entry.updated,
+    dur: entry.dur,
+    user: entry.user,
+    use_stop: entry.use_stop,
+    client: entry.client,
+    project: entry.project,
+    project_color: entry.project_color,
+    project_hex_color: entry.project_hex_color,
+    billable: entry.billable,
+    is_billable: entry.is_billable,
+    cur: entry.cur,
+    tags: entry.tags,
+    synced_at: new Date().toISOString(),
+  };
 }
 
 /**
- * Generate monthly date ranges from start date to end date
+ * Upsert Toggl entries to Supabase
  */
-function generateMonthlyRanges(startDate: Date, endDate: Date): Array<{ start: Date; end: Date }> {
-  const ranges: Array<{ start: Date; end: Date }> = [];
-
-  let currentStart = new Date(startDate);
-
-  while (currentStart < endDate) {
-    // Calculate the end of the current month
-    const currentEnd = new Date(
-      currentStart.getFullYear(),
-      currentStart.getMonth() + 1,
-      0, // Last day of the month
-      23,
-      59,
-      59,
-      999
-    );
-
-    // If the calculated end is beyond the target end date, use the target end date
-    const rangeEnd = currentEnd > endDate ? endDate : currentEnd;
-
-    ranges.push({
-      start: new Date(currentStart),
-      end: rangeEnd,
-    });
-
-    // Move to the first day of the next month
-    currentStart = new Date(
-      currentStart.getFullYear(),
-      currentStart.getMonth() + 1,
-      1,
-      0,
-      0,
-      0,
-      0
-    );
+async function upsertEntriesToSupabase(entries: TogglReportsEntry[]) {
+  if (entries.length === 0) {
+    console.log("No entries to upsert");
+    return 0;
   }
 
+  console.log(`Upserting ${entries.length} entries to Supabase...`);
+  
+  const rows = entries.map(transformEntryForDB);
+  const chunkSize = 100;
+  let totalUpserted = 0;
+
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const chunk = rows.slice(i, i + chunkSize);
+    
+    const { data, error } = await supabase
+      .from("toggl_time_entries")
+      .upsert(chunk, {
+        onConflict: "id",
+        ignoreDuplicates: false,
+      })
+      .select();
+
+    if (error) {
+      console.error(`Error upserting chunk:`, error);
+      throw error;
+    }
+
+    totalUpserted += data?.length || chunk.length;
+  }
+
+  console.log(`✓ Successfully upserted ${totalUpserted} entries`);
+  return totalUpserted;
+}
+
+/**
+ * Generate month ranges from start date to end date
+ */
+function generateMonthRanges(startDate: Date, endDate: Date): Array<{ start: Date; end: Date }> {
+  const ranges: Array<{ start: Date; end: Date }> = [];
+  
+  let currentStart = new Date(startDate);
+  currentStart.setDate(1);
+  currentStart.setHours(0, 0, 0, 0);
+  
+  while (currentStart <= endDate) {
+    const currentEnd = new Date(currentStart);
+    currentEnd.setMonth(currentEnd.getMonth() + 1);
+    currentEnd.setDate(0); // Last day of current month
+    currentEnd.setHours(23, 59, 59, 999);
+    
+    if (currentEnd > endDate) {
+      currentEnd.setTime(endDate.getTime());
+    }
+    
+    ranges.push({
+      start: new Date(currentStart),
+      end: new Date(currentEnd),
+    });
+    
+    currentStart.setMonth(currentStart.getMonth() + 1);
+  }
+  
   return ranges;
 }
 
 /**
- * Sync all Toggl entries from now back to 2023-01-01, one month at a time
- * with API rate limit protection
+ * Sync all Toggl entries from 2023-11-01 to present
  */
-async function syncAllEntriesFromJan2023() {
-  const startDate = new Date("2023-01-01T00:00:00+09:00");
-  const endDate = new Date(); // Current date/time
-
-  console.log("=".repeat(60));
-  console.log("Starting full sync from now back to 2023-01-01");
-  console.log("=".repeat(60));
-  console.log(`Start: ${startDate.toISOString()}`);
-  console.log(`End: ${endDate.toISOString()}`);
-  console.log();
-
-  // Generate monthly ranges
-  const monthlyRanges = generateMonthlyRanges(startDate, endDate);
-  // Reverse to sync from newest to oldest
-  monthlyRanges.reverse();
-  console.log(`Total months to sync: ${monthlyRanges.length}`);
-  console.log();
-
-  let totalSynced = 0;
-  const idleTimeMs = 10 * 60 * 1000; // 10 minutes idle between each month to avoid API limits
-
-  for (let i = 0; i < monthlyRanges.length; i++) {
-    const range = monthlyRanges[i];
-    const monthStr = `${range.start.getFullYear()}-${String(range.start.getMonth() + 1).padStart(2, "0")}`;
-
-    console.log("-".repeat(60));
-    console.log(`[${i + 1}/${monthlyRanges.length}] Syncing ${monthStr}`);
-    console.log(`  From: ${range.start.toISOString()}`);
-    console.log(`  To:   ${range.end.toISOString()}`);
-
+async function syncAllToSupabase() {
+  const startDate = new Date("2023-11-01T00:00:00+09:00");
+  const endDate = new Date();
+  endDate.setHours(23, 59, 59, 999);
+  
+  console.log("====================================");
+  console.log("Starting full sync");
+  console.log(`Period: ${startDate.toISOString().split("T")[0]} to ${endDate.toISOString().split("T")[0]}`);
+  console.log("====================================\n");
+  
+  const monthRanges = generateMonthRanges(startDate, endDate);
+  console.log(`Processing ${monthRanges.length} months\n`);
+  
+  let totalEntries = 0;
+  let totalUpserted = 0;
+  const startTime = Date.now();
+  
+  for (let i = 0; i < monthRanges.length; i++) {
+    const range = monthRanges[i];
+    console.log(`Month ${i + 1}/${monthRanges.length}: ${range.start.toISOString().split("T")[0]} to ${range.end.toISOString().split("T")[0]}`);
+    
     try {
-      const count = await syncEntriesByDateRange(range.start, range.end);
-      totalSynced += count;
-      console.log(`  ✓ Synced ${count} entries for ${monthStr}`);
-      console.log(`  Total synced so far: ${totalSynced}`);
+      const entries = await getEntries(range.start, range.end);
+      totalEntries += entries.length;
+      
+      const upserted = await upsertEntriesToSupabase(entries);
+      totalUpserted += upserted;
+      
+      // 10分待機（レート制限回避）
+      if (i < monthRanges.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 10*60*1000)); // 10 minutes
+      }
+      
     } catch (error) {
-      console.error(`  ✗ Error syncing ${monthStr}:`, error);
-      console.log("  Continuing to next month...");
+      console.error(`Failed to process month ${i + 1}:`, error);
+      throw error;
     }
-
-    // Idle between months to avoid API rate limits
-    // Skip idle after the last month
-    if (i < monthlyRanges.length - 1) {
-      const minutes = Math.floor(idleTimeMs / 60000);
-      console.log(`  Idling for ${minutes} minutes...`);
-      await sleep(idleTimeMs);
-    }
-    console.log();
   }
-
-  console.log("=".repeat(60));
+  
+  const elapsedTime = ((Date.now() - startTime) / 1000 / 60).toFixed(1);
+  
+  console.log("\n====================================");
   console.log("Sync completed!");
-  console.log(`Total entries synced: ${totalSynced}`);
-  console.log("=".repeat(60));
-
-  return totalSynced;
+  console.log(`Total entries: ${totalEntries}`);
+  console.log(`Total upserted: ${totalUpserted}`);
+  console.log(`Time elapsed: ${elapsedTime} minutes`);
+  console.log("====================================");
 }
 
-// Execute if run directly
+// Execute
 if (import.meta.main) {
   try {
-    await syncAllEntriesFromJan2023();
+    await syncAllToSupabase();
   } catch (error) {
-    console.error("Fatal error during sync:", error);
+    console.error("Sync failed:", error);
     Deno.exit(1);
   }
 }

@@ -91,10 +91,10 @@ export async function syncEntriesByDateRange(startDate: Date, endDate: Date) {
 /**
  * Sync latest Toggl entries to Supabase
  */
-export async function syncLatestEntries() {
+export async function syncLatestEntries(start: Date, end: Date) {
   console.log("Syncing latest entries...");
 
-  const entries = await getLatestEntries();
+  const entries = await getLatestEntries(start, end);
   const count = await upsertEntriesToSupabase(entries);
 
   return count;
@@ -103,10 +103,11 @@ export async function syncLatestEntries() {
 // Example execution
 if (import.meta.main) {
   // Example 1: Sync specific date range
-  // const start = new Date("2025-01-01T00:00:00+09:00");
-  // const end = new Date("2025-01-31T23:59:59+09:00");
+  const end = new Date();
+  const start = new Date(end.getTime() - 2 * 24 * 60 * 60 * 1000); // past 2 days
+  
   // await syncEntriesByDateRange(start, end);
 
   // Example 2: Sync latest entries
-  await syncLatestEntries();
+  await syncLatestEntries(start, end);
 }

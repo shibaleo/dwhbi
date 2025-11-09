@@ -213,9 +213,9 @@ if (import.meta.main) {
   const start = new Date("2025-09-25T00:00:00+09:00");
   const end = new Date("2025-09-25T23:59:59+09:00");
 
-  //const entries = await getEntries(start, end);
+  const entries = await getEntries(start, end);
   //const entries = await getCurrentEntry();
-  const entries = await getLatestEntries();
+  //const entries = await getLatestEntries();
   entries.forEach((entry) => {
     console.log(entry.client, entry.project, entry.description);
   });
