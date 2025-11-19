@@ -144,7 +144,7 @@ async function syncAllToSupabase() {
       
       // 10分待機（レート制限回避）
       if (i < monthRanges.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 10*60*1000)); // 10 minutes
+        await new Promise(resolve => setTimeout(resolve, 60*60*1000)); // 60 minutes
       }
       
     } catch (error) {
