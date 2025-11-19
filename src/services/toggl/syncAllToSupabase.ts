@@ -115,7 +115,7 @@ function generateMonthRanges(startDate: Date, endDate: Date): Array<{ start: Dat
  * Sync all Toggl entries from 2023-11-01 to present
  */
 async function syncAllToSupabase() {
-  const startDate = new Date("2024-05-01T00:00:00+09:00");
+  const startDate = new Date("2024-08-01T00:00:00+09:00");
   const endDate = new Date();
   endDate.setHours(23, 59, 59, 999);
   
@@ -144,7 +144,7 @@ async function syncAllToSupabase() {
       
       // 10分待機（レート制限回避）
       if (i < monthRanges.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 10*60*1000)); // 10 minutes
+        await new Promise(resolve => setTimeout(resolve, 60*60*1000)); // 60 minutes
       }
       
     } catch (error) {
