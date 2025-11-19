@@ -1,4 +1,4 @@
-name: Sync Toggl to Supabase
+name: Toggl Sync to Supabase
 
 on:
   # Run daily at 10:34 AM UTC
