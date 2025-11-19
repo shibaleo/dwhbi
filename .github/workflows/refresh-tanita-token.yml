@@ -26,4 +26,4 @@ jobs:
           TANITA_CLIENT_ID: ${{ secrets.TANITA_CLIENT_ID }}
           TANITA_CLIENT_SECRET: ${{ secrets.TANITA_CLIENT_SECRET }}
         run: |
-          deno run --allow-net --allow-env src/services/tanita/tanita_refresh_and_save.ts
+          deno run --allow-net --allow-env --allow-read src/services/tanita/tanita_refresh_and_save.ts
