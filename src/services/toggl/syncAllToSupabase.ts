@@ -115,7 +115,7 @@ function generateMonthRanges(startDate: Date, endDate: Date): Array<{ start: Dat
  * Sync all Toggl entries from 2023-11-01 to present
  */
 async function syncAllToSupabase() {
-  const startDate = new Date("2024-07-01T00:00:00+09:00");
+  const startDate = new Date("2024-08-01T00:00:00+09:00");
   const endDate = new Date();
   endDate.setHours(23, 59, 59, 999);
   
