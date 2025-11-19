@@ -25,4 +25,4 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           HEIGHT_CM: ${{ secrets.HEIGHT_CM }}
         run: |
-          deno run --allow-net --allow-env tanita_daily_sync.ts
+          deno run --allow-net --allow-env src/services/tanita/tanita_daily_sync.ts
