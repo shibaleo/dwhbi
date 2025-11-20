@@ -14,7 +14,7 @@ if (!supabaseUrl || !supabaseKey) {
 
 if (!heightCm) {
   console.error("❌ HEIGHT_CM環境変数が設定されていません");
-  console.error("   例: export HEIGHT_CM=167.5");
+  console.error("   例: export HEIGHT_CM=170");
   Deno.exit(1);
 }
 
@@ -271,7 +271,12 @@ function parseTanitaDate(dateStr: string): Date {
   const day = parseInt(dateStr.substring(6, 8));
   const hour = parseInt(dateStr.substring(8, 10));
   const minute = parseInt(dateStr.substring(10, 12));
-  return new Date(year, month, day, hour, minute);
+  
+  // JSTとして解釈し、UTCに変換（9時間引く）
+  const jstDate = new Date(year, month, day, hour, minute);
+  const utcDate = new Date(jstDate.getTime() - 9 * 60 * 60 * 1000);
+  
+  return utcDate;
 }
 
 function sleep(ms: number): Promise<void> {
