@@ -1,5 +1,5 @@
 // tanita_daily_sync.ts
-// 過去30日分のTanitaデータを取得してSupabaseに保存（日次実行用）
+// 過去30日分のTanitaデータを取得してSupabaseに保存（日次実行用・バッチ処理版）
 import "https://deno.land/std@0.203.0/dotenv/load.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -142,23 +142,28 @@ async function saveBodyMetrics(data: any[]): Promise<number> {
     }
   }
 
-  let savedCount = 0;
-  for (const record of Object.values(byDate)) {
+  // BMI計算して配列化
+  const records = Object.values(byDate).map(record => {
     if (record.weight_kg) {
       record.bmi = parseFloat(calculateBMI(record.weight_kg).toFixed(1));
     }
+    return record;
+  });
 
-    const { error } = await supabase
-      .from("body_metrics_daily")
-      .upsert(record, { onConflict: "date" });
+  if (records.length === 0) return 0;
 
-    if (!error) {
-      savedCount++;
-      console.log(`   ✓ ${record.date}`);
-    }
+  // 一括upsert
+  const { error } = await supabase
+    .from("body_metrics_daily")
+    .upsert(records, { onConflict: "date" });
+
+  if (error) {
+    console.error(`   ❌ 保存エラー:`, error.message);
+    return 0;
   }
 
-  return savedCount;
+  console.log(`   ✓ ${records.length}日分を保存`);
+  return records.length;
 }
 
 async function saveBloodPressure(data: any[]): Promise<number> {
@@ -184,19 +189,21 @@ async function saveBloodPressure(data: any[]): Promise<number> {
     }
   }
 
-  let savedCount = 0;
-  for (const record of Object.values(byTimestamp)) {
-    const { error } = await supabase
-      .from("blood_pressure_records")
-      .upsert(record, { onConflict: "measured_at,source" });
+  const records = Object.values(byTimestamp);
+  if (records.length === 0) return 0;
 
-    if (!error) {
-      savedCount++;
-      console.log(`   ✓ ${record.measured_at}`);
-    }
+  // 一括upsert
+  const { error } = await supabase
+    .from("blood_pressure_records")
+    .upsert(records, { onConflict: "measured_at,source" });
+
+  if (error) {
+    console.error(`   ❌ 保存エラー:`, error.message);
+    return 0;
   }
 
-  return savedCount;
+  console.log(`   ✓ ${records.length}件を保存`);
+  return records.length;
 }
 
 function parseTanitaDate(dateStr: string): Date {

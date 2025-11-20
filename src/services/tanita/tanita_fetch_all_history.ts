@@ -1,5 +1,5 @@
 // tanita_fetch_all_history.ts
-// 2025-03-01からの全データを取得してSupabaseに保存（BMI自動計算付き）
+// 2025-03-01からの全データを取得してSupabaseに保存（バッチ処理版）
 import "https://deno.land/std@0.203.0/dotenv/load.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -195,27 +195,28 @@ async function saveBodyMetrics(data: any[]): Promise<number> {
     }
   }
 
-  let savedCount = 0;
-  for (const record of Object.values(byDate)) {
-    // 体重がある場合はBMIを計算
+  // BMI計算して配列化
+  const records = Object.values(byDate).map(record => {
     if (record.weight_kg) {
       record.bmi = parseFloat(calculateBMI(record.weight_kg).toFixed(1));
     }
+    return record;
+  });
 
-    const { error } = await supabase
-      .from("body_metrics_daily")
-      .upsert(record, { onConflict: "date" });
+  if (records.length === 0) return 0;
 
-    if (!error) {
-      savedCount++;
-      const bmiStr = record.bmi ? `, BMI: ${record.bmi}` : '';
-      console.log(`   ✓ ${record.date} (体重: ${record.weight_kg}kg, 体脂肪率: ${record.body_fat_percent}%${bmiStr})`);
-    } else {
-      console.error(`   ⚠️  ${record.date} エラー:`, error.message);
-    }
+  // 一括upsert
+  const { error } = await supabase
+    .from("body_metrics_daily")
+    .upsert(records, { onConflict: "date" });
+
+  if (error) {
+    console.error(`   ❌ 保存エラー:`, error.message);
+    return 0;
   }
 
-  return savedCount;
+  console.log(`   ✓ ${records.length}日分を保存`);
+  return records.length;
 }
 
 async function saveBloodPressure(data: any[]): Promise<number> {
@@ -241,28 +242,21 @@ async function saveBloodPressure(data: any[]): Promise<number> {
     }
   }
 
-  let savedCount = 0;
-  for (const record of Object.values(byTimestamp)) {
-    const { data: existing } = await supabase
-      .from("blood_pressure_records")
-      .select("id")
-      .eq("measured_at", record.measured_at)
-      .eq("source", "tanita")
-      .maybeSingle();
+  const records = Object.values(byTimestamp);
+  if (records.length === 0) return 0;
 
-    if (existing) continue;
+  // 一括upsert
+  const { error } = await supabase
+    .from("blood_pressure_records")
+    .upsert(records, { onConflict: "measured_at,source" });
 
-    const { error } = await supabase
-      .from("blood_pressure_records")
-      .insert(record);
-
-    if (!error) {
-      savedCount++;
-      console.log(`   ✓ ${record.measured_at} (${record.systolic}/${record.diastolic} mmHg, 脈拍: ${record.pulse} bpm)`);
-    }
+  if (error) {
+    console.error(`   ❌ 保存エラー:`, error.message);
+    return 0;
   }
 
-  return savedCount;
+  console.log(`   ✓ ${records.length}件を保存`);
+  return records.length;
 }
 
 function parseTanitaDate(dateStr: string): Date {
