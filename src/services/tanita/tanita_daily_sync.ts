@@ -186,18 +186,9 @@ async function saveBloodPressure(data: any[]): Promise<number> {
 
   let savedCount = 0;
   for (const record of Object.values(byTimestamp)) {
-    const { data: existing } = await supabase
-      .from("blood_pressure_records")
-      .select("id")
-      .eq("measured_at", record.measured_at)
-      .eq("source", "tanita")
-      .maybeSingle();
-
-    if (existing) continue;
-
     const { error } = await supabase
       .from("blood_pressure_records")
-      .insert(record);
+      .upsert(record, { onConflict: "measured_at,source" });
 
     if (!error) {
       savedCount++;
