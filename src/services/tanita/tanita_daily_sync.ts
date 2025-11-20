@@ -206,11 +206,9 @@ function parseTanitaDate(dateStr: string): Date {
   const hour = parseInt(dateStr.substring(8, 10));
   const minute = parseInt(dateStr.substring(10, 12));
   
-  // JSTとして解釈し、UTCに変換（9時間引く）
-  const jstDate = new Date(year, month, day, hour, minute);
-  const utcDate = new Date(jstDate.getTime() - 9 * 60 * 60 * 1000);
-  
-  return utcDate;
+  // TanitaのデータはJST（UTC+9）なので、UTC時刻に変換
+  // JST 07:43 = UTC 22:43（前日） なので、9時間引く
+  return new Date(Date.UTC(year, month, day, hour - 9, minute));
 }
 
 function sleep(ms: number): Promise<void> {
