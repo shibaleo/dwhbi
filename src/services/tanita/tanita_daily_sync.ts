@@ -1,6 +1,6 @@
 // tanita_daily_sync.ts
 // 過去30日分のTanitaデータを取得してSupabaseに保存（日次実行用）
-
+import "https://deno.land/std@0.203.0/dotenv/load.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL");
