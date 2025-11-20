@@ -50,3 +50,7 @@ CREATE POLICY "Enable update for authenticated users" ON blood_pressure_records
 
 CREATE POLICY "Enable delete for authenticated users" ON blood_pressure_records
   FOR DELETE USING (auth.role() = 'authenticated');
+
+ALTER TABLE blood_pressure_records
+ADD CONSTRAINT blood_pressure_records_measured_at_source_key 
+UNIQUE (measured_at, source);
