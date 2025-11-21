@@ -1,7 +1,8 @@
-// fetchProjects.ts - Toggl API v9からプロジェクト情報を取得
+// fetch_rojects.ts - Toggl API v9からプロジェクト情報を取得
 
 import "https://deno.land/std@0.203.0/dotenv/load.ts";
 import { TogglApiV9Project } from "./types.ts";
+import { isNonRetryableError, formatTogglError } from "./retry_helper.ts";
 
 // --- Environment variables ---
 const API_TOKEN = Deno.env.get("TOGGL_API_TOKEN")?.trim();
@@ -63,6 +64,11 @@ export async function fetchProjectsWithRetry(
       return await fetchProjects(includeArchived);
     } catch (error) {
       lastError = error as Error;
+      
+      // レート制限エラーや認証エラーは即座に諦める
+      if (isNonRetryableError(lastError)) {
+        throw new Error(formatTogglError(lastError, "projects fetch"));
+      }
       
       if (attempt < maxRetries) {
         await delay(retryDelay);

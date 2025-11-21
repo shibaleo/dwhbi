@@ -1,7 +1,8 @@
-// fetchTags.ts - Toggl API v9からタグ情報を取得
+// fetch_ags.ts - Toggl API v9からタグ情報を取得
 
 import "https://deno.land/std@0.203.0/dotenv/load.ts";
 import { TogglApiV9Tag } from "./types.ts";
+import { isNonRetryableError, formatTogglError } from "./retry_helper.ts";
 
 // --- Environment variables ---
 const API_TOKEN = Deno.env.get("TOGGL_API_TOKEN")?.trim();
@@ -55,6 +56,11 @@ export async function fetchTagsWithRetry(
       return await fetchTags();
     } catch (error) {
       lastError = error as Error;
+      
+      // レート制限エラーや認証エラーは即座に諦める
+      if (isNonRetryableError(lastError)) {
+        throw new Error(formatTogglError(lastError, "tags fetch"));
+      }
       
       if (attempt < maxRetries) {
         await delay(retryDelay);

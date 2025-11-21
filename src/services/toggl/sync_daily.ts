@@ -1,4 +1,4 @@
-// sync_toggl_to_supabase.ts - Togglデータの同期スクリプト（GitHub Actions用）
+// sync_daily.ts - Togglデータの同期スクリプト（GitHub Actions用）
 
 import "https://deno.land/std@0.203.0/dotenv/load.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
@@ -264,11 +264,11 @@ async function syncTogglToSupabase(days: number = 1) {
   logInfo("=== Starting Toggl to Supabase sync ===");
   
   try {
-    // Step 1: Fetch metadata from Toggl (parallel with staggered delays)
-    logInfo("Step 1: Fetching metadata from Toggl API...");
+    // Step 1: Fetch all data from Toggl (parallel with staggered delays)
+    logInfo("Step 1: Fetching all data from Toggl API...");
     
     // 並列実行（staggered delayでAPIバーストを回避）
-    const [clients, projects, tags] = await Promise.all([
+    const [clients, projects, tags, entries] = await Promise.all([
       // clients: 即座に開始
       (async () => {
         logInfo("Fetching clients...");
@@ -288,18 +288,19 @@ async function syncTogglToSupabase(days: number = 1) {
         logInfo("Fetching tags...");
         return await fetchTagsWithRetry();
       })(),
+      
+      // entries: 600ms後に開始
+      (async () => {
+        await delay(600);
+        logInfo(`Fetching time entries (last ${days} day(s))...`);
+        return await fetchRecentTimeEntriesWithRetry(days);
+      })(),
     ]);
     
-    logSuccess(`Fetched: ${clients.length} clients, ${projects.length} projects, ${tags.length} tags`);
+    logSuccess(`Fetched: ${clients.length} clients, ${projects.length} projects, ${tags.length} tags, ${entries.length} entries`);
     
-    // Step 2: Fetch recent time entries
-    logInfo(`Step 2: Fetching time entries (last ${days} day(s))...`);
-    const entries = await fetchRecentTimeEntriesWithRetry(days);
-    
-    logSuccess(`Fetched: ${entries.length} time entries`);
-    
-    // Step 3: Sync metadata to Supabase (parallel)
-    logInfo("Step 3: Syncing metadata to Supabase...");
+    // Step 2: Sync metadata to Supabase (parallel)
+    logInfo("Step 2: Syncing metadata to Supabase...");
     
     const [clientsUpserted, projectsUpserted, tagsUpserted] = await Promise.all([
       upsertClients(clients),
@@ -309,8 +310,8 @@ async function syncTogglToSupabase(days: number = 1) {
     
     logSuccess(`Metadata synced: ${clientsUpserted} clients, ${projectsUpserted} projects, ${tagsUpserted} tags`);
     
-    // Step 4: Sync time entries to Supabase (after metadata due to foreign key constraints)
-    logInfo("Step 4: Syncing time entries to Supabase...");
+    // Step 3: Sync time entries to Supabase (after metadata due to foreign key constraints)
+    logInfo("Step 3: Syncing time entries to Supabase...");
     const entriesUpserted = await upsertTimeEntries(entries);
     
     logSuccess(`Time entries synced: ${entriesUpserted} entries`);
