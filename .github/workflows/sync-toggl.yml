@@ -34,7 +34,7 @@ jobs:
             --allow-net \
             --allow-read \
             --allow-env \
-            sync_daily.ts
+            src/services/toggl/sync_daily.ts
       
       - name: Notify on failure
         if: failure()
