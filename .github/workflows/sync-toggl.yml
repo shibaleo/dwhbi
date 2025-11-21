@@ -11,7 +11,7 @@ on:
       sync_days:
         description: '同期する日数'
         required: false
-        default: '1'
+        default: '2'
         type: string
 
 jobs:

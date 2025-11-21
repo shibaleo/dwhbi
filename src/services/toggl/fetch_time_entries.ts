@@ -1,4 +1,4 @@
-// fetch_time_entries.ts - Toggl API v9から時間エントリー情報を取得
+// fetchTimeEntries.ts - Toggl API v9から時間エントリー情報を取得
 
 import "https://deno.land/std@0.203.0/dotenv/load.ts";
 import { TogglApiV9TimeEntry } from "./types.ts";
@@ -34,8 +34,9 @@ function formatDate(date: Date): string {
  * @param days Number of days to look back
  * @returns Object with start and end dates in ISO format
  */
-function getDateRange(days: number = 1): { start: string; end: string } {
+function getDateRange(days: number = 2): { start: string; end: string } {
   const end = new Date();
+  end.setDate(end.getDate() + 1);  // +1日（明日の日付）にして今日のデータも確実に取得
   const start = new Date();
   start.setDate(start.getDate() - days);
   
