@@ -145,7 +145,7 @@ async function upsertClients(clients: TogglApiV9Client[]): Promise<number> {
     const batch = transformed.slice(i, i + BATCH_SIZE);
     
     const { error } = await supabase
-      .from('toggl_clients_new')
+      .from('toggl_clients')
       .upsert(batch, { onConflict: 'id' });
     
     if (error) {
@@ -174,7 +174,7 @@ async function upsertProjects(projects: TogglApiV9Project[]): Promise<number> {
     const batch = transformed.slice(i, i + BATCH_SIZE);
     
     const { error } = await supabase
-      .from('toggl_projects_new')
+      .from('toggl_projects')
       .upsert(batch, { onConflict: 'id' });
     
     if (error) {
@@ -203,7 +203,7 @@ async function upsertTags(tags: TogglApiV9Tag[]): Promise<number> {
     const batch = transformed.slice(i, i + BATCH_SIZE);
     
     const { error } = await supabase
-      .from('toggl_tags_new')
+      .from('toggl_tags')
       .upsert(batch, { onConflict: 'id' });
     
     if (error) {
@@ -239,7 +239,7 @@ async function upsertTimeEntries(entries: TogglApiV9TimeEntry[]): Promise<number
     const batch = transformed.slice(i, i + BATCH_SIZE);
     
     const { error } = await supabase
-      .from('toggl_time_entries_new')
+      .from('toggl_time_entries')
       .upsert(batch, { onConflict: 'id' });
     
     if (error) {
