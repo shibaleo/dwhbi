@@ -33,7 +33,7 @@ function formatDate(date: Date): string {
  * @param days Number of days to look back
  * @returns Object with start and end dates in ISO format
  */
-function getDateRange(days: number = 2): { start: string; end: string } {
+function getDateRange(days: number = 1): { start: string; end: string } {
   const end = new Date();
   const start = new Date();
   start.setDate(start.getDate() - days);
@@ -69,10 +69,10 @@ export async function fetchTimeEntries(
 
 /**
  * Fetch time entries for the last N days
- * @param days Number of days to look back (default: 2)
+ * @param days Number of days to look back (default: 1)
  * @returns Array of time entries
  */
-export async function fetchRecentTimeEntries(days: number = 2): Promise<TogglApiV9TimeEntry[]> {
+export async function fetchRecentTimeEntries(days: number = 1): Promise<TogglApiV9TimeEntry[]> {
   const { start, end } = getDateRange(days);
   return await fetchTimeEntries(start, end);
 }
@@ -116,7 +116,7 @@ export async function fetchTimeEntriesWithRetry(
  * @returns Array of time entries
  */
 export async function fetchRecentTimeEntriesWithRetry(
-  days: number = 2,
+  days: number = 1,
   maxRetries: number = 3,
   retryDelay: number = 2000
 ): Promise<TogglApiV9TimeEntry[]> {
@@ -127,8 +127,8 @@ export async function fetchRecentTimeEntriesWithRetry(
 // --- Main execution (for testing) ---
 if (import.meta.main) {
   try {
-    console.log("Fetching time entries for the last 2 days...");
-    const entries = await fetchRecentTimeEntriesWithRetry(2);
+    console.log("Fetching time entries for the last 1 day...");
+    const entries = await fetchRecentTimeEntriesWithRetry(1);
     console.log(`\nFetched ${entries.length} time entries`);
     
     if (entries.length > 0) {

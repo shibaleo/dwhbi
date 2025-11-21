@@ -28,19 +28,36 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const RATE_LIMIT_DELAY = 1000; // 1 request per second
 
 // --- Batch configuration ---
-const BATCH_SIZE = 100; // PostgreSQL安全なバッチサイズ
+const BATCH_SIZE = 1000; // PostgreSQL安全なバッチサイズ
 
 // --- Logging utilities ---
+/**
+ * Format date to human-readable JST format (YYYY-MM-DD HH:mm:ss)
+ */
+function formatDateTime(): string {
+  const now = new Date();
+  const jst = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
+  
+  const year = jst.getFullYear();
+  const month = String(jst.getMonth() + 1).padStart(2, '0');
+  const day = String(jst.getDate()).padStart(2, '0');
+  const hours = String(jst.getHours()).padStart(2, '0');
+  const minutes = String(jst.getMinutes()).padStart(2, '0');
+  const seconds = String(jst.getSeconds()).padStart(2, '0');
+  
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
 function logInfo(message: string) {
-  console.log(`[INFO] ${new Date().toISOString()} - ${message}`);
+  console.log(`${'[INFO]'.padEnd(9)} ${formatDateTime()} - ${message}`);
 }
 
 function logSuccess(message: string) {
-  console.log(`[SUCCESS] ${new Date().toISOString()} - ${message}`);
+  console.log(`${'[SUCCESS]'.padEnd(9)} ${formatDateTime()} - ${message}`);
 }
 
 function logError(message: string, error?: unknown) {
-  console.error(`[ERROR] ${new Date().toISOString()} - ${message}`);
+  console.error(`${'[ERROR]'.padEnd(9)} ${formatDateTime()} - ${message}`);
   if (error) {
     console.error(error);
   }
@@ -153,10 +170,6 @@ async function upsertClients(clients: TogglApiV9Client[]): Promise<number> {
     }
     
     logInfo(`Upserted ${batch.length} clients (batch ${Math.floor(i / BATCH_SIZE) + 1})`);
-    
-    if (i + BATCH_SIZE < transformed.length) {
-      await delay(100); // バッチ間の短い遅延
-    }
   }
   
   return transformed.length;
@@ -182,10 +195,6 @@ async function upsertProjects(projects: TogglApiV9Project[]): Promise<number> {
     }
     
     logInfo(`Upserted ${batch.length} projects (batch ${Math.floor(i / BATCH_SIZE) + 1})`);
-    
-    if (i + BATCH_SIZE < transformed.length) {
-      await delay(100);
-    }
   }
   
   return transformed.length;
@@ -211,10 +220,6 @@ async function upsertTags(tags: TogglApiV9Tag[]): Promise<number> {
     }
     
     logInfo(`Upserted ${batch.length} tags (batch ${Math.floor(i / BATCH_SIZE) + 1})`);
-    
-    if (i + BATCH_SIZE < transformed.length) {
-      await delay(100);
-    }
   }
   
   return transformed.length;
@@ -247,10 +252,6 @@ async function upsertTimeEntries(entries: TogglApiV9TimeEntry[]): Promise<number
     }
     
     logInfo(`Upserted ${batch.length} time entries (batch ${Math.floor(i / BATCH_SIZE) + 1})`);
-    
-    if (i + BATCH_SIZE < transformed.length) {
-      await delay(100);
-    }
   }
   
   return transformed.length;
@@ -258,45 +259,57 @@ async function upsertTimeEntries(entries: TogglApiV9TimeEntry[]): Promise<number
 
 // --- Main sync function ---
 
-async function syncTogglToSupabase() {
+async function syncTogglToSupabase(days: number = 1) {
   const startTime = Date.now();
   logInfo("=== Starting Toggl to Supabase sync ===");
   
   try {
-    // Step 1: Fetch metadata from Toggl
+    // Step 1: Fetch metadata from Toggl (parallel with staggered delays)
     logInfo("Step 1: Fetching metadata from Toggl API...");
     
-    logInfo("Fetching clients...");
-    const clients = await fetchClientsWithRetry();
-    await delay(RATE_LIMIT_DELAY);
-    
-    logInfo("Fetching projects...");
-    const projects = await fetchProjectsWithRetry(true); // include archived
-    await delay(RATE_LIMIT_DELAY);
-    
-    logInfo("Fetching tags...");
-    const tags = await fetchTagsWithRetry();
-    await delay(RATE_LIMIT_DELAY);
+    // 並列実行（staggered delayでAPIバーストを回避）
+    const [clients, projects, tags] = await Promise.all([
+      // clients: 即座に開始
+      (async () => {
+        logInfo("Fetching clients...");
+        return await fetchClientsWithRetry();
+      })(),
+      
+      // projects: 200ms後に開始
+      (async () => {
+        await delay(200);
+        logInfo("Fetching projects...");
+        return await fetchProjectsWithRetry(true); // include archived
+      })(),
+      
+      // tags: 400ms後に開始
+      (async () => {
+        await delay(400);
+        logInfo("Fetching tags...");
+        return await fetchTagsWithRetry();
+      })(),
+    ]);
     
     logSuccess(`Fetched: ${clients.length} clients, ${projects.length} projects, ${tags.length} tags`);
     
-    // Step 2: Fetch recent time entries (last 2 days)
-    logInfo("Step 2: Fetching time entries (last 2 days)...");
-    const entries = await fetchRecentTimeEntriesWithRetry(2);
-    await delay(RATE_LIMIT_DELAY);
+    // Step 2: Fetch recent time entries
+    logInfo(`Step 2: Fetching time entries (last ${days} day(s))...`);
+    const entries = await fetchRecentTimeEntriesWithRetry(days);
     
     logSuccess(`Fetched: ${entries.length} time entries`);
     
-    // Step 3: Sync metadata to Supabase
+    // Step 3: Sync metadata to Supabase (parallel)
     logInfo("Step 3: Syncing metadata to Supabase...");
     
-    const clientsUpserted = await upsertClients(clients);
-    const projectsUpserted = await upsertProjects(projects);
-    const tagsUpserted = await upsertTags(tags);
+    const [clientsUpserted, projectsUpserted, tagsUpserted] = await Promise.all([
+      upsertClients(clients),
+      upsertProjects(projects),
+      upsertTags(tags),
+    ]);
     
     logSuccess(`Metadata synced: ${clientsUpserted} clients, ${projectsUpserted} projects, ${tagsUpserted} tags`);
     
-    // Step 4: Sync time entries to Supabase
+    // Step 4: Sync time entries to Supabase (after metadata due to foreign key constraints)
     logInfo("Step 4: Syncing time entries to Supabase...");
     const entriesUpserted = await upsertTimeEntries(entries);
     
@@ -315,8 +328,11 @@ async function syncTogglToSupabase() {
 
 // --- Main execution ---
 if (import.meta.main) {
+  // 環境変数から同期日数を取得（デフォルト: 1日）
+  const syncDays = parseInt(Deno.env.get('TOGGL_SYNC_DAYS') || '1', 10);
+  
   try {
-    await syncTogglToSupabase();
+    await syncTogglToSupabase(syncDays);
     Deno.exit(0);
   } catch (error) {
     logError("Fatal error", error);

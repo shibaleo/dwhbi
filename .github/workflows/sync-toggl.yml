@@ -1,42 +1,54 @@
-name: Sync Toggl Daily
+name: Toggl Daily Sync
 
 on:
+  # 毎日 JST 00:00 に実行（UTC 15:00）
   schedule:
-    # 毎日 JST 00:00 (UTC 15:00) に実行
     - cron: '0 15 * * *'
   
-  # 手動実行も可能
+  # 手動実行を許可
   workflow_dispatch:
+    inputs:
+      sync_days:
+        description: '同期する日数'
+        required: false
+        default: '1'
+        type: string
 
 jobs:
-  sync:
+  sync-toggl:
     runs-on: ubuntu-latest
     
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: Setup Deno
         uses: denoland/setup-deno@v1
         with:
           deno-version: v1.x
-      
-      - name: Create .env file
-        run: |
-          echo "TOGGL_API_TOKEN=${{ secrets.TOGGL_API_TOKEN }}" >> .env
-          echo "TOGGL_WORKSPACE_ID=${{ secrets.TOGGL_WORKSPACE_ID }}" >> .env
-          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env
-          echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env
-      
-      - name: Run sync script
+
+      - name: Run daily sync
+        env:
+          # Supabase
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          
+          # Toggl API
+          TOGGL_API_TOKEN: ${{ secrets.TOGGL_API_TOKEN }}
+          TOGGL_WORKSPACE_ID: ${{ secrets.TOGGL_WORKSPACE_ID }}
+          
+          # オプション: 同期日数（デフォルト1日）
+          TOGGL_SYNC_DAYS: ${{ inputs.sync_days || '1' }}
         run: |
           deno run \
             --allow-net \
-            --allow-read \
             --allow-env \
+            --allow-read \
             src/services/toggl/sync_daily.ts
-      
+
       - name: Notify on failure
         if: failure()
         run: |
-          echo "Sync failed at $(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M:%S JST')"
+          echo "❌ Toggl日次同期が失敗しました"
+          echo "詳細は Actions ログを確認してください"
+          # オプション: Slack, Discord, メール通知などを追加可能
