@@ -1,0 +1,56 @@
+name: Zaim Daily Sync
+
+on:
+  # 毎日 JST 00:00 に実行（UTC 15:00）
+  schedule:
+    - cron: '0 15 * * *'
+  
+  # 手動実行を許可
+  workflow_dispatch:
+    inputs:
+      sync_days:
+        description: '同期する日数'
+        required: false
+        default: '3'
+        type: string
+
+jobs:
+  sync-zaim:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Run daily sync
+        env:
+          # Supabase
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          
+          # Zaim OAuth
+          ZAIM_CONSUMER_KEY: ${{ secrets.ZAIM_CONSUMER_KEY }}
+          ZAIM_CONSUMER_SECRET: ${{ secrets.ZAIM_CONSUMER_SECRET }}
+          ZAIM_ACCESS_TOKEN: ${{ secrets.ZAIM_ACCESS_TOKEN }}
+          ZAIM_ACCESS_TOKEN_SECRET: ${{ secrets.ZAIM_ACCESS_TOKEN_SECRET }}
+          
+          # オプション: 同期日数（デフォルト3日）
+          ZAIM_SYNC_DAYS: ${{ inputs.sync_days || '3' }}
+        run: |
+          deno run \
+            --allow-net \
+            --allow-env \
+            --allow-read \
+            src/services/zaim/sync_daily.ts
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ Zaim日次同期が失敗しました"
+          echo "詳細は Actions ログを確認してください"
+          # オプション: Slack, Discord, メール通知などを追加可能

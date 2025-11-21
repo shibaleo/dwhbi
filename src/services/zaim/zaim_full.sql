@@ -1,92 +1,81 @@
 -- ============================================================
--- Zaim財務データ管理テーブル（権限設定込み）
+-- Zaim財務データ管理テーブル（zaim_user_id版）
 -- ============================================================
-
--- 既存テーブルの削除（必要に応じてコメントアウト）
-DROP TABLE IF EXISTS zaim_sync_log CASCADE;
-DROP MATERIALIZED VIEW IF EXISTS zaim_monthly_summary CASCADE;
-DROP TABLE IF EXISTS zaim_transactions CASCADE;
-DROP TABLE IF EXISTS zaim_genres CASCADE;
-DROP TABLE IF EXISTS zaim_categories CASCADE;
-DROP TABLE IF EXISTS zaim_accounts CASCADE;
 
 -- ============================================================
 -- 1. マスタテーブル: カテゴリ（大分類）
 -- ============================================================
 CREATE TABLE zaim_categories (
-  id INTEGER PRIMARY KEY,
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  id INTEGER NOT NULL,
+  zaim_user_id BIGINT NOT NULL,
   name VARCHAR(100) NOT NULL,
   sort_order INTEGER,
   mode VARCHAR(10) CHECK (mode IN ('payment', 'income')),
   is_active BOOLEAN DEFAULT true,
   synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   
-  UNIQUE(user_id, id)
+  PRIMARY KEY (zaim_user_id, id)
 );
 
-CREATE INDEX idx_zaim_categories_user ON zaim_categories(user_id);
-CREATE INDEX idx_zaim_categories_mode ON zaim_categories(mode) WHERE is_active = true;
+CREATE INDEX idx_zaim_categories_user ON zaim_categories(zaim_user_id);
+CREATE INDEX idx_zaim_categories_mode ON zaim_categories(zaim_user_id, mode) WHERE is_active = true;
 
 COMMENT ON TABLE zaim_categories IS 'Zaim大分類マスタ（食費、交通費など）';
 
 -- 権限付与
-GRANT SELECT, INSERT, UPDATE, DELETE ON zaim_categories TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON zaim_categories TO service_role;
 
 -- ============================================================
 -- 2. マスタテーブル: ジャンル（小分類）
 -- ============================================================
 CREATE TABLE zaim_genres (
-  id INTEGER PRIMARY KEY,
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  id INTEGER NOT NULL,
+  zaim_user_id BIGINT NOT NULL,
   category_id INTEGER NOT NULL,
   name VARCHAR(100) NOT NULL,
   sort_order INTEGER,
   is_active BOOLEAN DEFAULT true,
   synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   
-  UNIQUE(user_id, id),
-  FOREIGN KEY (user_id, category_id) REFERENCES zaim_categories(user_id, id) ON DELETE CASCADE
+  PRIMARY KEY (zaim_user_id, id),
+  FOREIGN KEY (zaim_user_id, category_id) REFERENCES zaim_categories(zaim_user_id, id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_zaim_genres_user ON zaim_genres(user_id);
-CREATE INDEX idx_zaim_genres_category ON zaim_genres(user_id, category_id);
+CREATE INDEX idx_zaim_genres_user ON zaim_genres(zaim_user_id);
+CREATE INDEX idx_zaim_genres_category ON zaim_genres(zaim_user_id, category_id);
 
 COMMENT ON TABLE zaim_genres IS 'Zaimジャンルマスタ（カテゴリ配下の詳細分類）';
 
 -- 権限付与
-GRANT SELECT, INSERT, UPDATE, DELETE ON zaim_genres TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON zaim_genres TO service_role;
 
 -- ============================================================
 -- 3. マスタテーブル: 口座
 -- ============================================================
 CREATE TABLE zaim_accounts (
-  id INTEGER PRIMARY KEY,
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  id INTEGER NOT NULL,
+  zaim_user_id BIGINT NOT NULL,
   name VARCHAR(100) NOT NULL,
   sort_order INTEGER,
   is_active BOOLEAN DEFAULT true,
   synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   
-  UNIQUE(user_id, id)
+  PRIMARY KEY (zaim_user_id, id)
 );
 
-CREATE INDEX idx_zaim_accounts_user ON zaim_accounts(user_id);
+CREATE INDEX idx_zaim_accounts_user ON zaim_accounts(zaim_user_id);
 
 COMMENT ON TABLE zaim_accounts IS 'Zaim口座マスタ（現金、銀行口座、クレジットカードなど）';
 
 -- 権限付与
-GRANT SELECT, INSERT, UPDATE, DELETE ON zaim_accounts TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON zaim_accounts TO service_role;
 
 -- ============================================================
 -- 4. トランザクションテーブル
 -- ============================================================
 CREATE TABLE zaim_transactions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  -- 基本情報
+  zaim_user_id BIGINT NOT NULL,
   zaim_id BIGINT NOT NULL,
   transaction_type VARCHAR(10) NOT NULL CHECK (transaction_type IN ('payment', 'income', 'transfer')),
   amount INTEGER NOT NULL,
@@ -113,33 +102,142 @@ CREATE TABLE zaim_transactions (
   
   -- 同期管理
   synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  last_modified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   
-  -- 制約
-  UNIQUE(user_id, zaim_id),
+  -- ===================================
+  -- 主キー
+  -- ===================================
+  PRIMARY KEY (zaim_user_id, zaim_id),
   
-  FOREIGN KEY (user_id, category_id) REFERENCES zaim_categories(user_id, id),
-  FOREIGN KEY (user_id, genre_id) REFERENCES zaim_genres(user_id, id),
-  FOREIGN KEY (user_id, from_account_id) REFERENCES zaim_accounts(user_id, id),
-  FOREIGN KEY (user_id, to_account_id) REFERENCES zaim_accounts(user_id, id),
+  -- ===================================
+  -- 外部キー制約
+  -- ===================================
+  -- カテゴリへの参照
+  FOREIGN KEY (zaim_user_id, category_id) 
+    REFERENCES zaim_categories(zaim_user_id, id)
+    ON DELETE SET NULL,
   
+  -- ジャンルへの参照
+  FOREIGN KEY (zaim_user_id, genre_id) 
+    REFERENCES zaim_genres(zaim_user_id, id)
+    ON DELETE SET NULL,
+  
+  -- 支払元口座への参照
+  FOREIGN KEY (zaim_user_id, from_account_id) 
+    REFERENCES zaim_accounts(zaim_user_id, id)
+    ON DELETE SET NULL,
+  
+  -- 入金先口座への参照
+  FOREIGN KEY (zaim_user_id, to_account_id) 
+    REFERENCES zaim_accounts(zaim_user_id, id)
+    ON DELETE SET NULL,
+  
+  -- ===================================
+  -- ビジネスルール制約（修正版）
+  -- ===================================
   CONSTRAINT valid_accounts CHECK (
-    (transaction_type = 'transfer' AND from_account_id IS NOT NULL AND to_account_id IS NOT NULL) OR
-    (transaction_type != 'transfer' AND to_account_id IS NULL)
+    -- payment（支出）: from_account_idが必須、to_account_idはNULL
+    (transaction_type = 'payment' AND from_account_id IS NOT NULL AND to_account_id IS NULL) OR
+    -- income（収入）: to_account_idが必須、from_account_idはNULL
+    (transaction_type = 'income' AND from_account_id IS NULL AND to_account_id IS NOT NULL) OR
+    -- transfer（振替）: 両方が必須
+    (transaction_type = 'transfer' AND from_account_id IS NOT NULL AND to_account_id IS NOT NULL)
   )
 );
 
-CREATE INDEX idx_zaim_transactions_user ON zaim_transactions(user_id);
-CREATE INDEX idx_zaim_transactions_date ON zaim_transactions(user_id, date DESC);
-CREATE INDEX idx_zaim_transactions_type ON zaim_transactions(user_id, transaction_type);
-CREATE INDEX idx_zaim_transactions_category ON zaim_transactions(user_id, category_id) WHERE category_id IS NOT NULL;
-CREATE INDEX idx_zaim_transactions_account ON zaim_transactions(user_id, from_account_id) WHERE from_account_id IS NOT NULL;
-CREATE INDEX idx_zaim_transactions_active ON zaim_transactions(user_id, is_active) WHERE is_active = true;
+-- ===================================
+-- 3. インデックスの作成
+-- ===================================
+
+-- 日付での検索を高速化
+CREATE INDEX idx_zaim_transactions_date 
+ON zaim_transactions(zaim_user_id, date DESC);
+
+-- トランザクションタイプでの検索を高速化
+CREATE INDEX idx_zaim_transactions_type 
+ON zaim_transactions(zaim_user_id, transaction_type);
+
+-- カテゴリでの検索を高速化
+CREATE INDEX idx_zaim_transactions_category 
+ON zaim_transactions(zaim_user_id, category_id) 
+WHERE category_id IS NOT NULL;
+
+-- ジャンルでの検索を高速化
+CREATE INDEX idx_zaim_transactions_genre 
+ON zaim_transactions(zaim_user_id, genre_id) 
+WHERE genre_id IS NOT NULL;
+
+-- 口座での検索を高速化
+CREATE INDEX idx_zaim_transactions_from_account 
+ON zaim_transactions(zaim_user_id, from_account_id) 
+WHERE from_account_id IS NOT NULL;
+
+CREATE INDEX idx_zaim_transactions_to_account 
+ON zaim_transactions(zaim_user_id, to_account_id) 
+WHERE to_account_id IS NOT NULL;
+
+-- 同期時刻での検索を高速化
+CREATE INDEX idx_zaim_transactions_synced_at 
+ON zaim_transactions(zaim_user_id, synced_at DESC);
+
+-- ===================================
+-- 4. RLS（Row Level Security）の設定（オプション）
+-- ===================================
+
+-- RLSを有効化
+ALTER TABLE zaim_transactions ENABLE ROW LEVEL SECURITY;
+
+-- サービスロールには全アクセスを許可
+CREATE POLICY "Service role can access all transactions" 
+ON zaim_transactions 
+FOR ALL 
+TO service_role 
+USING (true) 
+WITH CHECK (true);
+
+-- 認証済みユーザーは自分のデータのみアクセス可能（将来的な拡張用）
+-- CREATE POLICY "Users can access their own transactions" 
+-- ON zaim_transactions 
+-- FOR ALL 
+-- TO authenticated 
+-- USING (zaim_user_id = auth.uid()::bigint) 
+-- WITH CHECK (zaim_user_id = auth.uid()::bigint);
+
+-- ===================================
+-- 5. テーブル情報の確認
+-- ===================================
+
+-- テーブル構造の確認
+SELECT 
+  column_name,
+  data_type,
+  is_nullable,
+  column_default
+FROM information_schema.columns
+WHERE table_name = 'zaim_transactions'
+ORDER BY ordinal_position;
+
+-- 制約の確認
+SELECT 
+  conname AS constraint_name,
+  contype AS constraint_type,
+  pg_get_constraintdef(oid) AS constraint_definition
+FROM pg_constraint
+WHERE conrelid = 'zaim_transactions'::regclass
+ORDER BY contype, conname;
+
+-- インデックスの確認
+SELECT 
+  schemaname,
+  tablename,
+  indexname,
+  indexdef
+FROM pg_indexes
+WHERE tablename = 'zaim_transactions'
+ORDER BY indexname;
 
 COMMENT ON TABLE zaim_transactions IS 'Zaim取引データ（支出・収入・振替）';
 
 -- 権限付与
-GRANT SELECT, INSERT, UPDATE, DELETE ON zaim_transactions TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON zaim_transactions TO service_role;
 
 -- ============================================================
@@ -147,7 +245,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON zaim_transactions TO service_role;
 -- ============================================================
 CREATE TABLE zaim_sync_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  zaim_user_id BIGINT NOT NULL,
   sync_started_at TIMESTAMPTZ NOT NULL,
   sync_completed_at TIMESTAMPTZ,
   sync_status VARCHAR(20) NOT NULL CHECK (sync_status IN ('running', 'completed', 'failed')),
@@ -163,202 +261,13 @@ CREATE TABLE zaim_sync_log (
   )
 );
 
-CREATE INDEX idx_zaim_sync_log_user ON zaim_sync_log(user_id);
-CREATE INDEX idx_zaim_sync_log_started ON zaim_sync_log(user_id, sync_started_at DESC);
+CREATE INDEX idx_zaim_sync_log_user ON zaim_sync_log(zaim_user_id);
+CREATE INDEX idx_zaim_sync_log_started ON zaim_sync_log(zaim_user_id, sync_started_at DESC);
 
 COMMENT ON TABLE zaim_sync_log IS 'Zaim API同期履歴';
 
 -- 権限付与
-GRANT SELECT, INSERT, UPDATE, DELETE ON zaim_sync_log TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON zaim_sync_log TO service_role;
-
--- ============================================================
--- RLS（Row Level Security）設定
--- ============================================================
-
--- -----------------
--- zaim_categories
--- -----------------
-ALTER TABLE zaim_categories ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can view their own categories"
-ON zaim_categories
-FOR SELECT
-TO authenticated
-USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert their own categories"
-ON zaim_categories
-FOR INSERT
-TO authenticated
-WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update their own categories"
-ON zaim_categories
-FOR UPDATE
-TO authenticated
-USING (auth.uid() = user_id)
-WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete their own categories"
-ON zaim_categories
-FOR DELETE
-TO authenticated
-USING (auth.uid() = user_id);
-
--- Service roleはRLSをバイパス
-CREATE POLICY "Service role has full access to categories"
-ON zaim_categories
-FOR ALL
-TO service_role
-USING (true)
-WITH CHECK (true);
-
--- -----------------
--- zaim_genres
--- -----------------
-ALTER TABLE zaim_genres ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can view their own genres"
-ON zaim_genres
-FOR SELECT
-TO authenticated
-USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert their own genres"
-ON zaim_genres
-FOR INSERT
-TO authenticated
-WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update their own genres"
-ON zaim_genres
-FOR UPDATE
-TO authenticated
-USING (auth.uid() = user_id)
-WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete their own genres"
-ON zaim_genres
-FOR DELETE
-TO authenticated
-USING (auth.uid() = user_id);
-
--- Service roleはRLSをバイパス
-CREATE POLICY "Service role has full access to genres"
-ON zaim_genres
-FOR ALL
-TO service_role
-USING (true)
-WITH CHECK (true);
-
--- -----------------
--- zaim_accounts
--- -----------------
-ALTER TABLE zaim_accounts ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can view their own accounts"
-ON zaim_accounts
-FOR SELECT
-TO authenticated
-USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert their own accounts"
-ON zaim_accounts
-FOR INSERT
-TO authenticated
-WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update their own accounts"
-ON zaim_accounts
-FOR UPDATE
-TO authenticated
-USING (auth.uid() = user_id)
-WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete their own accounts"
-ON zaim_accounts
-FOR DELETE
-TO authenticated
-USING (auth.uid() = user_id);
-
--- Service roleはRLSをバイパス
-CREATE POLICY "Service role has full access to accounts"
-ON zaim_accounts
-FOR ALL
-TO service_role
-USING (true)
-WITH CHECK (true);
-
--- -----------------
--- zaim_transactions
--- -----------------
-ALTER TABLE zaim_transactions ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can view their own transactions"
-ON zaim_transactions
-FOR SELECT
-TO authenticated
-USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert their own transactions"
-ON zaim_transactions
-FOR INSERT
-TO authenticated
-WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update their own transactions"
-ON zaim_transactions
-FOR UPDATE
-TO authenticated
-USING (auth.uid() = user_id)
-WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete their own transactions"
-ON zaim_transactions
-FOR DELETE
-TO authenticated
-USING (auth.uid() = user_id);
-
--- Service roleはRLSをバイパス
-CREATE POLICY "Service role has full access to transactions"
-ON zaim_transactions
-FOR ALL
-TO service_role
-USING (true)
-WITH CHECK (true);
-
--- -----------------
--- zaim_sync_log
--- -----------------
-ALTER TABLE zaim_sync_log ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can view their own sync logs"
-ON zaim_sync_log
-FOR SELECT
-TO authenticated
-USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert their own sync logs"
-ON zaim_sync_log
-FOR INSERT
-TO authenticated
-WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update their own sync logs"
-ON zaim_sync_log
-FOR UPDATE
-TO authenticated
-USING (auth.uid() = user_id)
-WITH CHECK (auth.uid() = user_id);
-
--- Service roleはRLSをバイパス
-CREATE POLICY "Service role has full access to sync logs"
-ON zaim_sync_log
-FOR ALL
-TO service_role
-USING (true)
-WITH CHECK (true);
 
 -- ============================================================
 -- 分析用マテリアライズドビュー
@@ -366,7 +275,7 @@ WITH CHECK (true);
 
 CREATE MATERIALIZED VIEW zaim_monthly_summary AS
 SELECT 
-  user_id,
+  zaim_user_id,
   DATE_TRUNC('month', date) AS month,
   transaction_type,
   category_id,
@@ -377,18 +286,17 @@ SELECT
   MAX(amount) AS max_amount
 FROM zaim_transactions
 WHERE is_active = true
-GROUP BY user_id, DATE_TRUNC('month', date), transaction_type, category_id;
+GROUP BY zaim_user_id, DATE_TRUNC('month', date), transaction_type, category_id;
 
 CREATE UNIQUE INDEX idx_zaim_monthly_summary_unique 
-ON zaim_monthly_summary(user_id, month, transaction_type, COALESCE(category_id, -1));
+ON zaim_monthly_summary(zaim_user_id, month, transaction_type, COALESCE(category_id, -1));
 
 CREATE INDEX idx_zaim_monthly_summary_user_month 
-ON zaim_monthly_summary(user_id, month DESC);
+ON zaim_monthly_summary(zaim_user_id, month DESC);
 
 COMMENT ON MATERIALIZED VIEW zaim_monthly_summary IS '月次集計ビュー（定期的にREFRESHが必要）';
 
 -- マテリアライズドビューの権限
-GRANT SELECT ON zaim_monthly_summary TO authenticated;
 GRANT SELECT ON zaim_monthly_summary TO service_role;
 
 -- ============================================================
@@ -410,11 +318,11 @@ $$;
 COMMENT ON FUNCTION refresh_zaim_monthly_summary() IS '月次集計ビューを更新';
 
 -- 関数の権限
-GRANT EXECUTE ON FUNCTION refresh_zaim_monthly_summary() TO authenticated;
 GRANT EXECUTE ON FUNCTION refresh_zaim_monthly_summary() TO service_role;
 
 -- トランザクション統計取得関数
 CREATE OR REPLACE FUNCTION get_zaim_stats(
+  p_zaim_user_id BIGINT,
   p_start_date DATE DEFAULT NULL,
   p_end_date DATE DEFAULT NULL
 )
@@ -438,18 +346,82 @@ BEGIN
                       ELSE 0 END), 0) AS net_amount,
     COUNT(*) AS transaction_count
   FROM zaim_transactions
-  WHERE user_id = auth.uid()
+  WHERE zaim_user_id = p_zaim_user_id
     AND is_active = true
     AND (p_start_date IS NULL OR date >= p_start_date)
     AND (p_end_date IS NULL OR date <= p_end_date);
 END;
 $$;
 
-COMMENT ON FUNCTION get_zaim_stats(DATE, DATE) IS '期間内の収支統計を取得';
+COMMENT ON FUNCTION get_zaim_stats(BIGINT, DATE, DATE) IS '期間内の収支統計を取得';
 
 -- 関数の権限
-GRANT EXECUTE ON FUNCTION get_zaim_stats(DATE, DATE) TO authenticated;
-GRANT EXECUTE ON FUNCTION get_zaim_stats(DATE, DATE) TO service_role;
+GRANT EXECUTE ON FUNCTION get_zaim_stats(BIGINT, DATE, DATE) TO service_role;
+
+
+-- ============================================================
+-- RLS設定（Supabase警告回避用）
+-- ============================================================
+
+-- -----------------
+-- zaim_categories
+-- -----------------
+ALTER TABLE zaim_categories ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service role has full access to categories"
+ON zaim_categories
+FOR ALL
+TO service_role
+USING (true)
+WITH CHECK (true);
+
+-- -----------------
+-- zaim_genres
+-- -----------------
+ALTER TABLE zaim_genres ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service role has full access to genres"
+ON zaim_genres
+FOR ALL
+TO service_role
+USING (true)
+WITH CHECK (true);
+
+-- -----------------
+-- zaim_accounts
+-- -----------------
+ALTER TABLE zaim_accounts ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service role has full access to accounts"
+ON zaim_accounts
+FOR ALL
+TO service_role
+USING (true)
+WITH CHECK (true);
+
+-- -----------------
+-- zaim_transactions
+-- -----------------
+ALTER TABLE zaim_transactions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service role has full access to transactions"
+ON zaim_transactions
+FOR ALL
+TO service_role
+USING (true)
+WITH CHECK (true);
+
+-- -----------------
+-- zaim_sync_log
+-- -----------------
+ALTER TABLE zaim_sync_log ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service role has full access to sync logs"
+ON zaim_sync_log
+FOR ALL
+TO service_role
+USING (true)
+WITH CHECK (true);
 
 -- ============================================================
 -- 完了メッセージ
@@ -458,7 +430,21 @@ GRANT EXECUTE ON FUNCTION get_zaim_stats(DATE, DATE) TO service_role;
 DO $$
 BEGIN
   RAISE NOTICE '=================================================';
-  RAISE NOTICE 'ZaimテーブルとRLS設定が完了しました';
+  RAISE NOTICE 'RLSポリシーが設定されました';
+  RAISE NOTICE '=================================================';
+  RAISE NOTICE 'すべてのテーブルでRLSが有効化されています';
+  RAISE NOTICE 'サービスロールキーは全アクセス権限を持ちます';
+  RAISE NOTICE '=================================================';
+END $$;
+
+-- ============================================================
+-- 完了メッセージ
+-- ============================================================
+
+DO $$
+BEGIN
+  RAISE NOTICE '=================================================';
+  RAISE NOTICE 'ZaimテーブルがZaimユーザーID対応で作成されました';
   RAISE NOTICE '=================================================';
   RAISE NOTICE 'テーブル:';
   RAISE NOTICE '  - zaim_categories (カテゴリマスタ)';
@@ -470,6 +456,12 @@ BEGIN
   RAISE NOTICE '  - zaim_monthly_summary (月次集計)';
   RAISE NOTICE '関数:';
   RAISE NOTICE '  - refresh_zaim_monthly_summary()';
-  RAISE NOTICE '  - get_zaim_stats(start_date, end_date)';
+  RAISE NOTICE '  - get_zaim_stats(zaim_user_id, start_date, end_date)';
+  RAISE NOTICE '=================================================';
+  RAISE NOTICE '変更点:';
+  RAISE NOTICE '  - user_id UUID → zaim_user_id BIGINT';
+  RAISE NOTICE '  - Supabase Auth依存を削除';
+  RAISE NOTICE '  - RLSポリシーを削除';
+  RAISE NOTICE '  - サービスロールのみアクセス可能';
   RAISE NOTICE '=================================================';
 END $$;
