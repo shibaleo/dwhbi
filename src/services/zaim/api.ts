@@ -2,11 +2,11 @@
 
 import "https://deno.land/std@0.203.0/dotenv/load.ts";
 import { ZaimOAuth } from "./oauth.ts";
-import type { 
-  ZaimTransaction, 
-  ZaimCategory, 
-  ZaimGenre, 
-  ZaimAccount 
+import type {
+  ZaimTransaction,
+  ZaimCategory,
+  ZaimGenre,
+  ZaimAccount
 } from "./types.ts";
 
 export class ZaimAPI {
@@ -42,7 +42,7 @@ export class ZaimAPI {
     limit?: number;
   }): Promise<{ money: ZaimTransaction[] }> {
     const url = new URL(`${this.baseUrl}/home/money`);
-    
+
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
         if (value !== undefined) {

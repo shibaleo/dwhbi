@@ -1,295 +1,365 @@
 // sync_all_transactions.ts
-// 全期間のトランザクションを月次分割で安全に同期
+// 全期間のトランザクションを年次分割で同期
+// fetch_data.ts + write_db.ts を使用、年単位チャンク方式
+
 import "https://deno.land/std@0.203.0/dotenv/load.ts";
-import { ZaimTransactionSync, type SyncStats } from './sync_transactions.ts';
+import { fetchZaimData } from './fetch_data.ts';
+import {
+  createZaimClient,
+  syncMasters,
+  syncTransactions,
+  getExistingTransactionIds,
+  type ZaimSchema,
+} from './write_db.ts';
 
-// 同期進捗の型定義
-interface SyncProgress {
-  startDate: string;    // 同期開始年月 (YYYY-MM)
-  endDate: string;      // 同期終了年月 (YYYY-MM)
-  currentMonth: string; // 現在処理中の年月 (YYYY-MM)
-  totalMonths: number;  // 総月数
-  completedMonths: number; // 完了月数
-  totalRecords: number; // 累積取得件数
-  startedAt: string;    // 開始時刻
-  estimatedEndAt?: string; // 予想終了時刻
-}
+// ============================================================
+// 型定義
+// ============================================================
 
-// 同期設定
 interface SyncConfig {
-  startYear?: number;      // 開始年（指定しない場合は自動判定）
-  startMonth?: number;     // 開始月（指定しない場合は自動判定）
-  endYear?: number;        // 終了年（指定しない場合は今月）
-  endMonth?: number;       // 終了月（指定しない場合は今月）
-  delayBetweenMonths?: number; // 月間の待機時間（ミリ秒、デフォルト1000）
-  resumeFrom?: string;     // 再開する年月 (YYYY-MM)
+  startYear?: number;       // 開始年（デフォルト: 2025）
+  startMonth?: number;      // 開始月（デフォルト: 3）
+  endYear?: number;         // 終了年（デフォルト: 今年）
+  endMonth?: number;        // 終了月（デフォルト: 今月）
+  delayBetweenYears?: number;  // 年間の待機時間（デフォルト: 200ms）
+  resumeFrom?: number;      // 再開する年
 }
 
-class AllTransactionSync {
-  private sync: ZaimTransactionSync;
-  private progress: SyncProgress | null = null;
+interface YearProgress {
+  year: number;
+  fetched: number;
+  inserted: number;
+  updated: number;
+  skipped: number;
+}
 
-  constructor() {
-    this.sync = new ZaimTransactionSync();
+interface SyncProgress {
+  startYear: number;
+  endYear: number;
+  currentYear: number;
+  totalYears: number;
+  completedYears: number;
+  totalRecords: number;
+  totalInserted: number;
+  totalUpdated: number;
+  totalSkipped: number;
+  startedAt: number;
+  yearHistory: YearProgress[];
+}
+
+// ============================================================
+// ユーティリティ
+// ============================================================
+
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function getYearDateRange(
+  year: number,
+  startYear: number,
+  startMonth: number,
+  endYear: number,
+  endMonth: number
+): { startDate: string; endDate: string } {
+  // 開始年の場合は指定月から
+  const sMonth = (year === startYear) ? startMonth : 1;
+  const startDate = `${year}-${String(sMonth).padStart(2, '0')}-01`;
+
+  // 終了年の場合は指定月まで
+  let eMonth: number;
+  let eDay: number;
+  if (year === endYear) {
+    eMonth = endMonth;
+    eDay = new Date(year, eMonth, 0).getDate(); // 月末日
+  } else {
+    eMonth = 12;
+    eDay = 31;
+  }
+  const endDate = `${year}-${String(eMonth).padStart(2, '0')}-${String(eDay).padStart(2, '0')}`;
+
+  return { startDate, endDate };
+}
+
+function formatTime(ms: number): string {
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+
+  if (hours > 0) {
+    return `${hours}時間${minutes % 60}分`;
+  } else if (minutes > 0) {
+    return `${minutes}分${seconds % 60}秒`;
+  }
+  return `${seconds}秒`;
+}
+
+// ============================================================
+// 進捗表示
+// ============================================================
+
+function displayProgress(progress: SyncProgress, currentYear: YearProgress): void {
+  const completionRate = ((progress.completedYears / progress.totalYears) * 100).toFixed(1);
+  const elapsed = Date.now() - progress.startedAt;
+  const avgTimePerYear = elapsed / Math.max(1, progress.completedYears);
+  const remaining = avgTimePerYear * (progress.totalYears - progress.completedYears);
+
+  console.log('─'.repeat(60));
+  console.log(`📊 進捗: ${progress.completedYears}/${progress.totalYears}年 (${completionRate}%)`);
+  console.log(`   ${currentYear.year}年 → ${currentYear.fetched}件（挿入:${currentYear.inserted}, 更新:${currentYear.updated}, スキップ:${currentYear.skipped}）`);
+  console.log(`   累計: ${progress.totalRecords.toLocaleString()}件`);
+  console.log(`   経過: ${formatTime(elapsed)} / 残り予測: ${formatTime(remaining)}`);
+  console.log('─'.repeat(60));
+}
+
+// ============================================================
+// メイン同期処理
+// ============================================================
+
+export async function syncAllTransactions(config: SyncConfig = {}): Promise<void> {
+  console.log('='.repeat(70));
+  console.log('🚀 全トランザクション同期開始（年単位チャンク方式）');
+  console.log('='.repeat(70));
+
+  const zaim = createZaimClient();
+  const delayMs = config.delayBetweenYears || 200;
+
+  // 終了年月（デフォルト: 今月）
+  const now = new Date();
+  const endYear = config.endYear || now.getFullYear();
+  const endMonth = config.endMonth || (now.getMonth() + 1);
+
+  // 開始年月（デフォルト: 2025年3月）
+  let startYear = config.startYear || 2025;
+  let startMonth = config.startMonth || 3;
+
+  // resumeFrom が指定されている場合
+  if (config.resumeFrom) {
+    startYear = config.resumeFrom;
+    startMonth = 1; // 再開時は年の最初から
+    console.log(`🔄 再開: ${config.resumeFrom}年から同期を再開`);
   }
 
-  /**
-   * 開始年月を自動判定（最も古いトランザクションの年月を取得）
-   */
-  private async detectStartDate(): Promise<{ year: number; month: number }> {
-    console.log('📅 開始年月を自動判定中...');
-    
-    // まず2000年1月から試す（Zaimのサービス開始は2011年）
-    // 実際には、ユーザーの最古データを見つけるために数回試行する
-    const testYears = [2011, 2015, 2020];
-    
-    for (const year of testYears) {
-      try {
-        const stats = await this.sync.syncMonthlyTransactions(year, 1);
-        if (stats.fetched > 0) {
-          console.log(`✓ ${year}年以降にデータが存在します`);
-          // より正確な開始月を見つけるため、月ごとに確認
-          for (let month = 1; month <= 12; month++) {
-            const monthStats = await this.sync.syncMonthlyTransactions(year, month);
-            if (monthStats.fetched > 0) {
-              console.log(`✓ 最古のデータ: ${year}年${month}月`);
-              return { year, month };
-            }
-            await this.delay(500); // レート制限対策
-          }
-        }
-      } catch (error) {
-        console.warn(`  ${year}年のチェック中にエラー:`, error);
-      }
-      
-      await this.delay(1000); // レート制限対策
-    }
-
-    // デフォルト: 5年前から
-    const defaultDate = new Date();
-    defaultDate.setFullYear(defaultDate.getFullYear() - 5);
-    console.log(`⚠️  自動判定失敗、デフォルト: ${defaultDate.getFullYear()}年1月から開始`);
-    return { year: defaultDate.getFullYear(), month: 1 };
+  // 年リスト生成
+  const years: number[] = [];
+  for (let y = startYear; y <= endYear; y++) {
+    years.push(y);
   }
 
-  /**
-   * 待機処理
-   */
-  private async delay(ms: number): Promise<void> {
-    await new Promise(resolve => setTimeout(resolve, ms));
-  }
+  console.log(`\n📆 同期対象: ${years.length}年分`);
+  console.log(`   開始: ${startYear}年${startMonth}月`);
+  console.log(`   終了: ${endYear}年${endMonth}月`);
+  console.log(`   待機時間: ${delayMs}ms/年\n`);
 
-  /**
-   * 進捗状況の表示
-   */
-  private displayProgress(currentStats: SyncStats): void {
-    if (!this.progress) return;
+  // プログレス初期化
+  const progress: SyncProgress = {
+    startYear,
+    endYear,
+    currentYear: startYear,
+    totalYears: years.length,
+    completedYears: 0,
+    totalRecords: 0,
+    totalInserted: 0,
+    totalUpdated: 0,
+    totalSkipped: 0,
+    startedAt: Date.now(),
+    yearHistory: [],
+  };
 
-    const completionRate = ((this.progress.completedMonths / this.progress.totalMonths) * 100).toFixed(1);
-    const elapsedTime = Date.now() - new Date(this.progress.startedAt).getTime();
-    const avgTimePerMonth = elapsedTime / Math.max(1, this.progress.completedMonths);
-    const remainingMonths = this.progress.totalMonths - this.progress.completedMonths;
-    const estimatedRemainingTime = avgTimePerMonth * remainingMonths;
+  // マスタデータは最初の1回だけ同期
+  let zaimUserId: number | null = null;
+  let mastersSynced = false;
 
-    console.log('\n' + '─'.repeat(60));
-    console.log('📊 進捗状況');
-    console.log('─'.repeat(60));
-    console.log(`  期間: ${this.progress.startDate} 〜 ${this.progress.endDate}`);
-    console.log(`  進行: ${this.progress.completedMonths}/${this.progress.totalMonths}月 (${completionRate}%)`);
-    console.log(`  現在: ${this.progress.currentMonth}`);
-    console.log(`  累計: ${this.progress.totalRecords.toLocaleString()}件取得`);
-    console.log(`  今月: +${currentStats.fetched}件 (挿入:${currentStats.inserted}, 更新:${currentStats.updated})`);
-    
-    if (this.progress.completedMonths > 0) {
-      const elapsedMin = (elapsedTime / 60000).toFixed(1);
-      const remainingMin = (estimatedRemainingTime / 60000).toFixed(1);
-      console.log(`  経過時間: ${elapsedMin}分`);
-      console.log(`  予想残り: ${remainingMin}分`);
-    }
-    console.log('─'.repeat(60));
-  }
+  // 年次で順次同期
+  for (let i = 0; i < years.length; i++) {
+    const year = years[i];
+    progress.currentYear = year;
 
-  /**
-   * 年月の配列を生成
-   */
-  private generateMonthRange(
-    startYear: number,
-    startMonth: number,
-    endYear: number,
-    endMonth: number
-  ): Array<{ year: number; month: number; key: string }> {
-    const months: Array<{ year: number; month: number; key: string }> = [];
-    
-    let currentDate = new Date(startYear, startMonth - 1, 1);
-    const endDate = new Date(endYear, endMonth - 1, 1);
-
-    while (currentDate <= endDate) {
-      const year = currentDate.getFullYear();
-      const month = currentDate.getMonth() + 1;
-      const key = `${year}-${String(month).padStart(2, '0')}`;
-      
-      months.push({ year, month, key });
-      currentDate.setMonth(currentDate.getMonth() + 1);
-    }
-
-    return months;
-  }
-
-  /**
-   * 全トランザクションを同期
-   */
-  async syncAll(config: SyncConfig = {}): Promise<void> {
-    console.log('='.repeat(70));
-    console.log('🚀 全トランザクション同期開始');
-    console.log('='.repeat(70));
-
-    const startTime = Date.now();
-    const delayMs = config.delayBetweenMonths || 1000;
+    console.log(`\n[${i + 1}/${years.length}] ${year}年を同期中...`);
 
     try {
-      // 終了年月の設定（デフォルト: 今月）
-      const now = new Date();
-      const endYear = config.endYear || now.getFullYear();
-      const endMonth = config.endMonth || (now.getMonth() + 1);
+      const { startDate, endDate } = getYearDateRange(year, startYear, startMonth, endYear, endMonth);
+      console.log(`   期間: ${startDate} 〜 ${endDate}`);
 
-      // 開始年月の設定
-      let startYear: number;
-      let startMonth: number;
+      // データ取得
+      const data = await fetchZaimData({ startDate, endDate });
+      zaimUserId = data.zaimUserId;
 
-      if (config.startYear && config.startMonth) {
-        startYear = config.startYear;
-        startMonth = config.startMonth;
-        console.log(`📅 指定された開始日: ${startYear}年${startMonth}月`);
-      } else {
-        const detected = await this.detectStartDate();
-        startYear = detected.year;
-        startMonth = detected.month;
+      // 最初の年でマスタデータを同期
+      if (!mastersSynced) {
+        console.log('  📚 マスタデータを同期中...');
+
+        const masterResult = await syncMasters(
+          zaim,
+          zaimUserId,
+          data.categories,
+          data.genres,
+          data.accounts
+        );
+
+        console.log(`  ✓ マスタ同期完了（カテゴリ:${masterResult.categories}, ジャンル:${masterResult.genres}, 口座:${masterResult.accounts}）`);
+        mastersSynced = true;
       }
 
-      // 再開ポイントの確認
-      if (config.resumeFrom) {
-        const [year, month] = config.resumeFrom.split('-').map(Number);
-        startYear = year;
-        startMonth = month;
-        console.log(`🔄 再開: ${config.resumeFrom}から同期を再開します`);
-      }
+      // 既存トランザクション確認
+      const existingIds = await getExistingTransactionIds(zaim, zaimUserId, startDate, endDate);
 
-      // 月次リストの生成
-      const months = this.generateMonthRange(startYear, startMonth, endYear, endMonth);
-      
-      console.log(`\n📆 同期対象: ${months.length}ヶ月分`);
-      console.log(`   開始: ${months[0].key}`);
-      console.log(`   終了: ${months[months.length - 1].key}`);
-      console.log(`   待機時間: ${delayMs}ms/月\n`);
+      // トランザクション同期
+      const txResult = await syncTransactions(
+        zaim,
+        zaimUserId,
+        data.transactions,
+        existingIds
+      );
 
-      // プログレス初期化
-      this.progress = {
-        startDate: months[0].key,
-        endDate: months[months.length - 1].key,
-        currentMonth: months[0].key,
-        totalMonths: months.length,
-        completedMonths: 0,
-        totalRecords: 0,
-        startedAt: new Date().toISOString(),
+      // 年次進捗記録
+      const yearProgress: YearProgress = {
+        year,
+        fetched: txResult.fetched,
+        inserted: txResult.inserted,
+        updated: txResult.updated,
+        skipped: txResult.skipped,
       };
 
-      // 月次で順次同期
-      for (let i = 0; i < months.length; i++) {
-        const { year, month, key } = months[i];
-        
-        this.progress.currentMonth = key;
-        
-        console.log(`\n[${i + 1}/${months.length}] ${year}年${month}月を同期中...`);
-        
-        try {
-          const stats = await this.sync.syncMonthlyTransactions(year, month);
-          
-          this.progress.completedMonths++;
-          this.progress.totalRecords += stats.fetched;
-          
-          // 進捗表示
-          this.displayProgress(stats);
-          
-          // レート制限対策: 月間の待機
-          if (i < months.length - 1) {
-            console.log(`⏳ 待機中... (${delayMs}ms)`);
-            await this.delay(delayMs);
-          }
-          
-        } catch (error) {
-          console.error(`❌ ${year}年${month}月の同期エラー:`, error);
-          console.log(`⏸️  エラーが発生しました。再開する場合は resumeFrom: "${key}" を指定してください`);
-          throw error;
-        }
+      progress.completedYears++;
+      progress.totalRecords += txResult.fetched;
+      progress.totalInserted += txResult.inserted;
+      progress.totalUpdated += txResult.updated;
+      progress.totalSkipped += txResult.skipped;
+      progress.yearHistory.push(yearProgress);
+
+      displayProgress(progress, yearProgress);
+
+      // 次年への待機
+      if (i < years.length - 1) {
+        await delay(delayMs);
       }
 
-      // 完了サマリー
-      const totalTime = Date.now() - startTime;
-      const totalMinutes = (totalTime / 60000).toFixed(2);
-      
-      console.log('\n' + '='.repeat(70));
-      console.log('✅ 全トランザクション同期完了');
-      console.log('='.repeat(70));
-      console.log(`  対象期間: ${this.progress.startDate} 〜 ${this.progress.endDate}`);
-      console.log(`  処理月数: ${this.progress.totalMonths}ヶ月`);
-      console.log(`  総取得件数: ${this.progress.totalRecords.toLocaleString()}件`);
-      console.log(`  実行時間: ${totalMinutes}分`);
-      console.log(`  平均速度: ${(this.progress.totalRecords / parseFloat(totalMinutes) * 60).toFixed(0)}件/分`);
-      console.log('='.repeat(70));
-
     } catch (error) {
-      console.error('\n❌ 同期処理が中断されました:', error);
+      console.error(`❌ ${year}年の同期エラー:`, error);
+      console.log(`\n⏸️  再開する場合: --resume=${year}`);
       throw error;
     }
   }
 
-  /**
-   * 特定期間の同期（カスタム範囲）
-   */
-  async syncRange(startYear: number, startMonth: number, endYear: number, endMonth: number): Promise<void> {
-    await this.syncAll({
-      startYear,
-      startMonth,
-      endYear,
-      endMonth,
-    });
-  }
+  // 完了サマリー
+  const totalTime = Date.now() - progress.startedAt;
 
-  /**
-   * 直近N年間の同期
-   */
-  async syncRecentYears(years: number): Promise<void> {
-    const now = new Date();
-    const startDate = new Date();
-    startDate.setFullYear(startDate.getFullYear() - years);
-
-    await this.syncAll({
-      startYear: startDate.getFullYear(),
-      startMonth: startDate.getMonth() + 1,
-      endYear: now.getFullYear(),
-      endMonth: now.getMonth() + 1,
-    });
-  }
+  console.log('\n' + '='.repeat(70));
+  console.log('✅ 全トランザクション同期完了');
+  console.log('='.repeat(70));
+  console.log(`  対象期間: ${progress.startYear}年 〜 ${progress.endYear}年`);
+  console.log(`  処理年数: ${progress.totalYears}年`);
+  console.log(`  総取得件数: ${progress.totalRecords.toLocaleString()}件`);
+  console.log(`  挿入: ${progress.totalInserted.toLocaleString()}件`);
+  console.log(`  更新: ${progress.totalUpdated.toLocaleString()}件`);
+  console.log(`  スキップ: ${progress.totalSkipped.toLocaleString()}件`);
+  console.log(`  実行時間: ${formatTime(totalTime)}`);
+  console.log('='.repeat(70));
 }
 
-// メイン実行
-async function main() {
-  const allSync = new AllTransactionSync();
-  
-  // デフォルト: 全期間同期（自動判定）
-  await allSync.syncAll();
-  
-  // カスタム例:
-  // await allSync.syncAll({ startYear: 2020, startMonth: 1 }); // 2020年1月から
-  // await allSync.syncRecentYears(3); // 直近3年間
-  // await allSync.syncAll({ resumeFrom: '2022-06' }); // 2022年6月から再開
+// ============================================================
+// 便利関数
+// ============================================================
+
+export async function syncFromYear(year: number): Promise<void> {
+  await syncAllTransactions({ startYear: year, startMonth: 1 });
 }
+
+export async function syncRange(
+  startYear: number,
+  startMonth: number,
+  endYear: number,
+  endMonth: number
+): Promise<void> {
+  await syncAllTransactions({ startYear, startMonth, endYear, endMonth });
+}
+
+// ============================================================
+// CLI実行
+// ============================================================
 
 if (import.meta.main) {
-  main().catch(error => {
-    console.error('致命的エラー:', error);
-    Deno.exit(1);
-  });
-}
+  const args = Deno.args;
 
-export { AllTransactionSync };
+  let config: SyncConfig = {};
+
+  // --resume=YYYY オプション
+  const resumeArg = args.find(a => a.startsWith('--resume='));
+  if (resumeArg) {
+    config.resumeFrom = parseInt(resumeArg.split('=')[1], 10);
+  }
+
+  // --delay=MS オプション
+  const delayArg = args.find(a => a.startsWith('--delay='));
+  if (delayArg) {
+    config.delayBetweenYears = parseInt(delayArg.split('=')[1], 10);
+  }
+
+  // --start=YYYY オプション
+  const startArg = args.find(a => a.startsWith('--start='));
+  if (startArg) {
+    config.startYear = parseInt(startArg.split('=')[1], 10);
+  }
+
+  // --start-month=MM オプション
+  const startMonthArg = args.find(a => a.startsWith('--start-month='));
+  if (startMonthArg) {
+    config.startMonth = parseInt(startMonthArg.split('=')[1], 10);
+  }
+
+  // --end=YYYY オプション
+  const endArg = args.find(a => a.startsWith('--end='));
+  if (endArg) {
+    config.endYear = parseInt(endArg.split('=')[1], 10);
+  }
+
+  // --end-month=MM オプション
+  const endMonthArg = args.find(a => a.startsWith('--end-month='));
+  if (endMonthArg) {
+    config.endMonth = parseInt(endMonthArg.split('=')[1], 10);
+  }
+
+  // ヘルプ
+  if (args.includes('--help') || args.includes('-h')) {
+    console.log(`
+Zaim 全トランザクション同期スクリプト（年単位チャンク方式）
+
+使用法:
+  deno run --allow-env --allow-net --allow-read sync_all_transactions.ts [オプション]
+
+オプション:
+  --start=YYYY       開始年を指定（デフォルト: 2025）
+  --start-month=MM   開始月を指定（デフォルト: 3）
+  --end=YYYY         終了年を指定（デフォルト: 今年）
+  --end-month=MM     終了月を指定（デフォルト: 今月）
+  --resume=YYYY      指定した年から再開
+  --delay=MS         年間の待機時間（デフォルト: 200ms）
+  --help, -h         このヘルプを表示
+
+例:
+  # デフォルト（2025年3月〜今月）
+  deno run ... sync_all_transactions.ts
+
+  # 2020年から今月まで
+  deno run ... sync_all_transactions.ts --start=2020
+
+  # 2023年から再開
+  deno run ... sync_all_transactions.ts --resume=2023
+
+  # 特定期間
+  deno run ... sync_all_transactions.ts --start=2022 --start-month=6 --end=2024 --end-month=12
+`);
+    Deno.exit(0);
+  }
+
+  try {
+    await syncAllTransactions(config);
+    console.log('\n✅ 同期が正常に完了しました');
+    Deno.exit(0);
+  } catch (error) {
+    console.error('\n❌ 同期が失敗しました');
+    console.error(error);
+    Deno.exit(1);
+  }
+}
