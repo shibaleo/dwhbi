@@ -199,6 +199,100 @@ export interface SyncResult {
 }
 
 // =============================================================================
+// Toggl Reports API v3 Types
+// =============================================================================
+
+/**
+ * Reports API v3 - Detailed Report リクエストボディ
+ * POST /reports/api/v3/workspace/{workspace_id}/search/time_entries
+ */
+export interface ReportsApiSearchRequest {
+  start_date: string; // YYYY-MM-DD
+  end_date: string; // YYYY-MM-DD
+  page_size?: number; // default 50, max 1000
+  first_row_number?: number; // pagination cursor
+  first_id?: number; // pagination cursor (deprecated in favor of first_row_number)
+  first_timestamp?: number; // pagination cursor
+  order_by?: "date" | "user" | "duration" | "description" | "last_update";
+  order_dir?: "ASC" | "DESC";
+  enrich_response?: boolean; // default false, returns more info if true
+  grouped?: boolean; // default false
+  hide_amounts?: boolean;
+  user_ids?: number[];
+  project_ids?: (number | null)[];
+  client_ids?: (number | null)[];
+  tag_ids?: (number | null)[];
+  task_ids?: (number | null)[];
+  time_entry_ids?: number[];
+  description?: string;
+  billable?: boolean;
+  rounding?: number;
+  rounding_minutes?: number;
+  min_duration_seconds?: number;
+  max_duration_seconds?: number;
+}
+
+/**
+ * Reports API v3 - Time Entry レスポンス
+ *
+ * Note: フィールド名とデータ形式はv9 APIとは異なる
+ * - time_entries配列内にid, start, stop, secondsがある
+ * - トップレベルにはuser_id, project_id, descriptionなど
+ */
+export interface ReportsApiTimeEntry {
+  // 基本フィールド（トップレベル）
+  user_id: number;
+  username?: string;
+  project_id?: number | null;
+  task_id?: number | null;
+  billable: boolean;
+  description?: string;
+  tag_ids?: number[];
+  tags?: string[];
+  row_number?: number;
+
+  // 課金情報
+  billable_amount_in_cents?: number | null;
+  hourly_rate_in_cents?: number | null;
+  currency?: string;
+
+  // 時間エントリー配列（実際のデータはここにある）
+  time_entries: {
+    id: number;
+    seconds: number;
+    start: string; // ISO 8601
+    stop: string;  // ISO 8601
+    at: string;    // 更新日時
+    at_tz?: string;
+  }[];
+
+  // 後方互換性のためのオプショナルフィールド（旧形式）
+  id?: number;
+  start?: string;
+  end?: string;
+  dur?: number;
+  seconds?: number;
+  at?: string;
+}
+
+/**
+ * Reports API v3 - Detailed Report レスポンス
+ */
+export interface ReportsApiDetailedResponse {
+  // 配列形式で返される（grouped=falseの場合）
+  // grouped=trueの場合は異なる構造
+}
+
+/**
+ * Reports API v3 ページネーション用ヘッダー
+ */
+export interface ReportsApiPaginationHeaders {
+  xNextId?: string;
+  xNextRowNumber?: string;
+  xNextTimestamp?: string;
+}
+
+// =============================================================================
 // Type Aliases (後方互換性のため)
 // =============================================================================
 

@@ -1,21 +1,24 @@
 /**
- * 全サービス並列同期オーケストレーター
+ * 全サービス全件同期オーケストレーター（初回移行・リカバリ用）
  *
- * GitHub Actions から呼び出され、全サービスを並列で同期する。
- * 単一ジョブで実行することで、課金を最小化する。
+ * 各サービスの sync_all.ts を並列実行する。
+ * 初回セットアップや長期間のデータ移行に使用。
  *
  * 使用例:
  *   deno run --allow-env --allow-net --allow-read src/sync_all.ts
+ *   deno run --allow-env --allow-net --allow-read src/sync_all.ts --service=toggl,fitbit
+ *   deno run --allow-env --allow-net --allow-read src/sync_all.ts --start=2024-01-01 --end=2024-12-31
  */
 
 import "jsr:@std/dotenv/load";
+import { parseArgs } from "jsr:@std/cli/parse-args";
 import * as log from "./utils/log.ts";
 
-import { syncTogglByDays } from "./services/toggl/sync_daily.ts";
-import { syncTanitaByDays } from "./services/tanita/sync_daily.ts";
-import { syncZaimByDays } from "./services/zaim/sync_daily.ts";
-import { syncGCalByDays } from "./services/gcalendar/sync_daily.ts";
-import { syncFitbitByDays } from "./services/fitbit/sync_daily.ts";
+import { syncAllTogglData } from "./services/toggl/sync_all.ts";
+import { syncAllTanitaData } from "./services/tanita/sync_all.ts";
+import { syncAllZaimData } from "./services/zaim/sync_all.ts";
+import { syncAllGCalEvents } from "./services/gcalendar/sync_all.ts";
+import { syncAllFitbitData } from "./services/fitbit/sync_all.ts";
 
 // =============================================================================
 // Types
@@ -26,7 +29,6 @@ export interface ServiceResult {
   service: string;
   success: boolean;
   elapsedSeconds: number;
-  recordCount: number;
   error?: string;
 }
 
@@ -41,53 +43,48 @@ export interface SyncAllResult {
 /** サービス定義 */
 interface ServiceConfig {
   name: string;
-  envKey: string;
-  runner: (days: number) => Promise<{ success: boolean; stats: Record<string, number> }>;
-  countFn: (stats: Record<string, number>) => number;
+  envKeyStartDate: string;
+  runner: (options: { startDate: Date; endDate: Date }) => Promise<{ success: boolean; elapsedSeconds: number }>;
 }
 
 // =============================================================================
 // Constants
 // =============================================================================
 
-const DEFAULT_SYNC_DAYS = 3;
+/** デフォルト開始日（各サービスの環境変数から取得） */
+function getStartDate(envKey: string): Date {
+  const dateStr = Deno.env.get(envKey);
+  if (!dateStr) {
+    throw new Error(`${envKey} is not set`);
+  }
+  return new Date(dateStr);
+}
 
 const SERVICES: ServiceConfig[] = [
   {
     name: "toggl",
-    envKey: "TOGGL_SYNC_DAYS",
-    runner: syncTogglByDays,
-    countFn: (s) => s.entries ?? 0,
-  },
-  {
-    name: "tanita",
-    envKey: "TANITA_SYNC_DAYS",
-    runner: syncTanitaByDays,
-    countFn: (s) => (s.bodyComposition ?? 0) + (s.bloodPressure ?? 0) + (s.steps ?? 0),
-  },
-  {
-    name: "zaim",
-    envKey: "ZAIM_SYNC_DAYS",
-    runner: syncZaimByDays,
-    countFn: (s) => {
-      if (s.transactions && typeof s.transactions === "object") {
-        const tx = s.transactions as { inserted?: number; updated?: number };
-        return (tx.inserted ?? 0) + (tx.updated ?? 0);
-      }
-      return 0;
-    },
-  },
-  {
-    name: "gcalendar",
-    envKey: "GCAL_SYNC_DAYS",
-    runner: syncGCalByDays,
-    countFn: (s) => s.upserted ?? 0,
+    envKeyStartDate: "TOGGL_SYNC_START_DATE",
+    runner: syncAllTogglData,
   },
   {
     name: "fitbit",
-    envKey: "FITBIT_SYNC_DAYS",
-    runner: syncFitbitByDays,
-    countFn: (s) => (s.sleep ?? 0) + (s.activity ?? 0) + (s.heartRate ?? 0) + (s.hrv ?? 0),
+    envKeyStartDate: "FITBIT_SYNC_START_DATE",
+    runner: syncAllFitbitData,
+  },
+  {
+    name: "tanita",
+    envKeyStartDate: "TANITA_SYNC_START_DATE",
+    runner: syncAllTanitaData,
+  },
+  {
+    name: "zaim",
+    envKeyStartDate: "ZAIM_SYNC_START_DATE",
+    runner: syncAllZaimData,
+  },
+  {
+    name: "gcalendar",
+    envKeyStartDate: "GCALENDAR_SYNC_START_DATE",
+    runner: syncAllGCalEvents,
   },
 ];
 
@@ -98,22 +95,32 @@ const SERVICES: ServiceConfig[] = [
 /**
  * 単一サービスを実行
  */
-async function runService(config: ServiceConfig, days: number): Promise<ServiceResult> {
+async function runService(
+  config: ServiceConfig,
+  startDate: Date | null,
+  endDate: Date
+): Promise<ServiceResult> {
   const start = Date.now();
 
   try {
-    log.info(`[${config.name}] Starting sync (${days} days)...`);
-    const result = await config.runner(days);
-    const elapsed = (Date.now() - start) / 1000;
-    const count = config.countFn(result.stats);
+    // 開始日: CLI指定 > 環境変数
+    const effectiveStartDate = startDate ?? getStartDate(config.envKeyStartDate);
 
-    log.success(`[${config.name}] Completed in ${elapsed.toFixed(1)}s - ${count} records`);
+    log.info(`[${config.name}] Starting full sync...`);
+    log.info(`[${config.name}] Period: ${effectiveStartDate.toISOString().split("T")[0]} ~ ${endDate.toISOString().split("T")[0]}`);
+
+    const result = await config.runner({
+      startDate: effectiveStartDate,
+      endDate,
+    });
+
+    const elapsed = (Date.now() - start) / 1000;
+    log.success(`[${config.name}] Completed in ${elapsed.toFixed(1)}s`);
 
     return {
       service: config.name,
       success: result.success,
       elapsedSeconds: elapsed,
-      recordCount: count,
     };
   } catch (err) {
     const elapsed = (Date.now() - start) / 1000;
@@ -125,7 +132,6 @@ async function runService(config: ServiceConfig, days: number): Promise<ServiceR
       service: config.name,
       success: false,
       elapsedSeconds: elapsed,
-      recordCount: 0,
       error: errorMsg,
     };
   }
@@ -136,38 +142,49 @@ async function runService(config: ServiceConfig, days: number): Promise<ServiceR
 // =============================================================================
 
 /**
- * 全サービスを並列同期
+ * 全サービスを並列で全件同期
  */
-export async function syncAllServices(options?: {
-  togglDays?: number;
-  tanitaDays?: number;
-  zaimDays?: number;
-  gcalDays?: number;
-  fitbitDays?: number;
+export async function syncAllServicesFullHistory(options?: {
+  startDate?: Date;
+  endDate?: Date;
+  services?: string[];
 }): Promise<SyncAllResult> {
   const totalStart = Date.now();
   const timestamp = new Date().toISOString();
 
-  // 各サービスの同期日数を決定
-  const daysByService: Record<string, number> = {
-    toggl: options?.togglDays ?? parseInt(Deno.env.get("TOGGL_SYNC_DAYS") || String(DEFAULT_SYNC_DAYS)),
-    tanita: options?.tanitaDays ?? parseInt(Deno.env.get("TANITA_SYNC_DAYS") || String(DEFAULT_SYNC_DAYS)),
-    zaim: options?.zaimDays ?? parseInt(Deno.env.get("ZAIM_SYNC_DAYS") || String(DEFAULT_SYNC_DAYS)),
-    gcalendar: options?.gcalDays ?? parseInt(Deno.env.get("GCAL_SYNC_DAYS") || String(DEFAULT_SYNC_DAYS)),
-    fitbit: options?.fitbitDays ?? parseInt(Deno.env.get("FITBIT_SYNC_DAYS") || String(DEFAULT_SYNC_DAYS)),
-  };
+  const startDate = options?.startDate ?? null; // nullの場合は各サービスの環境変数から
+  const endDate = options?.endDate ?? new Date();
+
+  // 対象サービスをフィルタ
+  const targetServices = options?.services
+    ? SERVICES.filter((s) => options.services!.includes(s.name))
+    : SERVICES;
+
+  if (targetServices.length === 0) {
+    log.error("No valid services specified");
+    return {
+      success: false,
+      timestamp,
+      results: [],
+      totalElapsedSeconds: 0,
+    };
+  }
 
   // ヘッダー表示
-  log.syncStart("All Services Parallel Sync");
-  for (const svc of SERVICES) {
-    log.info(`${svc.name}: ${daysByService[svc.name]} days`);
+  log.syncStart("All Services Full Sync (Initial Migration / Recovery)");
+  log.info(`Services: ${targetServices.map((s) => s.name).join(", ")}`);
+  log.info(`End date: ${endDate.toISOString().split("T")[0]}`);
+  if (startDate) {
+    log.info(`Start date (override): ${startDate.toISOString().split("T")[0]}`);
+  } else {
+    log.info("Start date: per-service environment variables");
   }
 
   // 全サービスを並列実行
   log.section("Starting parallel execution");
 
   const settledResults = await Promise.allSettled(
-    SERVICES.map((svc) => runService(svc, daysByService[svc.name]))
+    targetServices.map((svc) => runService(svc, startDate, endDate))
   );
 
   // 結果を抽出
@@ -176,10 +193,9 @@ export async function syncAllServices(options?: {
       return settled.value;
     }
     return {
-      service: SERVICES[index].name,
+      service: targetServices[index].name,
       success: false,
       elapsedSeconds: 0,
-      recordCount: 0,
       error: settled.reason?.message || String(settled.reason),
     };
   });
@@ -193,9 +209,8 @@ export async function syncAllServices(options?: {
   for (const r of results) {
     const status = r.success ? "✅" : "❌";
     const time = `${r.elapsedSeconds.toFixed(1)}s`;
-    const count = `${r.recordCount} records`;
     const error = r.error ? ` (${r.error})` : "";
-    log.info(`${status} ${r.service.padEnd(10)} ${time.padStart(6)} - ${count}${error}`);
+    log.info(`${status} ${r.service.padEnd(10)} ${time.padStart(8)}${error}`);
   }
 
   log.separator("-");
@@ -214,11 +229,80 @@ export async function syncAllServices(options?: {
 // CLI Entry Point
 // =============================================================================
 
-if (import.meta.main) {
-  try {
-    const result = await syncAllServices();
+async function main() {
+  const args = parseArgs(Deno.args, {
+    string: ["start", "end", "service"],
+    boolean: ["help"],
+    alias: { h: "help", s: "start", e: "end" },
+  });
 
-    // JSON結果も出力（GitHub Actions用）
+  if (args.help) {
+    console.log(`
+全サービス全件同期（初回移行・リカバリ用）
+
+各サービスの sync_all.ts を並列実行します。
+
+使用法:
+  deno run --allow-env --allow-net --allow-read src/sync_all.ts [オプション]
+
+オプション:
+  --help, -h        このヘルプを表示
+  --start, -s       開始日（YYYY-MM-DD）全サービス共通で上書き
+  --end, -e         終了日（YYYY-MM-DD）デフォルト: 今日
+  --service         対象サービス（カンマ区切り）
+                    指定可能: toggl, fitbit, tanita, zaim, gcalendar
+
+例:
+  # 全サービスをデフォルト開始日から同期
+  deno run --allow-env --allow-net --allow-read src/sync_all.ts
+
+  # 特定サービスのみ
+  deno run --allow-env --allow-net --allow-read src/sync_all.ts --service=toggl,fitbit
+
+  # 特定期間（全サービス共通）
+  deno run --allow-env --allow-net --allow-read src/sync_all.ts --start=2024-01-01 --end=2024-12-31
+
+環境変数（各サービスのデフォルト開始日）:
+  TOGGL_SYNC_START_DATE       Toggl開始日
+  FITBIT_SYNC_START_DATE      Fitbit開始日
+  TANITA_SYNC_START_DATE      Tanita開始日
+  ZAIM_SYNC_START_DATE        Zaim開始日
+  GCALENDAR_SYNC_START_DATE   Google Calendar開始日
+
+注意:
+  - 各サービスのAPIレート制限に注意してください
+  - 長期間の同期は時間がかかります
+  - レート制限エラー時は各サービスが自動でリトライします
+`);
+    Deno.exit(0);
+  }
+
+  const startDate = args.start ? new Date(args.start) : undefined;
+  const endDate = args.end ? new Date(args.end) : undefined;
+  const services = args.service ? args.service.split(",").map((s) => s.trim()) : undefined;
+
+  // 日付の妥当性チェック
+  if (startDate && isNaN(startDate.getTime())) {
+    console.error("❌ 無効な開始日です");
+    Deno.exit(1);
+  }
+  if (endDate && isNaN(endDate.getTime())) {
+    console.error("❌ 無効な終了日です");
+    Deno.exit(1);
+  }
+  if (startDate && endDate && startDate > endDate) {
+    console.error("❌ 開始日は終了日より前である必要があります");
+    Deno.exit(1);
+  }
+
+  try {
+    const result = await syncAllServicesFullHistory({
+      startDate,
+      endDate,
+      services,
+    });
+
+    // JSON結果も出力
     console.log("\n" + JSON.stringify(result, null, 2));
 
     Deno.exit(result.success ? 0 : 1);
@@ -226,4 +310,8 @@ if (import.meta.main) {
     log.error(`Fatal error: ${err instanceof Error ? err.message : err}`);
     Deno.exit(1);
   }
+}
+
+if (import.meta.main) {
+  main();
 }

@@ -1,49 +1,37 @@
 /**
- * Google Calendar 全件同期（初回移行・リカバリ用）
- * 
+ * Google Calendar → Supabase 全件同期（初回移行・リカバリ用）
+ *
  * 使用例:
  *   deno run --allow-env --allow-net --allow-read sync_all.ts
  *   deno run --allow-env --allow-net --allow-read sync_all.ts --start=2024-01-01 --end=2024-12-31
  */
 
-import "https://deno.land/std@0.203.0/dotenv/load.ts";
-import { parse as parseArgs } from "https://deno.land/std@0.203.0/flags/mod.ts";
+import "jsr:@std/dotenv/load";
+import { parseArgs } from "jsr:@std/cli/parse-args";
+import * as log from "../../utils/log.ts";
 import { fetchAllEvents } from "./fetch_data.ts";
 import { createGCalendarDbClient, upsertEvents } from "./write_db.ts";
-import { SyncStats } from "./types.ts";
+import type { SyncResult, SyncStats } from "./types.ts";
 
 // =============================================================================
 // Constants
 // =============================================================================
 
-/** デフォルト開始日（Togglデータと合わせる） */
-const DEFAULT_START_DATE = "2019-01-01";
-
-// =============================================================================
-// Logging Utilities
-// =============================================================================
-
-/**
- * JST形式で現在時刻を取得
- */
-function getJstTimestamp(): string {
-  return new Date().toLocaleString("ja-JP", {
-    timeZone: "Asia/Tokyo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }).replace(/\//g, "-");
+/** デフォルト開始日（環境変数 GCALENDAR_SYNC_START_DATE から取得、必須） */
+function getDefaultStartDate(): string {
+  const startDate = Deno.env.get("GCALENDAR_SYNC_START_DATE");
+  if (!startDate) {
+    throw new Error("GCALENDAR_SYNC_START_DATE is not set");
+  }
+  return startDate;
 }
 
-/**
- * ログ出力
- */
-function log(level: string, message: string): void {
-  const timestamp = getJstTimestamp();
-  console.log(`${timestamp} [${level.padEnd(7)}] ${message}`);
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+function formatDate(date: Date): string {
+  return date.toISOString().split("T")[0];
 }
 
 // =============================================================================
@@ -51,61 +39,75 @@ function log(level: string, message: string): void {
 // =============================================================================
 
 /**
- * 指定期間のGoogle Calendarイベントを全件同期
+ * Google Calendar イベントを全件同期
  */
-export async function syncAllGCalEvents(
-  startDate: string,
-  endDate: string,
-): Promise<{ success: boolean; stats: SyncStats; elapsedSeconds: number }> {
+export async function syncAllGCalEvents(options: {
+  startDate: Date;
+  endDate: Date;
+}): Promise<SyncResult> {
   const startTime = Date.now();
+  const errors: string[] = [];
 
-  console.log("🚀 Google Calendar 全件同期開始");
-  console.log(`   期間: ${startDate} 〜 ${endDate}\n`);
+  const startStr = formatDate(options.startDate);
+  const endStr = formatDate(options.endDate);
+
+  log.syncStart("Google Calendar (Full)", 0);
+  console.log(`   期間: ${startStr} 〜 ${endStr}\n`);
 
   try {
     // Step 1: データ取得
-    log("INFO", "Step 1: Fetching events from Google Calendar...");
+    log.section("Step 1: Fetching events from Google Calendar API");
     const { events } = await fetchAllEvents({
-      timeMin: `${startDate}T00:00:00+09:00`,
-      timeMax: `${endDate}T23:59:59+09:00`,
+      timeMin: `${startStr}T00:00:00+09:00`,
+      timeMax: `${endStr}T23:59:59+09:00`,
     });
-    log("SUCCESS", `Fetched ${events.length} events`);
+    log.success(`Fetched ${events.length} events`);
 
     // Step 2: DB書き込み
-    log("INFO", "Step 2: Upserting events to Supabase...");
+    log.section("Step 2: Upserting events to Supabase");
     const client = createGCalendarDbClient();
     const result = await upsertEvents(client, events);
-    const upsertedCount = result.success;
-    log("SUCCESS", `Upserted ${upsertedCount} events`);
+    log.success(`Upserted ${result.success} events`);
 
-    // 統計
+    const elapsedSeconds = (Date.now() - startTime) / 1000;
+
     const stats: SyncStats = {
       fetched: events.length,
-      upserted: upsertedCount,
-      skipped: events.length - upsertedCount,
+      upserted: result.success,
+      skipped: events.length - result.success,
     };
 
-    const elapsedSeconds = (Date.now() - startTime) / 1000;
+    const syncResult: SyncResult = {
+      success: true,
+      timestamp: new Date().toISOString(),
+      stats,
+      errors: [],
+      elapsedSeconds,
+    };
 
-    // サマリー
+    // サマリー表示
     console.log("\n" + "=".repeat(60));
-    console.log("✅ 全件同期完了");
-    console.log(`   取得: ${stats.fetched} 件`);
-    console.log(`   upsert: ${stats.upserted} 件`);
-    console.log(`   処理時間: ${elapsedSeconds.toFixed(1)}秒`);
+    log.syncEnd(true, elapsedSeconds);
+    log.info(`Fetched: ${stats.fetched}`);
+    log.info(`Upserted: ${stats.upserted}`);
+    log.info(`Skipped: ${stats.skipped}`);
     console.log("=".repeat(60));
 
-    return { success: true, stats, elapsedSeconds };
+    return syncResult;
 
-  } catch (error) {
+  } catch (err) {
     const elapsedSeconds = (Date.now() - startTime) / 1000;
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const message = err instanceof Error ? err.message : String(err);
+    errors.push(message);
+    log.error(message);
 
-    log("ERROR", `Sync failed: ${errorMessage}`);
+    log.syncEnd(false, elapsedSeconds);
 
     return {
       success: false,
+      timestamp: new Date().toISOString(),
       stats: { fetched: 0, upserted: 0, skipped: 0 },
+      errors,
       elapsedSeconds,
     };
   }
@@ -131,11 +133,11 @@ Google Calendar 全件同期（初回移行・リカバリ用）
 
 オプション:
   --help, -h        このヘルプを表示
-  --start, -s       開始日（YYYY-MM-DD）デフォルト: 2019-01-01
+  --start, -s       開始日（YYYY-MM-DD）デフォルト: 環境変数 GCALENDAR_SYNC_START_DATE
   --end, -e         終了日（YYYY-MM-DD）デフォルト: 今日
 
 例:
-  # デフォルト（2019-01-01から今日まで）
+  # デフォルト（GCALENDAR_SYNC_START_DATEから今日まで）
   deno run --allow-env --allow-net --allow-read sync_all.ts
 
   # 特定期間
@@ -149,21 +151,25 @@ Google Calendar 全件同期（初回移行・リカバリ用）
   SUPABASE_SERVICE_ROLE_KEY     Supabase Service Role Key
   GOOGLE_CALENDAR_ID            Google Calendar ID
   GOOGLE_SERVICE_ACCOUNT_JSON   サービスアカウントJSON
+  GCALENDAR_SYNC_START_DATE     デフォルト開始日（必須、--start未指定時）
 `);
     Deno.exit(0);
   }
 
-  const startDate = args.start || DEFAULT_START_DATE;
-  const endDate = args.end || new Date().toISOString().split("T")[0];
+  const startDate = args.start
+    ? new Date(args.start)
+    : new Date(getDefaultStartDate());
+  const endDate = args.end
+    ? new Date(args.end)
+    : new Date();
 
-  // 日付フォーマットの簡易チェック
-  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-  if (!datePattern.test(startDate)) {
-    console.error("❌ 無効な開始日です（YYYY-MM-DD形式で指定してください）");
+  // 日付の妥当性チェック
+  if (isNaN(startDate.getTime())) {
+    console.error("❌ 無効な開始日です");
     Deno.exit(1);
   }
-  if (!datePattern.test(endDate)) {
-    console.error("❌ 無効な終了日です（YYYY-MM-DD形式で指定してください）");
+  if (isNaN(endDate.getTime())) {
+    console.error("❌ 無効な終了日です");
     Deno.exit(1);
   }
   if (startDate > endDate) {
@@ -171,8 +177,17 @@ Google Calendar 全件同期（初回移行・リカバリ用）
     Deno.exit(1);
   }
 
-  const result = await syncAllGCalEvents(startDate, endDate);
-  Deno.exit(result.success ? 0 : 1);
+  try {
+    const result = await syncAllGCalEvents({
+      startDate,
+      endDate,
+    });
+
+    Deno.exit(result.success ? 0 : 1);
+  } catch (error) {
+    console.error(`❌ ${error instanceof Error ? error.message : error}`);
+    Deno.exit(1);
+  }
 }
 
 if (import.meta.main) {

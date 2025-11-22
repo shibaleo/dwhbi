@@ -1,70 +1,146 @@
-// sync_all.ts
-// Fitbit全件同期（初回移行・リカバリ用）
-//
-// 使用例:
-//   deno run --allow-env --allow-net --allow-read sync_all.ts
-//   deno run --allow-env --allow-net --allow-read sync_all.ts --start=2024-01-01 --end=2024-12-31
-//   deno run --allow-env --allow-net --allow-read sync_all.ts --intraday
+/**
+ * Fitbit → Supabase 全件同期（初回移行・リカバリ用）
+ *
+ * 使用例:
+ *   deno run --allow-env --allow-net --allow-read sync_all.ts
+ *   deno run --allow-env --allow-net --allow-read sync_all.ts --start=2024-01-01 --end=2024-12-31
+ *   deno run --allow-env --allow-net --allow-read sync_all.ts --intraday
+ */
 
 import "jsr:@std/dotenv/load";
 import { parseArgs } from "jsr:@std/cli/parse-args";
+import * as log from "../../utils/log.ts";
 import { ensureValidToken } from "./auth.ts";
 import { fetchFitbitData } from "./fetch_data.ts";
 import { createFitbitDbClient, saveAllFitbitData } from "./write_db.ts";
+import type { SyncResult } from "./types.ts";
 
-// ========== デフォルト設定 ==========
+// =============================================================================
+// Constants
+// =============================================================================
 
-// デフォルト開始日（Fitbitデータの起点）
-const DEFAULT_START_DATE = new Date("2019-01-01");
-
-// ========== メイン関数 ==========
-
-export async function syncAllFitbitData(
-  startDate: Date,
-  endDate: Date,
-  includeIntraday: boolean = false,
-): Promise<void> {
-  const startTime = Date.now();
-
-  console.log("🚀 Fitbit 全件同期開始");
-  console.log(`   期間: ${startDate.toISOString().split("T")[0]} 〜 ${endDate.toISOString().split("T")[0]}`);
-  console.log(`   Intraday: ${includeIntraday ? "あり" : "なし"}\n`);
-
-  // 1. トークン確認
-  console.log("🔑 トークン確認中...");
-  const accessToken = await ensureValidToken();
-
-  // 2. データ取得
-  console.log("");
-  const data = await fetchFitbitData(accessToken, {
-    startDate,
-    endDate,
-    includeIntraday,
-  });
-
-  // 3. DB保存
-  console.log("");
-  const supabase = createFitbitDbClient();
-  const results = await saveAllFitbitData(supabase, data);
-
-  // 4. サマリー
-  const elapsedSeconds = (Date.now() - startTime) / 1000;
-
-  console.log("\n" + "=".repeat(60));
-  console.log("✅ 全件同期完了");
-  console.log(`   睡眠: ${results.sleep.success}件`);
-  console.log(`   活動: ${results.activity.success}件`);
-  console.log(`   心拍: ${results.heartRate.success}件`);
-  console.log(`   HRV: ${results.hrv.success}件`);
-  console.log(`   SpO2: ${results.spo2.success}件`);
-  console.log(`   呼吸数: ${results.breathingRate.success}件`);
-  console.log(`   VO2 Max: ${results.cardioScore.success}件`);
-  console.log(`   皮膚温度: ${results.temperatureSkin.success}件`);
-  console.log(`   処理時間: ${elapsedSeconds.toFixed(1)}秒`);
-  console.log("=".repeat(60));
+/** デフォルト開始日（環境変数 FITBIT_SYNC_START_DATE から取得、必須） */
+function getDefaultStartDate(): string {
+  const startDate = Deno.env.get("FITBIT_SYNC_START_DATE");
+  if (!startDate) {
+    throw new Error("FITBIT_SYNC_START_DATE is not set");
+  }
+  return startDate;
 }
 
-// ========== CLI実行 ==========
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+function formatDate(date: Date): string {
+  return date.toISOString().split("T")[0];
+}
+
+// =============================================================================
+// Sync Function
+// =============================================================================
+
+/**
+ * Fitbit データを全件同期
+ */
+export async function syncAllFitbitData(options: {
+  startDate: Date;
+  endDate: Date;
+  includeIntraday?: boolean;
+}): Promise<SyncResult> {
+  const startTime = Date.now();
+  const errors: string[] = [];
+
+  const startStr = formatDate(options.startDate);
+  const endStr = formatDate(options.endDate);
+
+  log.syncStart("Fitbit (Full)", 0);
+  console.log(`   期間: ${startStr} 〜 ${endStr}`);
+  console.log(`   Intraday: ${options.includeIntraday ? "あり" : "なし"}\n`);
+
+  try {
+    // Step 1: トークン確認
+    log.section("Step 1: Checking token");
+    const accessToken = await ensureValidToken();
+    log.success("Token valid");
+
+    // Step 2: データ取得
+    log.section("Step 2: Fetching data from Fitbit API");
+    const data = await fetchFitbitData(accessToken, {
+      startDate: options.startDate,
+      endDate: options.endDate,
+      includeIntraday: options.includeIntraday,
+    });
+
+    // Step 3: DB保存
+    log.section("Step 3: Saving data to DB");
+    const supabase = createFitbitDbClient();
+    const results = await saveAllFitbitData(supabase, data);
+
+    const elapsedSeconds = (Date.now() - startTime) / 1000;
+
+    const result: SyncResult = {
+      success: true,
+      timestamp: new Date().toISOString(),
+      stats: {
+        sleep: results.sleep.success,
+        activity: results.activity.success,
+        heartRate: results.heartRate.success,
+        hrv: results.hrv.success,
+        spo2: results.spo2.success,
+        breathingRate: results.breathingRate.success,
+        cardioScore: results.cardioScore.success,
+        temperatureSkin: results.temperatureSkin.success,
+      },
+      errors: [],
+      elapsedSeconds,
+    };
+
+    // サマリー表示
+    console.log("\n" + "=".repeat(60));
+    log.syncEnd(true, elapsedSeconds);
+    log.info(`Sleep: ${result.stats.sleep}`);
+    log.info(`Activity: ${result.stats.activity}`);
+    log.info(`Heart Rate: ${result.stats.heartRate}`);
+    log.info(`HRV: ${result.stats.hrv}`);
+    log.info(`SpO2: ${result.stats.spo2}`);
+    log.info(`Breathing Rate: ${result.stats.breathingRate}`);
+    log.info(`Cardio Score: ${result.stats.cardioScore}`);
+    log.info(`Temperature Skin: ${result.stats.temperatureSkin}`);
+    console.log("=".repeat(60));
+
+    return result;
+
+  } catch (err) {
+    const elapsedSeconds = (Date.now() - startTime) / 1000;
+    const message = err instanceof Error ? err.message : String(err);
+    errors.push(message);
+    log.error(message);
+
+    log.syncEnd(false, elapsedSeconds);
+
+    return {
+      success: false,
+      timestamp: new Date().toISOString(),
+      stats: {
+        sleep: 0,
+        activity: 0,
+        heartRate: 0,
+        hrv: 0,
+        spo2: 0,
+        breathingRate: 0,
+        cardioScore: 0,
+        temperatureSkin: 0,
+      },
+      errors,
+      elapsedSeconds,
+    };
+  }
+}
+
+// =============================================================================
+// CLI Entry Point
+// =============================================================================
 
 async function main() {
   const args = parseArgs(Deno.args, {
@@ -82,12 +158,12 @@ Fitbit 全件同期（初回移行・リカバリ用）
 
 オプション:
   --help, -h        このヘルプを表示
-  --start, -s       開始日（YYYY-MM-DD）デフォルト: 1年前
+  --start, -s       開始日（YYYY-MM-DD）デフォルト: 環境変数 FITBIT_SYNC_START_DATE
   --end, -e         終了日（YYYY-MM-DD）デフォルト: 今日
   --intraday, -i    Intradayデータも取得（レート制限に注意）
 
 例:
-  # デフォルト（過去1年分）
+  # デフォルト（FITBIT_SYNC_START_DATEから今日まで）
   deno run --allow-env --allow-net --allow-read sync_all.ts
 
   # 特定期間
@@ -101,9 +177,11 @@ Fitbit 全件同期（初回移行・リカバリ用）
   SUPABASE_SERVICE_ROLE_KEY Supabase Service Role Key
   FITBIT_CLIENT_ID          Fitbit Client ID
   FITBIT_CLIENT_SECRET      Fitbit Client Secret
+  FITBIT_SYNC_START_DATE    デフォルト開始日（必須、--start未指定時）
 
 注意:
   - Fitbit APIのレート制限は150リクエスト/時間です
+  - レート制限エラー時は自動でリセットまで待機します
   - 長期間の同期は時間がかかります（1日あたり約10リクエスト）
   - Intradayデータは1日ずつ取得するため、さらに時間がかかります
 `);
@@ -112,7 +190,7 @@ Fitbit 全件同期（初回移行・リカバリ用）
 
   const startDate = args.start
     ? new Date(args.start)
-    : DEFAULT_START_DATE;
+    : new Date(getDefaultStartDate());
   const endDate = args.end
     ? new Date(args.end)
     : new Date();
@@ -132,7 +210,13 @@ Fitbit 全件同期（初回移行・リカバリ用）
   }
 
   try {
-    await syncAllFitbitData(startDate, endDate, args.intraday);
+    const result = await syncAllFitbitData({
+      startDate,
+      endDate,
+      includeIntraday: args.intraday,
+    });
+
+    Deno.exit(result.success ? 0 : 1);
   } catch (error) {
     console.error(`❌ ${error instanceof Error ? error.message : error}`);
     Deno.exit(1);

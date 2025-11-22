@@ -17,11 +17,20 @@ Toggl Track API から時間記録データを取得し、Supabase `toggl` ス�
 ### 実行コマンド
 
 ```bash
-# 日次同期（直近3日間）
+# 日次同期（直近3日間）- v9 API使用
 deno run --allow-env --allow-net --allow-read sync_daily.ts
 
 # 日次同期（直近7日間）
 TOGGL_SYNC_DAYS=7 deno run --allow-env --allow-net --allow-read sync_daily.ts
+
+# 全件同期（初回移行・リカバリ用）- Reports API v3使用
+deno run --allow-env --allow-net --allow-read sync_all.ts
+
+# 全件同期（特定期間）
+deno run --allow-env --allow-net --allow-read sync_all.ts --start=2020-01-01 --end=2024-12-31
+
+# メタデータのみ同期
+deno run --allow-env --allow-net --allow-read sync_all.ts --metadata-only
 ```
 
 ---
@@ -31,13 +40,40 @@ TOGGL_SYNC_DAYS=7 deno run --allow-env --allow-net --allow-read sync_daily.ts
 ### データパイプライン
 
 ```
-Toggl API v9                    変換                      Supabase
+Toggl API v9 (日次同期)           変換                      Supabase
 ───────────────────────────────────────────────────────────────────
 /workspaces/{id}/clients  →  toDbClient()   →  toggl.clients
 /workspaces/{id}/projects →  toDbProject()  →  toggl.projects
 /workspaces/{id}/tags     →  toDbTag()      →  toggl.tags
 /me/time_entries          →  toDbEntry()    →  toggl.entries
+
+Reports API v3 (全件同期)         変換                           Supabase
+─────────────────────────────────────────────────────────────────────────
+/search/time_entries      →  reportsEntryToDbEntry()  →  toggl.entries
 ```
+
+**APIの違い:**
+| 項目 | v9 API | Reports API v3 |
+|------|--------|----------------|
+| 取得可能期間 | 過去3ヶ月 | 全期間 |
+| duration | 秒 | ミリ秒 (dur) or 秒 (seconds) |
+| 終了時刻 | stop | end |
+| レート制限 | 緩い | 1req/sec + 時間クォータ |
+
+**レート制限（Organization-specific requests）:**
+| プラン | クォータ | 1時間で取得可能なエントリー数 |
+|------|--------|---------------------------|
+| Free | 30 req/hour | ~30,000 |
+| Starter | 240 req/hour | ~240,000 |
+| Premium | 600 req/hour | ~600,000 |
+
+**レスポンスヘッダー:**
+- `X-Toggl-Quota-Remaining`: 残りリクエスト数
+- `X-Toggl-Quota-Resets-In`: リセットまでの秒数
+
+**エラーコード:**
+- 402: クォータ超過（リセットまで待機）
+- 429: Too Many Requests（leaky bucket、数分待機）
 
 ### ファイル構成
 
@@ -45,9 +81,11 @@ Toggl API v9                    変換                      Supabase
 |----------|------|----------|
 | `types.ts` | 型定義（API・DB・同期結果） | No |
 | `auth.ts` | Toggl API認証・HTTPリクエスト | No |
-| `api.ts` | データ取得（ページネーション対応） | No |
+| `api.ts` | データ取得（v9 API + Reports API v3） | No |
 | `write_db.ts` | DB書き込み（変換・upsert） | No |
-| `sync_daily.ts` | 日次同期オーケストレーター | Yes |
+| `fetch_data.ts` | データ取得オーケストレーション | No |
+| `sync_daily.ts` | 日次同期（v9 API使用） | Yes |
+| `sync_all.ts` | 全件同期（Reports API v3使用） | Yes |
 
 ---
 

@@ -6,9 +6,12 @@
 test/toggl/
 ├── README.md              # このファイル
 ├── api.test.ts            # formatDate, getDateRange
+├── sync_all.test.ts       # splitDateRange
 ├── write_db.test.ts       # toDb* 変換関数（4種類）
 ├── check_api.ts           # API疎通確認
-└── check_sync.ts          # 同期確認（⚠️ DB書き込みあり）
+├── check_reports_api.ts   # Reports API v3 疎通確認
+├── check_sync.ts          # 同期確認（⚠️ DB書き込みあり）
+└── check_all.ts           # 一括確認
 ```
 
 ## 単体テスト（`*.test.ts`）
@@ -28,14 +31,20 @@ deno test test/toggl/ --allow-env --allow-read
 | ファイル | 件数 | 対象 |
 |----------|------|------|
 | `api.test.ts` | 11件 | `formatDate`, `getDateRange` |
+| `sync_all.test.ts` | 9件 | `splitDateRange` |
 | `write_db.test.ts` | 13件 | `toDbClient`, `toDbProject`, `toDbTag`, `toDbEntry` |
-| **合計** | **24件** | |
+| **合計** | **33件** | |
 
 ### テスト観点
 
 #### api.test.ts
 - `formatDate`: Date → YYYY-MM-DD 変換
 - `getDateRange`: 日付範囲計算（月またぎ、年またぎ）
+
+#### sync_all.test.ts
+- `splitDateRange`: 日付範囲を12か月単位のチャンクに分割
+- 境界ケース（年またぎ、1か月未満、同一日）
+- デフォルト値・カスタム値の確認
 
 #### write_db.test.ts
 - 4種類のデータ変換関数
@@ -60,10 +69,13 @@ SUPABASE_SERVICE_ROLE_KEY=xxxxx
 ### 推奨実行順序
 
 ```bash
-# 1. API疎通確認
+# 1. API疎通確認（v9 API）
 deno run --allow-env --allow-net --allow-read test/toggl/check_api.ts
 
-# 2. 同期確認（⚠️ DB書き込みあり）
+# 2. Reports API v3 疎通確認（1-2 reqのみ）
+deno run --allow-env --allow-net --allow-read test/toggl/check_reports_api.ts
+
+# 3. 同期確認（⚠️ DB書き込みあり）
 deno run --allow-env --allow-net --allow-read test/toggl/check_sync.ts
 ```
 

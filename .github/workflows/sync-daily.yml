@@ -81,7 +81,7 @@ jobs:
           FITBIT_SYNC_DAYS: ${{ inputs.fitbit_sync_days || '3' }}
         run: |
           deno run --allow-net --allow-env --allow-read \
-            src/sync_all.ts
+            src/sync_daily.ts
 
       - name: Notify on failure
         if: failure()

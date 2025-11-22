@@ -11,11 +11,13 @@ import type {
   TogglApiV9Project,
   TogglApiV9Tag,
   TogglApiV9TimeEntry,
+  ReportsApiTimeEntry,
   DbClient,
   DbProject,
   DbTag,
   DbEntry,
 } from "./types.ts";
+import { workspaceId } from "./auth.ts";
 
 // =============================================================================
 // Types
@@ -142,6 +144,45 @@ export function toDbEntry(entry: TogglApiV9TimeEntry): DbEntry | null {
   };
 }
 
+/**
+ * Reports API Time Entry → DB Entry
+ *
+ * Reports API v3 のレスポンスをDB形式に変換
+ * Note: Reports APIは time_entries 配列内に実際のデータがある
+ * - id, start, stop, seconds は time_entries[0] から取得
+ * - project_id, description などはトップレベルから取得
+ */
+export function reportsEntryToDbEntry(entry: ReportsApiTimeEntry): DbEntry | null {
+  // time_entries 配列が空の場合はスキップ
+  if (!entry.time_entries || entry.time_entries.length === 0) {
+    return null;
+  }
+
+  const timeEntry = entry.time_entries[0];
+
+  // 負の時間（実行中）はスキップ
+  if (timeEntry.seconds < 0) {
+    return null;
+  }
+
+  return {
+    id: timeEntry.id,
+    workspace_id: parseInt(workspaceId, 10),
+    project_id: entry.project_id ?? null,
+    task_id: entry.task_id ?? null,
+    user_id: entry.user_id,
+    description: entry.description ?? null,
+    start: timeEntry.start,
+    end: timeEntry.stop,
+    duration_ms: timeEntry.seconds * 1000,
+    is_billable: entry.billable,
+    billable_amount: entry.billable_amount_in_cents ? entry.billable_amount_in_cents / 100 : null,
+    currency: entry.currency ?? null,
+    tags: entry.tags ?? [],
+    updated_at: timeEntry.at,
+  };
+}
+
 // =============================================================================
 // Batch Upsert
 // =============================================================================
@@ -250,6 +291,27 @@ export async function upsertEntries(
     .filter((entry): entry is DbEntry => entry !== null);
 
   log.info(`Saving entries... (${records.length} records)`);
+
+  const result = await upsertBatch(toggl, "entries", records, "id");
+
+  if (result.success > 0) log.success(`${result.success} records saved`);
+  if (result.failed > 0) log.error(`${result.failed} records failed`);
+
+  return result;
+}
+
+/**
+ * Reports API からのエントリーを upsert
+ */
+export async function upsertEntriesFromReports(
+  toggl: TogglSchema,
+  entries: ReportsApiTimeEntry[],
+): Promise<UpsertResult> {
+  const records = entries
+    .map(reportsEntryToDbEntry)
+    .filter((entry): entry is DbEntry => entry !== null);
+
+  log.info(`Saving entries from Reports API... (${records.length} records)`);
 
   const result = await upsertBatch(toggl, "entries", records, "id");
 
