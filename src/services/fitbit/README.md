@@ -1,180 +1,491 @@
-# Fitbit Data Fetcher
+# Fitbit同期モジュール
 
-既存の設計を踏襲しつつ、責任ごとにファイルを分割した実装です。
+Fitbit Web APIからデータを取得し、Supabaseの`fitbit`スキーマに同期するモジュール群。
 
-## ファイル構造
+## アーキテクチャ概要
+
 ```
-.
-├── types.ts                   # 型定義
-├── cache.ts                   # キャッシュ操作
-├── fetch.ts                   # Fitbit API呼び出し（内部用）
-├── api.ts                     # 外部向けインターフェース
-├── fetch_fitbit_data.ts       # CLIエントリーポイント（手動実行用）
-├── example.ts                 # 使用例
-└── refresh_fitbit_token.ts    # トークンリフレッシュ（既存）
+┌─────────────────────────────────────────────────────────────────┐
+│                        外部サービス                              │
+├─────────────────────────────────────────────────────────────────┤
+│  Fitbit Web API                   Supabase (fitbit スキーマ)    │
+│  - /sleep                         - fitbit.tokens               │
+│  - /activities                    - fitbit.sleep                │
+│  - /heart                         - fitbit.activity_daily       │
+│  - /hrv                           - fitbit.heart_rate_daily     │
+│  - /spo2                          - fitbit.hrv_daily            │
+│  - /br                            - fitbit.spo2_daily           │
+│  - /cardioscore                   - fitbit.breathing_rate_daily │
+│  - /temp/skin                     - fitbit.cardio_score_daily   │
+│  - /active-zone-minutes           - fitbit.temperature_skin_daily│
+└─────────────────────────────────────────────────────────────────┘
+          │                                   ▲
+          │ OAuth 2.0                         │ upsert
+          ▼                                   │
+┌─────────────────────────────────────────────────────────────────┐
+│                        モジュール構成                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌──────────────┐      ┌──────────────┐      ┌──────────────┐  │
+│  │   auth.ts    │◄─────│    api.ts    │◄─────│ fetch_data.ts│  │
+│  │              │      │              │      │              │  │
+│  │ OAuth2.0    │      │ APIクライアント│      │ データ取得   │  │
+│  │ トークン管理 │      │              │      │              │  │
+│  └──────────────┘      └──────────────┘      └──────┬───────┘  │
+│                                                      │          │
+│                                                      ▼          │
+│  ┌──────────────┐      ┌──────────────┐      ┌──────────────┐  │
+│  │   types.ts   │◄─────│ write_db.ts  │◄─────│ sync_daily.ts│  │
+│  │              │      │              │      │              │  │
+│  │ 型定義       │      │ DB書き込み   │      │ 日次同期     │  │
+│  └──────────────┘      └──────────────┘      └──────────────┘  │
+│                               │                                 │
+│                               │              ┌──────────────┐  │
+│                               └──────────────│ sync_all.ts  │  │
+│                                              │              │  │
+│                                              │ 全件同期     │  │
+│                                              └──────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-## 各ファイルの役割
+## ファイル一覧
 
-### `types.ts`
-型定義のみを提供します。
+| ファイル | 責務 | 実行可能 |
+|----------|------|----------|
+| `types.ts` | API/DB型定義 | No |
+| `auth.ts` | OAuth2.0トークン管理（リフレッシュ・DB操作） | Yes |
+| `api.ts` | Fitbit Web APIクライアント | No |
+| `fetch_data.ts` | データ取得オーケストレーション（期間分割・レート制限対応） | No |
+| `write_db.ts` | DB書き込み（変換・upsert） | No |
+| `sync_daily.ts` | 日次同期（直近N日間） | Yes |
+| `sync_all.ts` | 全件同期（初回移行・リカバリ用） | Yes |
 
-- `DateRange` - 日付範囲
-- `FitbitAllScopeData` - 取得データの構造
-- `CachedAllScopeData` - キャッシュファイルの構造
-- `FitbitTokenData` - トークン情報
+---
 
-### `cache.ts`
-キャッシュファイルの読み書きを担当します。
+## モジュール境界
 
-**主要関数:**
-- `getCacheFilePath(range)` - キャッシュファイルパスを生成
-- `checkCacheExists(range)` - キャッシュの存在確認
-- `loadCachedData(range)` - キャッシュから読み込み
-- `saveCachedData(range, data)` - キャッシュに保存
-- `checkAllCachesExist(ranges)` - 複数チャンクの一括確認
+### types.ts
 
-### `fetch.ts`
-Fitbit APIへの実際のアクセスを担当します（内部用）。
+型定義とインターフェース。
 
-**主要関数:**
-- `splitDateRangeBy90Days(start, end)` - 90日チャンクに分割
-- `fetchFitbitData(start, end, options)` - データ取得のメイン関数
-  - トークン取得あり
-  - グループ化された並行リクエスト（5グループ、各グループ間1.5秒待機）
-  - レート制限対応
+```typescript
+// API型
+export interface SleepApiResponse { ... }
+export interface ActivityDailySummary { ... }
+export interface HeartRateTimeSeriesResponse { ... }
+export interface HrvApiResponse { ... }
+export interface Spo2ApiResponse { ... }
+export interface BreathingRateApiResponse { ... }
+export interface CardioScoreApiResponse { ... }
+export interface TemperatureSkinApiResponse { ... }
+export interface AzmApiResponse { ... }
+export interface TokenResponse { ... }
 
-**取得エンドポイント:**
-- Sleep（睡眠）
-- Heart Rate（心拍数）
-- Activity（歩数、距離、カロリー、階数、標高、活動時間）
-- Body Weight（体重）
-- Body Fat（体脂肪率/BMI）
-- SpO2（血中酸素濃度）
+// DB型
+export interface DbToken { ... }
+export interface DbSleep { ... }
+export interface DbActivityDaily { ... }
+export interface DbHeartRateDaily { ... }
+export interface DbHrvDaily { ... }
+export interface DbSpo2Daily { ... }
+export interface DbBreathingRateDaily { ... }
+export interface DbCardioScoreDaily { ... }
+export interface DbTemperatureSkinDaily { ... }
 
-### `api.ts`
-**外部向けのメインインターフェース**です。Supabase同期処理などから呼ばれます。
+// オプション・結果型
+export interface AuthOptions { ... }
+export interface FetchOptions { ... }
+export interface SyncResult { ... }
+export interface FitbitData { ... }
+```
 
-**主要関数:**
-- `getFitbitData(start, end)` - キャッシュ優先の取得関数
-  - キャッシュがある → 即座に返す（トークン取得なし）
-  - キャッシュがない → `fetchFitbitData()`を呼び出す
+---
 
-### `fetch_fitbit_data.ts`
-CLIエントリーポイントです。手動実行やスケジュール実行から呼ばれます。
+### auth.ts
 
-## 使い方
+OAuth2.0認証を管理。トークンはSupabase `fitbit.tokens`に保存。
 
-### 1. CLI実行（手動・スケジュール用）
+```typescript
+// 有効性チェック（DBの expires_at を参照、APIを叩かない）
+export function isTokenExpiringSoon(expiresAt: Date, thresholdMinutes?: number): boolean
+
+// リフレッシュ実行（APIを叩く）
+export async function refreshTokenFromApi(refreshToken: string): Promise<TokenResponse>
+
+// メイン関数: 有効なアクセストークンを保証
+export async function ensureValidToken(options?: AuthOptions): Promise<string>
+```
+
+**CLI使用法**:
 ```bash
-# 過去7日間を取得
-deno run --allow-all fetch_fitbit_data.ts
+# 有効性確認（必要ならリフレッシュ）
+deno run --allow-env --allow-net --allow-read auth.ts
 
-# 特定の日を取得
-deno run --allow-all fetch_fitbit_data.ts 2025-01-15
-
-# 期間を指定して取得
-deno run --allow-all fetch_fitbit_data.ts 2023-01-01 2025-01-31
-
-# キャッシュを無視して強制取得
-deno run --allow-all fetch_fitbit_data.ts --force 2025-01-01 2025-01-31
+# 強制リフレッシュ
+deno run --allow-env --allow-net --allow-read auth.ts --refresh
 ```
 
-### 2. プログラムから呼び出し（Supabase同期処理など）
+---
+
+### api.ts
+
+Fitbit Web APIのエンドポイントをラップ。
+
 ```typescript
-import { getFitbitData } from "./api.ts";
+export class FitbitAPI {
+  constructor(accessToken: string)
 
-// キャッシュ優先で取得（高速）
-const data = await getFitbitData("2025-01-01", "2025-01-31");
+  // Sleep
+  async getSleepByDateRange(startDate: Date, endDate: Date): Promise<SleepApiResponse>
+  async getSleepByDate(date: Date): Promise<SleepApiResponse>
 
-// Supabaseに同期
-await syncToSupabase(data);
-```
+  // Activity
+  async getActivityDailySummary(date: Date): Promise<ActivityDailySummary>
 
-### 3. 強制的にAPI取得したい場合
-```typescript
-import { fetchFitbitData } from "./fetch.ts";
+  // Heart Rate
+  async getHeartRateByDateRange(startDate: Date, endDate: Date): Promise<HeartRateTimeSeriesResponse>
+  async getHeartRateIntraday(date: Date): Promise<HeartRateTimeSeriesResponse>
 
-// キャッシュを無視して強制取得
-const data = await fetchFitbitData("2025-01-01", "2025-01-31", { 
-  forceRefresh: true 
-});
-```
+  // HRV
+  async getHrvByDateRange(startDate: Date, endDate: Date): Promise<HrvApiResponse>
+  async getHrvIntraday(date: Date): Promise<HrvApiResponse>
 
-## 設計思想
+  // SpO2
+  async getSpo2ByDate(date: Date): Promise<Spo2ApiResponse>
+  async getSpo2ByDateRange(startDate: Date, endDate: Date): Promise<Spo2ApiResponse[]>
 
-### キャッシュ戦略
-- 90日チャンクごとにキャッシュファイルを生成
-- `./cache/fitbit_YYYY-MM-DD_YYYY-MM-DD.json` 形式
-- キャッシュがあれば即座に返す（トークン取得不要）
+  // Breathing Rate
+  async getBreathingRateByDateRange(startDate: Date, endDate: Date): Promise<BreathingRateApiResponse>
 
-### レート制限対応
-- Fitbit APIの制限: 1時間150リクエスト/ユーザー
-- 短時間バースト制限を回避するため、5グループに分割
-- 各グループ間に1.5秒の待機時間
-- 1チャンクあたり約7.5秒で取得（元の順次版の約8倍速）
+  // Cardio Score (VO2 Max)
+  async getCardioScoreByDateRange(startDate: Date, endDate: Date): Promise<CardioScoreApiResponse>
 
-### データ取得フロー
+  // Temperature Skin
+  async getTemperatureSkinByDateRange(startDate: Date, endDate: Date): Promise<TemperatureSkinApiResponse>
 
-**外部から呼び出す場合（推奨）:**
-```
-getFitbitData() 
-  ↓
-キャッシュ確認
-  ↓ キャッシュあり
-キャッシュから読み込み（高速・トークン不要）
-  ↓ キャッシュなし
-fetchFitbitData()
-  ↓
-Fitbit API呼び出し
-  ↓
-キャッシュに保存
-```
-
-**CLI実行の場合:**
-```
-fetch_fitbit_data.ts
-  ↓
-fetchFitbitData()
-  ↓
-トークン取得
-  ↓
-90日チャンクに分割
-  ↓
-各チャンクを取得（キャッシュまたはAPI）
-```
-
-## パフォーマンス比較
-
-- **完全並行版**（19個同時）: 0.5秒 → レート制限でブロック ❌
-- **順次版**（1個ずつ）: 約40-60秒 → 安全だが遅い
-- **グループ化版**（5グループ）: 約7.5秒 → 安全で高速 ✅
-
-## 今後の拡張
-
-### Supabase同期処理を追加する場合
-```typescript
-// sync_to_supabase.ts
-import { getFitbitData } from "./api.ts";
-
-async function syncToSupabase(startDate: string, endDate: string) {
-  // キャッシュ優先で取得
-  const data = await getFitbitData(startDate, endDate);
-  
-  // Supabaseに保存
-  // ... 実装
+  // Active Zone Minutes
+  async getAzmByDateRange(startDate: Date, endDate: Date): Promise<AzmApiResponse>
 }
+
+// ヘルパー
+export function formatFitbitDate(date: Date): string      // Date → YYYY-MM-DD
+export function parseFitbitDate(dateStr: string): Date    // YYYY-MM-DD → Date (UTC)
 ```
 
-### スケジュール実行（GitHub Actions）
-```yaml
-# .github/workflows/fetch-fitbit.yml
-- name: Fetch Fitbit Data
-  run: deno run --allow-all fetch_fitbit_data.ts
+---
+
+### fetch_data.ts
+
+レート制限と期間制約を考慮したデータ取得オーケストレーション。
+
+```typescript
+export interface FitbitData {
+  sleep: SleepLog[];
+  activity: Map<string, ActivitySummary>;
+  heartRate: HeartRateDay[];
+  heartRateIntraday: Map<string, HeartRateIntraday>;
+  hrv: HrvDay[];
+  spo2: Map<string, Spo2ApiResponse>;
+  breathingRate: BreathingRateDay[];
+  cardioScore: CardioScoreDay[];
+  temperatureSkin: TemperatureSkinDay[];
+  azm: AzmDay[];
+}
+
+// 日付リスト生成
+export function generateDateRange(startDate: Date, endDate: Date): Date[]
+
+// 期間を最大日数でチャンク分割
+export function generatePeriods(startDate: Date, endDate: Date, maxDays: number): Array<{ from: Date; to: Date }>
+
+// メイン関数
+export async function fetchFitbitData(accessToken: string, options?: FetchOptions): Promise<FitbitData>
 ```
+
+---
+
+### write_db.ts
+
+Supabase `fitbit`スキーマへの書き込み。
+
+```typescript
+// Supabaseクライアント
+export function createFitbitDbClient(): SupabaseClient
+
+// 変換関数: API → DB レコード
+export function toDbSleep(items: SleepLog[]): DbSleep[]
+export function toDbActivityDaily(activityMap, azmData, intradayMap?): DbActivityDaily[]
+export function toDbHeartRateDaily(items, intradayMap?): DbHeartRateDaily[]
+export function toDbHrvDaily(items: HrvDay[]): DbHrvDaily[]
+export function toDbSpo2Daily(spo2Map): DbSpo2Daily[]
+export function toDbBreathingRateDaily(items): DbBreathingRateDaily[]
+export function toDbCardioScoreDaily(items): DbCardioScoreDaily[]
+export function toDbTemperatureSkinDaily(items): DbTemperatureSkinDaily[]
+
+// 保存関数
+export async function saveSleep(supabase, items): Promise<UpsertResult>
+export async function saveActivityDaily(supabase, activityMap, azmData): Promise<UpsertResult>
+export async function saveHeartRateDaily(supabase, items, intradayMap?): Promise<UpsertResult>
+export async function saveHrvDaily(supabase, items): Promise<UpsertResult>
+export async function saveSpo2Daily(supabase, spo2Map): Promise<UpsertResult>
+export async function saveBreathingRateDaily(supabase, items): Promise<UpsertResult>
+export async function saveCardioScoreDaily(supabase, items): Promise<UpsertResult>
+export async function saveTemperatureSkinDaily(supabase, items): Promise<UpsertResult>
+export async function saveAllFitbitData(supabase, data: FitbitData): Promise<AllResults>
+```
+
+---
+
+### sync_daily.ts
+
+日次同期オーケストレーター。
+
+```typescript
+export async function syncFitbitDaily(syncDays?: number): Promise<SyncResult>
+```
+
+---
+
+### sync_all.ts
+
+全件同期（初回移行・リカバリ用）。
+
+```typescript
+export async function syncAllFitbitData(startDate: Date, endDate: Date, includeIntraday?: boolean): Promise<void>
+```
+
+---
+
+## データフロー
+
+### 日次同期 (sync_daily.ts)
+
+```
+ensureValidToken() ──► accessToken
+        │
+        ▼
+fetchFitbitData() ──► FitbitData ──► write_db ──► Supabase
+        │                                │
+        ▼                                ▼
+   Fitbit Web API                  fitbit.* tables
+   (8種類のエンドポイント)
+```
+
+### 全件同期 (sync_all.ts)
+
+```
+syncAllFitbitData(startDate, endDate, includeIntraday)
+        │
+        ├──► ensureValidToken()
+        │
+        ├──► fetchFitbitData() ──► Fitbit API
+        │         (期間分割: Sleep 100日, Temp 30日)
+        │
+        └──► saveAllFitbitData() ──► Supabase
+```
+
+---
+
+## Supabaseスキーマ
+
+### fitbit スキーマ
+
+| テーブル | 主キー | ユニーク制約 | 説明 |
+|----------|--------|-------------|------|
+| `tokens` | `id` (UUID) | - | OAuth2.0トークン |
+| `sleep` | `id` (UUID) | `log_id` | 睡眠記録（レコード単位） |
+| `activity_daily` | `id` (UUID) | `date` | 日次活動サマリー |
+| `heart_rate_daily` | `id` (UUID) | `date` | 日次心拍データ |
+| `hrv_daily` | `id` (UUID) | `date` | 日次HRVデータ |
+| `spo2_daily` | `id` (UUID) | `date` | 日次SpO2データ |
+| `breathing_rate_daily` | `id` (UUID) | `date` | 日次呼吸数データ |
+| `cardio_score_daily` | `id` (UUID) | `date` | 日次VO2 Maxデータ |
+| `temperature_skin_daily` | `id` (UUID) | `date` | 日次皮膚温度データ |
+
+---
+
+## 実行例
+
+```bash
+# 認証確認（必要ならリフレッシュ）
+deno run --allow-env --allow-net --allow-read auth.ts
+
+# 強制リフレッシュ
+deno run --allow-env --allow-net --allow-read auth.ts --refresh
+
+# 日次同期（直近7日間、デフォルト）
+deno run --allow-env --allow-net --allow-read sync_daily.ts
+
+# 日次同期（直近30日間）
+FITBIT_SYNC_DAYS=30 deno run --allow-env --allow-net --allow-read sync_daily.ts
+
+# 全件同期（デフォルト: 過去1年）
+deno run --allow-env --allow-net --allow-read sync_all.ts
+
+# 全件同期（特定期間）
+deno run --allow-env --allow-net --allow-read sync_all.ts --start=2024-01-01 --end=2024-12-31
+
+# 全件同期（Intradayデータ込み）
+deno run --allow-env --allow-net --allow-read sync_all.ts --start=2024-11-01 --end=2024-11-30 --intraday
+```
+
+---
+
+## 環境変数一覧
+
+| 変数名 | 必須 | 説明 |
+|--------|------|------|
+| `SUPABASE_URL` | Yes | Supabase プロジェクトURL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Supabase Service Role Key |
+| `FITBIT_CLIENT_ID` | Yes | Fitbit OAuth Client ID |
+| `FITBIT_CLIENT_SECRET` | Yes | Fitbit OAuth Client Secret |
+| `FITBIT_SYNC_DAYS` | No | 同期日数（sync_daily.ts用、デフォルト: 7） |
+
+---
+
+## Fitbit API 制約
+
+| 項目 | 値 |
+|------|-----|
+| レート制限 | 150リクエスト/時間 |
+| トークン有効期限 | 8時間 |
+| Sleep取得期間 | 最大100日 |
+| Temperature取得期間 | 最大30日 |
+| Intraday粒度 | HR: 1秒/1分, HRV: 5分 |
+| API呼び出し間隔 | 500ms（本モジュール設定） |
+
+---
+
+## 取得データタイプ
+
+| データ | エンドポイント | 粒度 | JSONB格納 |
+|--------|--------------|------|----------|
+| 睡眠 | `/1.2/user/-/sleep` | レコード | levels |
+| 活動 | `/1/user/-/activities` | 日次 | active_zone_minutes, intraday |
+| 心拍 | `/1/user/-/activities/heart` | 日次 | heart_rate_zones, intraday |
+| HRV | `/1/user/-/hrv` | 日次 | intraday（5分粒度） |
+| SpO2 | `/1/user/-/spo2` | 日次 | intraday |
+| 呼吸数 | `/1/user/-/br` | 日次 | intraday |
+| VO2 Max | `/1/user/-/cardioscore` | 日次 | - |
+| 皮膚温度 | `/1/user/-/temp/skin` | 日次 | - |
+| AZM | `/1/user/-/activities/active-zone-minutes` | 日次 | - |
+
+---
+
+## Inspire 3 対応状況
+
+| 機能 | 対応 | 備考 |
+|------|-----|------|
+| 睡眠 | ✓ | ステージ（deep/light/rem/wake） |
+| 歩数・活動 | ✓ | |
+| 心拍 | ✓ | 安静時HR、ゾーン |
+| HRV | ✓ | 睡眠中のみ |
+| SpO2 | ✓ | 睡眠中のみ |
+| 呼吸数 | ✓ | 睡眠中のみ |
+| VO2 Max | ✓ | |
+| 皮膚温度 | △ | 相対値のみ、条件厳しい |
+| ECG | ✗ | センサーなし |
+| GPS | ✗ | Connected GPSのみ |
+
+---
+
+## 初回セットアップ
+
+1. [Fitbit Developer](https://dev.fitbit.com/)でアプリケーション登録
+   - Application Type: **Personal**（自分のデータのみ）
+   - OAuth 2.0 Application Type: **Personal**
+   - Callback URL: 適宜設定（例: `http://localhost:8080/callback`）
+
+2. OAuth認可フローでトークンを取得:
+   ```
+   https://www.fitbit.com/oauth2/authorize?response_type=code
+     &client_id=YOUR_CLIENT_ID
+     &redirect_uri=YOUR_CALLBACK_URL
+     &scope=activity+heartrate+location+nutrition+oxygen_saturation+profile+respiratory_rate+settings+sleep+social+temperature+weight
+     &expires_in=28800
+   ```
+
+3. 認可コードをトークンに交換:
+   ```bash
+   curl -X POST https://api.fitbit.com/oauth2/token \
+     -H "Authorization: Basic $(echo -n 'CLIENT_ID:CLIENT_SECRET' | base64)" \
+     -H "Content-Type: application/x-www-form-urlencoded" \
+     -d "grant_type=authorization_code&code=AUTH_CODE&redirect_uri=YOUR_CALLBACK_URL"
+   ```
+
+4. トークンを`fitbit.tokens`テーブルに保存
+
+5. 環境変数を設定
+
+6. 全件同期を実行:
+   ```bash
+   deno run --allow-env --allow-net --allow-read sync_all.ts
+   ```
+
+---
+
+## GitHub Actions での自動同期
+
+```yaml
+name: Fitbit Sync Daily
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # UTC 00:00 (JST 09:00)
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Run Fitbit Sync
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          FITBIT_CLIENT_ID: ${{ secrets.FITBIT_CLIENT_ID }}
+          FITBIT_CLIENT_SECRET: ${{ secrets.FITBIT_CLIENT_SECRET }}
+        run: |
+          cd src/services/fitbit
+          deno run --allow-env --allow-net --allow-read sync_daily.ts
+```
+
+---
+
+## テスト
+
+### 単体テスト
+
+```bash
+# 全テスト実行
+deno test test/fitbit/ --allow-env --allow-read
+
+# 個別実行
+deno test test/fitbit/api.test.ts --allow-env          # formatFitbitDate, parseFitbitDate
+deno test test/fitbit/auth.test.ts --allow-env         # isTokenExpiringSoon
+deno test test/fitbit/fetch_data.test.ts --allow-env   # generateDateRange, generatePeriods
+deno test test/fitbit/write_db.test.ts --allow-env --allow-read  # toDb* 変換関数
+```
+
+### 手動統合テスト
+
+```bash
+# 1. 認証テスト
+deno run --allow-env --allow-net --allow-read auth.ts
+
+# 2. 日次同期テスト（3日間）
+FITBIT_SYNC_DAYS=3 deno run --allow-env --allow-net --allow-read sync_daily.ts
+```
+
+---
 
 ## 注意事項
 
-- `refresh_fitbit_token.ts` は既存のファイルで、トークンリフレッシュを担当します
-- キャッシュディレクトリ `./cache/` は自動作成されます
-- レート制限に達した場合、1時間待機が必要です
+- Fitbit APIのレート制限は150リクエスト/時間です
+- 長期間の同期は時間がかかります（1日あたり約10リクエスト）
+- Intradayデータは1日ずつ取得するため、さらに時間がかかります
+- トークンは8時間で期限切れになるため、長時間の同期では途中でリフレッシュが必要になる場合があります
