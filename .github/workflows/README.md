@@ -65,7 +65,7 @@ GitHubリポジトリで以下のSecretsを設定する必要があります：
 - `sync_days`: 同期する日数（デフォルト: 1）
 
 #### Tanita Daily Sync
-- `sync_days`: 同期する日数（デフォルト: 30）
+- `sync_days`: 同期する日数（デフォルト: 7）
 
 #### Zaim Daily Sync
 - `sync_days`: 同期する日数（デフォルト: 3）

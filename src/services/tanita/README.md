@@ -273,7 +273,7 @@ deno run --allow-env --allow-net --allow-read sync_all.ts --start=2024-01-01 --e
 | `TANITA_CLIENT_ID` | Yes | Tanita OAuth Client ID |
 | `TANITA_CLIENT_SECRET` | Yes | Tanita OAuth Client Secret |
 | `TANITA_AUTH_CODE` | No | 認可コード（--init 時に使用） |
-| `TANITA_SYNC_DAYS` | No | 同期日数（sync_daily.ts用、デフォルト: 30） |
+| `TANITA_SYNC_DAYS` | No | 同期日数（sync_daily.ts用、デフォルト: 7） |
 
 ---
 

@@ -18,7 +18,7 @@ import type { SyncResult } from "./types.ts";
 
 // ========== 定数 ==========
 
-const DEFAULT_SYNC_DAYS = 30;
+const DEFAULT_SYNC_DAYS = 7;
 
 // ========== メイン関数 ==========
 
