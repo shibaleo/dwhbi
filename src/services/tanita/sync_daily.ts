@@ -48,8 +48,9 @@ export async function syncTanitaDaily(syncDays?: number): Promise<SyncResult> {
   }
 
   // 2. データ取得
-  const endDate = new Date();
-  const startDate = new Date(endDate.getTime() - days * 24 * 60 * 60 * 1000);
+  // endDateを現在時刻+24時間に設定し、今日のデータも確実に取得
+  const endDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
   console.log("");
   const data = await fetchTanitaData(accessToken, { startDate, endDate });
