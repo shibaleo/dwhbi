@@ -9,6 +9,7 @@
 | `sync-toggl.yml` | 毎日 JST 00:00 | Toggl タイムエントリ同期 |
 | `sync-tanita.yml` | 毎日 JST 00:00 | Tanita 体組成データ同期 |
 | `sync-zaim.yml` | 毎日 JST 00:00 | Zaim 収支データ同期 |
+| `sync-gcalendar.yml` | 毎日 JST 00:00 | Google Calendar イベント同期 |
 
 ---
 
@@ -49,6 +50,13 @@ GitHubリポジトリで以下のSecretsを設定する必要があります：
 | `ZAIM_ACCESS_TOKEN` | Zaim OAuth Access Token |
 | `ZAIM_ACCESS_TOKEN_SECRET` | Zaim OAuth Access Token Secret |
 
+### Google Calendar
+
+| Secret名 | 説明 |
+|----------|------|
+| `GOOGLE_CALENDAR_ID` | Google Calendar ID |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | サービスアカウントJSON |
+
 ---
 
 ## 手動実行
@@ -68,6 +76,9 @@ GitHubリポジトリで以下のSecretsを設定する必要があります：
 - `sync_days`: 同期する日数（デフォルト: 7）
 
 #### Zaim Daily Sync
+- `sync_days`: 同期する日数（デフォルト: 3）
+
+#### Google Calendar Daily Sync
 - `sync_days`: 同期する日数（デフォルト: 3）
 
 ---
@@ -92,6 +103,7 @@ GitHubリポジトリで以下のSecretsを設定する必要があります：
 | sync-toggl | `0 15 * * *` | 15:00 | 00:00 |
 | sync-tanita | `0 15 * * *` | 15:00 | 00:00 |
 | sync-zaim | `0 15 * * *` | 15:00 | 00:00 |
+| sync-gcalendar | `0 15 * * *` | 15:00 | 00:00 |
 
 ### その他のスケジュール例
 - `0 * * * *` - 毎時0分（1時間ごと）

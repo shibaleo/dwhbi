@@ -21,7 +21,8 @@
 | `api.ts` | ❌ | ✅ | 外部API依存 |
 | `fetch_events.ts` | ✅ | - | `transformEvent()`は純粋関数 |
 | `write_db.ts` | ❌ | ✅ | DB依存 |
-| `sync_daily.ts` | ❌ | ✅ | オーケストレーター |
+| `sync_daily.ts` | ❌ | ✅ | 日次同期オーケストレーター |
+| `sync_all.ts` | ❌ | ✅ | 全件同期（期間指定） |
 
 ---
 
@@ -33,7 +34,8 @@ test/gcalendar/
 ├── fetch_events.test.ts       # 変換関数の単体テスト
 └── manual/
     ├── check_api.ts           # API疎通確認
-    └── check_sync.ts          # 同期動作確認（少量データ）
+    ├── check_sync.ts          # 同期動作確認（少量データ）
+    └── check_sync_all.ts      # 全件同期動作確認
 ```
 
 ---
@@ -79,6 +81,18 @@ deno run --allow-env --allow-net --allow-read test/gcalendar/manual/check_api.ts
 
 ```bash
 deno run --allow-env --allow-net --allow-read test/gcalendar/manual/check_sync.ts
+```
+
+### check_sync_all.ts
+
+期間指定での全件同期動作確認。sync_all.tsのCLIヘルプと動作確認。
+
+```bash
+# ヘルプ表示
+deno run --allow-env --allow-net --allow-read src/services/gcalendar/sync_all.ts --help
+
+# 特定期間の同期（テスト用に短期間を指定）
+deno run --allow-env --allow-net --allow-read src/services/gcalendar/sync_all.ts --start=2025-11-01 --end=2025-11-22
 ```
 
 ---

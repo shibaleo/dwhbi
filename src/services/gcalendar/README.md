@@ -35,7 +35,8 @@ src/services/gcalendar/
 ├── api.ts             # Google Calendar APIラッパー
 ├── fetch_events.ts    # イベント取得・変換
 ├── write_db.ts        # Supabase書き込み
-├── sync_daily.ts      # 同期オーケストレーター
+├── sync_daily.ts      # 日次同期オーケストレーター
+├── sync_all.ts        # 全件同期（初回移行・リカバリ用）
 └── 001_create_schema.sql  # スキーマ・テーブル定義
 ```
 
@@ -228,6 +229,11 @@ Togglとの対応：
 - `syncGCalToSupabase(options)`: 全期間同期オーケストレーター
 - `syncByDays(days)`: 日数指定同期（CLI実行時のデフォルト）
 - デフォルト同期日数: 環境変数 `GCAL_SYNC_DAYS` で指定（デフォルト3日）
+
+#### sync_all.ts
+- `syncAllGCalEvents(startDate, endDate)`: 期間指定で全件同期
+- 初回移行・リカバリ用
+- CLI引数: `--start`, `--end` で期間指定可能
 
 ## Togglとの連携（将来）
 
