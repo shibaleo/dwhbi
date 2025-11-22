@@ -1,6 +1,6 @@
-// api.ts
-// Tanita Health Planet API クライアント
-
+/**
+ * Tanita Health Planet API クライアント
+ */
 import type { TanitaApiResponse } from "./types.ts";
 import {
   INNERSCAN_TAGS,
@@ -8,11 +8,15 @@ import {
   SPHYGMOMANOMETER_TAGS,
 } from "./types.ts";
 
-// ========== 定数 ==========
+// =============================================================================
+// Constants
+// =============================================================================
 
 const BASE_URL = "https://www.healthplanet.jp/status";
 
-// ========== ヘルパー関数 ==========
+// =============================================================================
+// Helper Functions
+// =============================================================================
 
 /**
  * DateをTanita API形式（YYYYMMDDHHmmss）に変換
@@ -39,7 +43,9 @@ export function parseTanitaDate(dateStr: string): Date {
   return new Date(Date.UTC(year, month, day, hour - 9, minute));
 }
 
-// ========== API クライアント ==========
+// =============================================================================
+// API Client
+// =============================================================================
 
 export class TanitaAPI {
   private accessToken: string;

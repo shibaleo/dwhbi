@@ -1,11 +1,13 @@
-// sync_daily.ts
-// Tanita日次同期（直近N日間）
-//
-// 使用例:
-//   deno run --allow-env --allow-net --allow-read sync_daily.ts
-//   TANITA_SYNC_DAYS=7 deno run --allow-env --allow-net --allow-read sync_daily.ts
+/**
+ * Tanita → Supabase 日次同期
+ *
+ * 使用例:
+ *   deno run --allow-env --allow-net --allow-read sync_daily.ts
+ *   TANITA_SYNC_DAYS=7 deno run --allow-env --allow-net --allow-read sync_daily.ts
+ */
 
 import "jsr:@std/dotenv/load";
+import * as log from "../../utils/log.ts";
 import { ensureValidToken } from "./auth.ts";
 import { fetchTanitaData } from "./fetch_data.ts";
 import {
@@ -16,11 +18,20 @@ import {
 } from "./write_db.ts";
 import type { SyncResult } from "./types.ts";
 
-// ========== 定数 ==========
+// =============================================================================
+// Constants
+// =============================================================================
 
 const DEFAULT_SYNC_DAYS = 3;
 
-// ========== メイン関数 ==========
+// =============================================================================
+// Sync Function
+// =============================================================================
+
+/**
+ * Tanita データを Supabase に同期
+ * @param syncDays 同期する日数（デフォルト: 3）
+ */
 
 export async function syncTanitaByDays(syncDays?: number): Promise<SyncResult> {
   const startTime = Date.now();
@@ -28,16 +39,15 @@ export async function syncTanitaByDays(syncDays?: number): Promise<SyncResult> {
     parseInt(Deno.env.get("TANITA_SYNC_DAYS") || String(DEFAULT_SYNC_DAYS));
   const errors: string[] = [];
 
-  console.log("🔄 Tanita Health Planet 日次同期開始");
-  console.log(`   同期日数: ${days}日間\n`);
+  log.syncStart("Tanita", days);
 
   // 1. トークン確認（必要ならリフレッシュ）
   let accessToken: string;
   try {
     accessToken = await ensureValidToken();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`❌ 認証エラー: ${message}`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log.error(`Auth error: ${message}`);
     return {
       success: false,
       timestamp: new Date().toISOString(),
@@ -57,11 +67,10 @@ export async function syncTanitaByDays(syncDays?: number): Promise<SyncResult> {
   const startDate = new Date(endDate);
   startDate.setDate(startDate.getDate() - days - 1);
 
-  console.log("");
   const data = await fetchTanitaData(accessToken, { startDate, endDate });
 
   // 3. DB保存
-  console.log("");
+  log.section("Saving to DB");
   const supabase = createTanitaDbClient();
 
   const bodyResult = await saveBodyComposition(supabase, data.bodyComposition);
@@ -71,9 +80,9 @@ export async function syncTanitaByDays(syncDays?: number): Promise<SyncResult> {
   // 4. 結果集計
   const elapsedSeconds = (Date.now() - startTime) / 1000;
 
-  if (bodyResult.failed > 0) errors.push(`体組成: ${bodyResult.failed}件失敗`);
-  if (bpResult.failed > 0) errors.push(`血圧: ${bpResult.failed}件失敗`);
-  if (stepsResult.failed > 0) errors.push(`歩数: ${stepsResult.failed}件失敗`);
+  if (bodyResult.failed > 0) errors.push(`body composition: ${bodyResult.failed} failed`);
+  if (bpResult.failed > 0) errors.push(`blood pressure: ${bpResult.failed} failed`);
+  if (stepsResult.failed > 0) errors.push(`steps: ${stepsResult.failed} failed`);
 
   const result: SyncResult = {
     success: errors.length === 0,
@@ -88,21 +97,20 @@ export async function syncTanitaByDays(syncDays?: number): Promise<SyncResult> {
   };
 
   // 5. サマリー表示
-  console.log("\n" + "=".repeat(60));
-  console.log(result.success ? "✅ 同期完了" : "⚠️  同期完了（エラーあり）");
-  console.log(`   体組成: ${result.stats.bodyComposition}件`);
-  console.log(`   血圧: ${result.stats.bloodPressure}件`);
-  console.log(`   歩数: ${result.stats.steps}件`);
-  console.log(`   処理時間: ${result.elapsedSeconds.toFixed(1)}秒`);
+  log.syncEnd(result.success, result.elapsedSeconds);
+  log.info(`Body composition: ${result.stats.bodyComposition}`);
+  log.info(`Blood pressure: ${result.stats.bloodPressure}`);
+  log.info(`Steps: ${result.stats.steps}`);
   if (errors.length > 0) {
-    console.log(`   エラー: ${errors.join(", ")}`);
+    log.warn(`Errors: ${errors.join(", ")}`);
   }
-  console.log("=".repeat(60));
 
   return result;
 }
 
-// ========== CLI実行 ==========
+// =============================================================================
+// CLI Entry Point
+// =============================================================================
 
 if (import.meta.main) {
   const result = await syncTanitaByDays();

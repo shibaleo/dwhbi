@@ -1,14 +1,18 @@
-// types.ts - Toggl API型定義・DB型定義
+/**
+ * Toggl Track 型定義
+ *
+ * API レスポンス型、DB テーブル型、同期関連型
+ */
 
-// =====================================================
-// Toggl API v9 Response Types
-// =====================================================
+// =============================================================================
+// Toggl API Response Types (v9)
+// =============================================================================
 
 /**
- * Toggl API v9 - Client response
+ * Toggl API v9 - Client レスポンス
  * GET /api/v9/workspaces/{workspace_id}/clients
  */
-export interface TogglApiV9Client {
+export interface TogglApiClient {
   id: number;
   wid: number;
   archived: boolean;
@@ -19,10 +23,10 @@ export interface TogglApiV9Client {
 }
 
 /**
- * Toggl API v9 - Project response
+ * Toggl API v9 - Project レスポンス
  * GET /api/v9/workspaces/{workspace_id}/projects
  */
-export interface TogglApiV9Project {
+export interface TogglApiProject {
   id: number;
   workspace_id: number;
   client_id?: number | null;
@@ -52,10 +56,10 @@ export interface TogglApiV9Project {
 }
 
 /**
- * Toggl API v9 - Tag response
+ * Toggl API v9 - Tag レスポンス
  * GET /api/v9/workspaces/{workspace_id}/tags
  */
-export interface TogglApiV9Tag {
+export interface TogglApiTag {
   id: number;
   workspace_id: number;
   name: string;
@@ -64,10 +68,10 @@ export interface TogglApiV9Tag {
 }
 
 /**
- * Toggl API v9 - Time Entry response
+ * Toggl API v9 - Time Entry レスポンス
  * GET /api/v9/me/time_entries
  */
-export interface TogglApiV9TimeEntry {
+export interface TogglApiTimeEntry {
   id: number;
   workspace_id: number;
   project_id?: number | null;
@@ -89,13 +93,11 @@ export interface TogglApiV9TimeEntry {
   tid?: number | null;
 }
 
-// =====================================================
-// Database Table Types (toggl スキーマ)
-// =====================================================
+// =============================================================================
+// Database Table Types (toggl schema)
+// =============================================================================
 
-/**
- * toggl.clients テーブル
- */
+/** toggl.clients テーブル */
 export interface DbClient {
   id: number;
   workspace_id: number;
@@ -104,9 +106,7 @@ export interface DbClient {
   created_at: string;
 }
 
-/**
- * toggl.projects テーブル
- */
+/** toggl.projects テーブル */
 export interface DbProject {
   id: number;
   workspace_id: number;
@@ -133,9 +133,7 @@ export interface DbProject {
   start_date: string | null;
 }
 
-/**
- * toggl.tags テーブル
- */
+/** toggl.tags テーブル */
 export interface DbTag {
   id: number;
   workspace_id: number;
@@ -143,9 +141,7 @@ export interface DbTag {
   created_at: string;
 }
 
-/**
- * toggl.entries テーブル
- */
+/** toggl.entries テーブル */
 export interface DbEntry {
   id: number;
   workspace_id: number;
@@ -163,10 +159,29 @@ export interface DbEntry {
   updated_at: string | null;
 }
 
-// =====================================================
-// Sync Result Types
-// =====================================================
+// =============================================================================
+// Fetch Options & Data Types
+// =============================================================================
 
+/** データ取得オプション */
+export interface FetchOptions {
+  startDate?: Date;
+  endDate?: Date;
+}
+
+/** 取得データ（fetch_data.ts の出力） */
+export interface TogglData {
+  clients: TogglApiClient[];
+  projects: TogglApiProject[];
+  tags: TogglApiTag[];
+  entries: TogglApiTimeEntry[];
+}
+
+// =============================================================================
+// Sync Result Types
+// =============================================================================
+
+/** 同期統計 */
 export interface SyncStats {
   clients: number;
   projects: number;
@@ -174,10 +189,24 @@ export interface SyncStats {
   entries: number;
 }
 
+/** 同期結果 */
 export interface SyncResult {
   success: boolean;
   timestamp: string;
   stats: SyncStats;
   elapsedSeconds: number;
-  error?: string;
+  errors: string[];
 }
+
+// =============================================================================
+// Type Aliases (後方互換性のため)
+// =============================================================================
+
+/** @deprecated Use TogglApiClient instead */
+export type TogglApiV9Client = TogglApiClient;
+/** @deprecated Use TogglApiProject instead */
+export type TogglApiV9Project = TogglApiProject;
+/** @deprecated Use TogglApiTag instead */
+export type TogglApiV9Tag = TogglApiTag;
+/** @deprecated Use TogglApiTimeEntry instead */
+export type TogglApiV9TimeEntry = TogglApiTimeEntry;

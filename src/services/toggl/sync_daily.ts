@@ -1,75 +1,55 @@
-// sync_daily.ts - Togglデータの日次同期
+/**
+ * Toggl Track → Supabase 日次同期
+ *
+ * 使用例:
+ *   deno run --allow-env --allow-net --allow-read sync_daily.ts
+ *   TOGGL_SYNC_DAYS=7 deno run --allow-env --allow-net --allow-read sync_daily.ts
+ */
 
-import "https://deno.land/std@0.203.0/dotenv/load.ts";
-import { fetchAllData } from "./api.ts";
+import "jsr:@std/dotenv/load";
+import * as log from "../../utils/log.ts";
+import { fetchTogglData } from "./fetch_data.ts";
 import {
-  createTogglClient,
+  createTogglDbClient,
   upsertMetadata,
   upsertEntries,
 } from "./write_db.ts";
-import type { SyncResult, SyncStats } from "./types.ts";
+import type { SyncResult } from "./types.ts";
 
-// --- Logging utilities ---
+// =============================================================================
+// Constants
+// =============================================================================
 
-/**
- * JST形式の日時文字列を生成（YYYY-MM-DD HH:mm:ss）
- */
-function formatDateTime(): string {
-  const now = new Date();
-  const jst = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
+const DEFAULT_SYNC_DAYS = 3;
 
-  const year = jst.getFullYear();
-  const month = String(jst.getMonth() + 1).padStart(2, "0");
-  const day = String(jst.getDate()).padStart(2, "0");
-  const hours = String(jst.getHours()).padStart(2, "0");
-  const minutes = String(jst.getMinutes()).padStart(2, "0");
-  const seconds = String(jst.getSeconds()).padStart(2, "0");
-
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-}
-
-function logInfo(message: string) {
-  console.log(`${"[INFO]".padEnd(9)} ${formatDateTime()} - ${message}`);
-}
-
-function logSuccess(message: string) {
-  console.log(`${"[SUCCESS]".padEnd(9)} ${formatDateTime()} - ${message}`);
-}
-
-function logError(message: string, error?: unknown) {
-  console.error(`${"[ERROR]".padEnd(9)} ${formatDateTime()} - ${message}`);
-  if (error) {
-    console.error(error);
-  }
-}
-
-// --- Main sync function ---
+// =============================================================================
+// Sync Function
+// =============================================================================
 
 /**
- * TogglデータをSupabaseに同期
- * @param days 同期する日数（デフォルト: 3）
+ * Toggl データを Supabase に同期
+ * @param syncDays 同期する日数（デフォルト: 3）
  */
-export async function syncTogglByDays(days: number = 3): Promise<SyncResult> {
+export async function syncTogglByDays(syncDays?: number): Promise<SyncResult> {
   const startTime = Date.now();
-  const timestamp = new Date().toISOString();
+  const days = syncDays ??
+    parseInt(Deno.env.get("TOGGL_SYNC_DAYS") || String(DEFAULT_SYNC_DAYS));
+  const errors: string[] = [];
 
-  logInfo("=== Starting Toggl to Supabase sync ===");
+  log.syncStart("Toggl", days);
 
   try {
-    // Step 1: Fetch all data from Toggl
-    logInfo(`Step 1: Fetching data from Toggl API (last ${days} day(s))...`);
-    const data = await fetchAllData(days);
+    // Step 1: データ取得
+    log.section("Fetching from Toggl API");
+    const data = await fetchTogglData(days);
+    log.info(`Clients: ${data.clients.length}`);
+    log.info(`Projects: ${data.projects.length}`);
+    log.info(`Tags: ${data.tags.length}`);
+    log.info(`Entries: ${data.entries.length}`);
 
-    logSuccess(
-      `Fetched: ${data.clients.length} clients, ${data.projects.length} projects, ` +
-      `${data.tags.length} tags, ${data.entries.length} entries`
-    );
-
-    // Step 2: Create Supabase client
-    const toggl = createTogglClient();
-
-    // Step 3: Sync metadata (parallel)
-    logInfo("Step 2: Syncing metadata to Supabase...");
+    // Step 2: メタデータ同期（並列）
+    log.section("Saving metadata to DB");
+    const toggl = createTogglDbClient();
     const metadataStats = await upsertMetadata(
       toggl,
       data.clients,
@@ -77,65 +57,75 @@ export async function syncTogglByDays(days: number = 3): Promise<SyncResult> {
       data.tags
     );
 
-    logSuccess(
-      `Metadata synced: ${metadataStats.clients} clients, ` +
-      `${metadataStats.projects} projects, ${metadataStats.tags} tags`
-    );
+    if (metadataStats.clients.failed > 0) {
+      errors.push(`clients: ${metadataStats.clients.failed} failed`);
+    }
+    if (metadataStats.projects.failed > 0) {
+      errors.push(`projects: ${metadataStats.projects.failed} failed`);
+    }
+    if (metadataStats.tags.failed > 0) {
+      errors.push(`tags: ${metadataStats.tags.failed} failed`);
+    }
 
-    // Step 4: Sync entries (after metadata due to foreign key constraints)
-    logInfo("Step 3: Syncing entries to Supabase...");
-    const entriesCount = await upsertEntries(toggl, data.entries);
+    // Step 3: エントリー同期（外部キー制約のためメタデータ後）
+    log.section("Saving entries to DB");
+    const entriesResult = await upsertEntries(toggl, data.entries);
 
-    logSuccess(`Entries synced: ${entriesCount} entries`);
+    if (entriesResult.failed > 0) {
+      errors.push(`entries: ${entriesResult.failed} failed`);
+    }
 
-    // Summary
+    // 結果集計
     const elapsedSeconds = (Date.now() - startTime) / 1000;
-    const stats: SyncStats = {
-      clients: metadataStats.clients,
-      projects: metadataStats.projects,
-      tags: metadataStats.tags,
-      entries: entriesCount,
-    };
 
-    logSuccess(`=== Sync completed in ${elapsedSeconds.toFixed(2)}s ===`);
-    logSuccess(
-      `Summary: ${stats.clients} clients, ${stats.projects} projects, ` +
-      `${stats.tags} tags, ${stats.entries} entries`
-    );
-
-    return {
-      success: true,
-      timestamp,
-      stats,
+    const result: SyncResult = {
+      success: errors.length === 0,
+      timestamp: new Date().toISOString(),
+      stats: {
+        clients: metadataStats.clients.success,
+        projects: metadataStats.projects.success,
+        tags: metadataStats.tags.success,
+        entries: entriesResult.success,
+      },
+      errors,
       elapsedSeconds,
     };
 
-  } catch (error) {
-    const elapsedSeconds = (Date.now() - startTime) / 1000;
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    // サマリー表示
+    log.syncEnd(result.success, elapsedSeconds);
+    log.info(`Clients: ${result.stats.clients}`);
+    log.info(`Projects: ${result.stats.projects}`);
+    log.info(`Tags: ${result.stats.tags}`);
+    log.info(`Entries: ${result.stats.entries}`);
+    if (errors.length > 0) {
+      log.warn(`Errors: ${errors.join(", ")}`);
+    }
 
-    logError("Sync failed", error);
+    return result;
+
+  } catch (err) {
+    const elapsedSeconds = (Date.now() - startTime) / 1000;
+    const message = err instanceof Error ? err.message : String(err);
+    errors.push(message);
+    log.error(message);
+
+    log.syncEnd(false, elapsedSeconds);
 
     return {
       success: false,
-      timestamp,
+      timestamp: new Date().toISOString(),
       stats: { clients: 0, projects: 0, tags: 0, entries: 0 },
+      errors,
       elapsedSeconds,
-      error: errorMessage,
     };
   }
 }
 
-// --- CLI execution ---
+// =============================================================================
+// CLI Entry Point
+// =============================================================================
 
 if (import.meta.main) {
-  const syncDays = parseInt(Deno.env.get("TOGGL_SYNC_DAYS") || "1", 10);
-
-  try {
-    const result = await syncTogglByDays(syncDays);
-    Deno.exit(result.success ? 0 : 1);
-  } catch (error) {
-    logError("Fatal error", error);
-    Deno.exit(1);
-  }
+  const result = await syncTogglByDays();
+  Deno.exit(result.success ? 0 : 1);
 }

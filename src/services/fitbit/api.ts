@@ -1,23 +1,27 @@
-// api.ts
-// Fitbit Web API クライアント
-
+/**
+ * Fitbit Web API クライアント
+ */
 import type {
-  ActivityDailySummary,
-  AzmApiResponse,
-  BreathingRateApiResponse,
-  CardioScoreApiResponse,
-  HeartRateTimeSeriesResponse,
-  HrvApiResponse,
-  SleepApiResponse,
-  Spo2ApiResponse,
-  TemperatureSkinApiResponse,
+  FitbitApiActivityDailySummary,
+  FitbitApiAzmResponse,
+  FitbitApiBreathingRateResponse,
+  FitbitApiCardioScoreResponse,
+  FitbitApiHeartRateTimeSeriesResponse,
+  FitbitApiHrvResponse,
+  FitbitApiSleepResponse,
+  FitbitApiSpo2Response,
+  FitbitApiTemperatureSkinResponse,
 } from "./types.ts";
 
-// ========== 定数 ==========
+// =============================================================================
+// Constants
+// =============================================================================
 
 const BASE_URL = "https://api.fitbit.com";
 
-// ========== ヘルパー関数 ==========
+// =============================================================================
+// Helper Functions
+// =============================================================================
 
 /**
  * DateをFitbit API形式（YYYY-MM-DD）に変換
@@ -33,7 +37,9 @@ export function parseFitbitDate(dateStr: string): Date {
   return new Date(dateStr + "T00:00:00Z");
 }
 
-// ========== API クライアント ==========
+// =============================================================================
+// API Client
+// =============================================================================
 
 export class FitbitAPI {
   private accessToken: string;
@@ -67,7 +73,9 @@ export class FitbitAPI {
     return await response.json();
   }
 
-  // ========== Sleep API ==========
+  // ===========================================================================
+  // Sleep API
+  // ===========================================================================
 
   /**
    * 睡眠データ取得（日付範囲）
@@ -76,7 +84,7 @@ export class FitbitAPI {
   async getSleepByDateRange(
     startDate: Date,
     endDate: Date,
-  ): Promise<SleepApiResponse> {
+  ): Promise<FitbitApiSleepResponse> {
     const start = formatFitbitDate(startDate);
     const end = formatFitbitDate(endDate);
     return this.request(`/1.2/user/-/sleep/date/${start}/${end}.json`);
@@ -85,22 +93,26 @@ export class FitbitAPI {
   /**
    * 睡眠データ取得（単日）
    */
-  async getSleepByDate(date: Date): Promise<SleepApiResponse> {
+  async getSleepByDate(date: Date): Promise<FitbitApiSleepResponse> {
     const dateStr = formatFitbitDate(date);
     return this.request(`/1.2/user/-/sleep/date/${dateStr}.json`);
   }
 
-  // ========== Activity API ==========
+  // ===========================================================================
+  // Activity API
+  // ===========================================================================
 
   /**
    * 日次活動サマリー取得
    */
-  async getActivityDailySummary(date: Date): Promise<ActivityDailySummary> {
+  async getActivityDailySummary(date: Date): Promise<FitbitApiActivityDailySummary> {
     const dateStr = formatFitbitDate(date);
     return this.request(`/1/user/-/activities/date/${dateStr}.json`);
   }
 
-  // ========== Heart Rate API ==========
+  // ===========================================================================
+  // Heart Rate API
+  // ===========================================================================
 
   /**
    * 心拍数Time Series取得（日付範囲）
@@ -108,7 +120,7 @@ export class FitbitAPI {
   async getHeartRateByDateRange(
     startDate: Date,
     endDate: Date,
-  ): Promise<HeartRateTimeSeriesResponse> {
+  ): Promise<FitbitApiHeartRateTimeSeriesResponse> {
     const start = formatFitbitDate(startDate);
     const end = formatFitbitDate(endDate);
     return this.request(
@@ -119,14 +131,16 @@ export class FitbitAPI {
   /**
    * 心拍数Intraday取得（1日分、1分粒度）
    */
-  async getHeartRateIntraday(date: Date): Promise<HeartRateTimeSeriesResponse> {
+  async getHeartRateIntraday(date: Date): Promise<FitbitApiHeartRateTimeSeriesResponse> {
     const dateStr = formatFitbitDate(date);
     return this.request(
       `/1/user/-/activities/heart/date/${dateStr}/1d/1min.json`,
     );
   }
 
-  // ========== HRV API ==========
+  // ===========================================================================
+  // HRV API
+  // ===========================================================================
 
   /**
    * HRV日次サマリー取得（日付範囲）
@@ -134,7 +148,7 @@ export class FitbitAPI {
   async getHrvByDateRange(
     startDate: Date,
     endDate: Date,
-  ): Promise<HrvApiResponse> {
+  ): Promise<FitbitApiHrvResponse> {
     const start = formatFitbitDate(startDate);
     const end = formatFitbitDate(endDate);
     return this.request(`/1/user/-/hrv/date/${start}/${end}.json`);
@@ -143,17 +157,19 @@ export class FitbitAPI {
   /**
    * HRV Intraday取得（1日分）
    */
-  async getHrvIntraday(date: Date): Promise<HrvApiResponse> {
+  async getHrvIntraday(date: Date): Promise<FitbitApiHrvResponse> {
     const dateStr = formatFitbitDate(date);
     return this.request(`/1/user/-/hrv/date/${dateStr}/all.json`);
   }
 
-  // ========== SpO2 API ==========
+  // ===========================================================================
+  // SpO2 API
+  // ===========================================================================
 
   /**
    * SpO2日次サマリー取得（単日）
    */
-  async getSpo2ByDate(date: Date): Promise<Spo2ApiResponse> {
+  async getSpo2ByDate(date: Date): Promise<FitbitApiSpo2Response> {
     const dateStr = formatFitbitDate(date);
     return this.request(`/1/user/-/spo2/date/${dateStr}.json`);
   }
@@ -164,13 +180,15 @@ export class FitbitAPI {
   async getSpo2ByDateRange(
     startDate: Date,
     endDate: Date,
-  ): Promise<Spo2ApiResponse[]> {
+  ): Promise<FitbitApiSpo2Response[]> {
     const start = formatFitbitDate(startDate);
     const end = formatFitbitDate(endDate);
     return this.request(`/1/user/-/spo2/date/${start}/${end}.json`);
   }
 
-  // ========== Breathing Rate API ==========
+  // ===========================================================================
+  // Breathing Rate API
+  // ===========================================================================
 
   /**
    * 呼吸数日次サマリー取得（日付範囲）
@@ -178,13 +196,15 @@ export class FitbitAPI {
   async getBreathingRateByDateRange(
     startDate: Date,
     endDate: Date,
-  ): Promise<BreathingRateApiResponse> {
+  ): Promise<FitbitApiBreathingRateResponse> {
     const start = formatFitbitDate(startDate);
     const end = formatFitbitDate(endDate);
     return this.request(`/1/user/-/br/date/${start}/${end}.json`);
   }
 
-  // ========== Cardio Score (VO2 Max) API ==========
+  // ===========================================================================
+  // Cardio Score (VO2 Max) API
+  // ===========================================================================
 
   /**
    * VO2 Max日次サマリー取得（日付範囲）
@@ -192,13 +212,15 @@ export class FitbitAPI {
   async getCardioScoreByDateRange(
     startDate: Date,
     endDate: Date,
-  ): Promise<CardioScoreApiResponse> {
+  ): Promise<FitbitApiCardioScoreResponse> {
     const start = formatFitbitDate(startDate);
     const end = formatFitbitDate(endDate);
     return this.request(`/1/user/-/cardioscore/date/${start}/${end}.json`);
   }
 
-  // ========== Temperature API ==========
+  // ===========================================================================
+  // Temperature API
+  // ===========================================================================
 
   /**
    * 皮膚温度日次サマリー取得（日付範囲、最大30日）
@@ -206,13 +228,15 @@ export class FitbitAPI {
   async getTemperatureSkinByDateRange(
     startDate: Date,
     endDate: Date,
-  ): Promise<TemperatureSkinApiResponse> {
+  ): Promise<FitbitApiTemperatureSkinResponse> {
     const start = formatFitbitDate(startDate);
     const end = formatFitbitDate(endDate);
     return this.request(`/1/user/-/temp/skin/date/${start}/${end}.json`);
   }
 
-  // ========== Active Zone Minutes API ==========
+  // ===========================================================================
+  // Active Zone Minutes API
+  // ===========================================================================
 
   /**
    * AZM日次サマリー取得（日付範囲）
@@ -220,7 +244,7 @@ export class FitbitAPI {
   async getAzmByDateRange(
     startDate: Date,
     endDate: Date,
-  ): Promise<AzmApiResponse> {
+  ): Promise<FitbitApiAzmResponse> {
     const start = formatFitbitDate(startDate);
     const end = formatFitbitDate(endDate);
     return this.request(

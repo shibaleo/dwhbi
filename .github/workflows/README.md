@@ -7,13 +7,13 @@
 | ワークフロー | スケジュール | 説明 |
 |--------------|--------------|------|
 | `sync-all.yml` | 毎日 JST 00:00 | 全サービス並列同期（推奨） |
-| `sync-toggl.yml` | 毎日 JST 00:00 | Toggl タイムエントリ同期 |
-| `sync-tanita.yml` | 毎日 JST 00:00 | Tanita 体組成データ同期 |
-| `sync-zaim.yml` | 毎日 JST 00:00 | Zaim 収支データ同期 |
-| `sync-gcalendar.yml` | 毎日 JST 00:00 | Google Calendar イベント同期 |
-| `sync-fitbit.yml` | 毎日 JST 00:00 | Fitbit 健康データ同期 |
+| `sync-toggl.yml` | 手動のみ | Toggl タイムエントリ同期 |
+| `sync-tanita.yml` | 手動のみ | Tanita 体組成データ同期 |
+| `sync-zaim.yml` | 手動のみ | Zaim 収支データ同期 |
+| `sync-gcalendar.yml` | 手動のみ | Google Calendar イベント同期 |
+| `sync-fitbit.yml` | 手動のみ | Fitbit 健康データ同期 |
 
-> **Note**: `sync-all.yml` を使用する場合、個別のワークフローのスケジュール実行を無効化することを推奨します。
+> **Note**: 定期実行は `sync-all.yml` に統合されています。個別ワークフローは手動実行用です。
 
 ---
 
@@ -126,11 +126,8 @@ GitHubリポジトリで以下のSecretsを設定する必要があります：
 | ワークフロー | cron | UTC | JST |
 |--------------|------|-----|-----|
 | sync-all | `0 15 * * *` | 15:00 | 00:00 |
-| sync-toggl | `0 15 * * *` | 15:00 | 00:00 |
-| sync-tanita | `0 15 * * *` | 15:00 | 00:00 |
-| sync-zaim | `0 15 * * *` | 15:00 | 00:00 |
-| sync-gcalendar | `0 15 * * *` | 15:00 | 00:00 |
-| sync-fitbit | `0 15 * * *` | 15:00 | 00:00 |
+
+> **Note**: 個別ワークフローの定期実行は `sync-all.yml` に統合されました。
 
 ### その他のスケジュール例
 - `0 * * * *` - 毎時0分（1時間ごと）

@@ -14,7 +14,7 @@ import {
 // Constants
 // =============================================================================
 
-const CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3";
+const BASE_URL = "https://www.googleapis.com/calendar/v3";
 const MAX_RESULTS_PER_PAGE = 2500; // API最大値
 
 // =============================================================================
@@ -67,7 +67,7 @@ export async function fetchEvents(options: FetchEventsOptions): Promise<GCalApiE
       params.set("pageToken", pageToken);
     }
     
-    const url = `${CALENDAR_API_BASE}/calendars/${encodeURIComponent(calendarId)}/events?${params}`;
+    const url = `${BASE_URL}/calendars/${encodeURIComponent(calendarId)}/events?${params}`;
     
     const response = await authenticatedFetch(url);
     

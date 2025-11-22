@@ -1,152 +1,94 @@
 /**
- * Google Calendar → Supabase 同期オーケストレーター
- * 
- * 認証 → データ取得 → DB書き込み の一連のフローを実行
+ * Google Calendar → Supabase 日次同期
+ *
+ * 使用例:
+ *   deno run --allow-env --allow-net --allow-read sync_daily.ts
+ *   GCAL_SYNC_DAYS=7 deno run --allow-env --allow-net --allow-read sync_daily.ts
  */
 
-import "https://deno.land/std@0.203.0/dotenv/load.ts";
-import { fetchAllEvents, fetchEventsByDays } from "./fetch_events.ts";
-import { createGCalClient, upsertEvents } from "./write_db.ts";
-import { SyncOptions, SyncResult, SyncStats } from "./types.ts";
+import "jsr:@std/dotenv/load";
+import * as log from "../../utils/log.ts";
+import { fetchEventsByDays } from "./fetch_data.ts";
+import { createGCalendarDbClient, upsertEvents } from "./write_db.ts";
+import type { SyncResult } from "./types.ts";
 
 // =============================================================================
-// Logging Utilities
+// Constants
 // =============================================================================
 
-/**
- * JST形式で現在時刻を取得
- */
-function getJstTimestamp(): string {
-  return new Date().toLocaleString("ja-JP", {
-    timeZone: "Asia/Tokyo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }).replace(/\//g, "-");
-}
-
-/**
- * ログ出力
- */
-function log(level: string, message: string): void {
-  const timestamp = getJstTimestamp();
-  console.log(`${timestamp} [${level.padEnd(7)}] ${message}`);
-}
+const DEFAULT_SYNC_DAYS = 3;
 
 // =============================================================================
-// Sync Functions
+// Sync Function
 // =============================================================================
 
 /**
- * Google Calendar → Supabase 同期を実行
+ * Google Calendar データを Supabase に同期
+ * @param syncDays 同期する日数（デフォルト: 3）
  */
-export async function syncGCalToSupabase(options?: SyncOptions): Promise<SyncResult> {
+export async function syncGCalByDays(syncDays?: number): Promise<SyncResult> {
   const startTime = Date.now();
-  const timestamp = new Date().toISOString();
-  
-  log("INFO", "=== Google Calendar Sync Started ===");
-  
+  const days = syncDays ??
+    parseInt(Deno.env.get("GCAL_SYNC_DAYS") || String(DEFAULT_SYNC_DAYS));
+  const errors: string[] = [];
+
+  log.syncStart("Google Calendar", days);
+
   try {
     // Step 1: データ取得
-    log("INFO", "Step 1: Fetching events from Google Calendar...");
-    const { events } = await fetchAllEvents(options);
-    log("SUCCESS", `Fetched ${events.length} events`);
-    
-    // Step 2: DB書き込み
-    log("INFO", "Step 2: Upserting events to Supabase...");
-    const client = createGCalClient();
-    const upsertedCount = await upsertEvents(client, events);
-    log("SUCCESS", `Upserted ${upsertedCount} events`);
-    
-    // 統計
-    const stats: SyncStats = {
-      fetched: events.length,
-      upserted: upsertedCount,
-      skipped: events.length - upsertedCount,
-    };
-    
-    const elapsedSeconds = (Date.now() - startTime) / 1000;
-    
-    log("INFO", `=== Sync Completed in ${elapsedSeconds.toFixed(2)}s ===`);
-    
-    return {
-      success: true,
-      timestamp,
-      stats,
-      elapsedSeconds,
-    };
-    
-  } catch (error) {
-    const elapsedSeconds = (Date.now() - startTime) / 1000;
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    
-    log("ERROR", `Sync failed: ${errorMessage}`);
-    
-    return {
-      success: false,
-      timestamp,
-      stats: { fetched: 0, upserted: 0, skipped: 0 },
-      elapsedSeconds,
-      error: errorMessage,
-    };
-  }
-}
-
-/**
- * 日数指定で同期を実行（他サービスとの統一インターフェース）
- * @param days 同期する日数（デフォルト: 3）
- */
-export async function syncGCalByDays(days: number = 3): Promise<SyncResult> {
-  const startTime = Date.now();
-  const timestamp = new Date().toISOString();
-  
-  log("INFO", `=== Google Calendar Sync Started (last ${days} days) ===`);
-  
-  try {
-    // Step 1: データ取得
-    log("INFO", "Step 1: Fetching events from Google Calendar...");
+    log.section("Fetching from Google Calendar API");
     const { events } = await fetchEventsByDays(days);
-    log("SUCCESS", `Fetched ${events.length} events`);
-    
+    log.info(`Fetched: ${events.length} events`);
+
     // Step 2: DB書き込み
-    log("INFO", "Step 2: Upserting events to Supabase...");
-    const client = createGCalClient();
-    const upsertedCount = await upsertEvents(client, events);
-    log("SUCCESS", `Upserted ${upsertedCount} events`);
-    
-    // 統計
-    const stats: SyncStats = {
-      fetched: events.length,
-      upserted: upsertedCount,
-      skipped: events.length - upsertedCount,
-    };
-    
+    log.section("Saving to DB");
+    const client = createGCalendarDbClient();
+    const result = await upsertEvents(client, events);
+
+    if (result.failed > 0) {
+      errors.push(`events: ${result.failed} failed`);
+    }
+
+    // 結果集計
     const elapsedSeconds = (Date.now() - startTime) / 1000;
-    
-    log("INFO", `=== Sync Completed in ${elapsedSeconds.toFixed(2)}s ===`);
-    
-    return {
-      success: true,
-      timestamp,
-      stats,
+
+    const syncResult: SyncResult = {
+      success: errors.length === 0,
+      timestamp: new Date().toISOString(),
+      stats: {
+        fetched: events.length,
+        upserted: result.success,
+        skipped: events.length - result.success,
+      },
+      errors,
       elapsedSeconds,
     };
-    
-  } catch (error) {
+
+    // サマリー表示
+    log.syncEnd(syncResult.success, elapsedSeconds);
+    log.info(`Fetched: ${syncResult.stats.fetched}`);
+    log.info(`Upserted: ${syncResult.stats.upserted}`);
+    log.info(`Skipped: ${syncResult.stats.skipped}`);
+    if (errors.length > 0) {
+      log.warn(`Errors: ${errors.join(", ")}`);
+    }
+
+    return syncResult;
+
+  } catch (err) {
     const elapsedSeconds = (Date.now() - startTime) / 1000;
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    
-    log("ERROR", `Sync failed: ${errorMessage}`);
-    
+    const message = err instanceof Error ? err.message : String(err);
+    errors.push(message);
+    log.error(message);
+
+    log.syncEnd(false, elapsedSeconds);
+
     return {
       success: false,
-      timestamp,
+      timestamp: new Date().toISOString(),
       stats: { fetched: 0, upserted: 0, skipped: 0 },
+      errors,
       elapsedSeconds,
-      error: errorMessage,
     };
   }
 }
@@ -156,20 +98,6 @@ export async function syncGCalByDays(days: number = 3): Promise<SyncResult> {
 // =============================================================================
 
 if (import.meta.main) {
-  // 環境変数から同期日数を取得（デフォルト: 3日）
-  const syncDaysEnv = Deno.env.get("GCAL_SYNC_DAYS");
-  const syncDays = syncDaysEnv ? parseInt(syncDaysEnv, 10) : 3;
-  
-  if (isNaN(syncDays) || syncDays <= 0) {
-    console.error("Invalid GCAL_SYNC_DAYS value. Must be a positive integer.");
-    Deno.exit(1);
-  }
-  
-  const result = await syncGCalByDays(syncDays);
-  
-  // 結果出力
-  console.log("\n" + JSON.stringify(result, null, 2));
-  
-  // 終了コード
+  const result = await syncGCalByDays();
   Deno.exit(result.success ? 0 : 1);
 }

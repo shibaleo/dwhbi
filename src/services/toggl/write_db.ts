@@ -1,6 +1,11 @@
-// write_db.ts - Supabase togglスキーマへの書き込み
+/**
+ * Toggl Track Supabase DB 書き込み
+ *
+ * toggl スキーマへのデータ変換と upsert 処理
+ */
 
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
+import * as log from "../../utils/log.ts";
 import type {
   TogglApiV9Client,
   TogglApiV9Project,
@@ -12,26 +17,47 @@ import type {
   DbEntry,
 } from "./types.ts";
 
-// --- Supabase client ---
+// =============================================================================
+// Types
+// =============================================================================
 
+/** toggl スキーマ用クライアント型 */
 export type TogglSchema = ReturnType<SupabaseClient["schema"]>;
 
+/** upsert 結果 */
+export interface UpsertResult {
+  success: number;
+  failed: number;
+}
+
+// =============================================================================
+// Constants
+// =============================================================================
+
+const BATCH_SIZE = 1000;
+
+// =============================================================================
+// Client Factory
+// =============================================================================
+
 /**
- * togglスキーマ専用のSupabaseクライアントを作成
+ * toggl スキーマ専用の Supabase クライアントを作成
  */
-export function createTogglClient(): TogglSchema {
+export function createTogglDbClient(): TogglSchema {
   const url = Deno.env.get("SUPABASE_URL")?.trim();
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim();
 
   if (!url || !key) {
-    throw new Error("SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set");
+    throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set");
   }
 
   const supabase = createClient(url, key);
   return supabase.schema("toggl");
 }
 
-// --- Transformation functions ---
+// =============================================================================
+// Transform Functions: API → DB Record
+// =============================================================================
 
 /**
  * API Client → DB Client
@@ -94,7 +120,6 @@ export function toDbTag(tag: TogglApiV9Tag): DbTag {
  * @returns null if entry is still running (negative duration)
  */
 export function toDbEntry(entry: TogglApiV9TimeEntry): DbEntry | null {
-  // 実行中エントリー（duration < 0）はスキップ
   if (entry.duration < 0) {
     return null;
   }
@@ -107,149 +132,155 @@ export function toDbEntry(entry: TogglApiV9TimeEntry): DbEntry | null {
     user_id: entry.user_id,
     description: entry.description ?? null,
     start: entry.start,
-    end: entry.stop ?? entry.start, // stopがない場合はstartと同じ
-    duration_ms: entry.duration * 1000, // 秒 → ミリ秒
+    end: entry.stop ?? entry.start,
+    duration_ms: entry.duration * 1000,
     is_billable: entry.billable,
-    billable_amount: null, // API v9では提供されない
+    billable_amount: null,
     currency: null,
     tags: entry.tags ?? [],
     updated_at: entry.at,
   };
 }
 
-// --- Batch upsert functions ---
-
-const BATCH_SIZE = 1000;
+// =============================================================================
+// Batch Upsert
+// =============================================================================
 
 /**
- * クライアントをupsert
+ * バッチ upsert
+ */
+async function upsertBatch<T extends object>(
+  toggl: TogglSchema,
+  table: string,
+  records: T[],
+  onConflict: string,
+): Promise<UpsertResult> {
+  if (records.length === 0) {
+    return { success: 0, failed: 0 };
+  }
+
+  let success = 0;
+  let failed = 0;
+
+  for (let i = 0; i < records.length; i += BATCH_SIZE) {
+    const batch = records.slice(i, i + BATCH_SIZE);
+
+    const { error } = await toggl
+      .from(table)
+      .upsert(batch, { onConflict });
+
+    if (error) {
+      log.error(`${table} batch ${Math.floor(i / BATCH_SIZE) + 1}: ${error.message}`);
+      failed += batch.length;
+    } else {
+      success += batch.length;
+    }
+  }
+
+  return { success, failed };
+}
+
+// =============================================================================
+// Upsert Functions
+// =============================================================================
+
+/**
+ * クライアントを upsert
  */
 export async function upsertClients(
   toggl: TogglSchema,
-  clients: TogglApiV9Client[]
-): Promise<number> {
-  if (clients.length === 0) return 0;
-
+  clients: TogglApiV9Client[],
+): Promise<UpsertResult> {
   const records = clients.map(toDbClient);
+  log.info(`Saving clients... (${records.length} records)`);
 
-  for (let i = 0; i < records.length; i += BATCH_SIZE) {
-    const batch = records.slice(i, i + BATCH_SIZE);
+  const result = await upsertBatch(toggl, "clients", records, "id");
 
-    const { error } = await toggl
-      .from("clients")
-      .upsert(batch, { onConflict: "id" });
+  if (result.success > 0) log.success(`${result.success} records saved`);
+  if (result.failed > 0) log.error(`${result.failed} records failed`);
 
-    if (error) {
-      throw new Error(`Failed to upsert clients: ${error.message}`);
-    }
-  }
-
-  return records.length;
+  return result;
 }
 
 /**
- * プロジェクトをupsert
+ * プロジェクトを upsert
  */
 export async function upsertProjects(
   toggl: TogglSchema,
-  projects: TogglApiV9Project[]
-): Promise<number> {
-  if (projects.length === 0) return 0;
-
+  projects: TogglApiV9Project[],
+): Promise<UpsertResult> {
   const records = projects.map(toDbProject);
+  log.info(`Saving projects... (${records.length} records)`);
 
-  for (let i = 0; i < records.length; i += BATCH_SIZE) {
-    const batch = records.slice(i, i + BATCH_SIZE);
+  const result = await upsertBatch(toggl, "projects", records, "id");
 
-    const { error } = await toggl
-      .from("projects")
-      .upsert(batch, { onConflict: "id" });
+  if (result.success > 0) log.success(`${result.success} records saved`);
+  if (result.failed > 0) log.error(`${result.failed} records failed`);
 
-    if (error) {
-      throw new Error(`Failed to upsert projects: ${error.message}`);
-    }
-  }
-
-  return records.length;
+  return result;
 }
 
 /**
- * タグをupsert
+ * タグを upsert
  */
 export async function upsertTags(
   toggl: TogglSchema,
-  tags: TogglApiV9Tag[]
-): Promise<number> {
-  if (tags.length === 0) return 0;
-
+  tags: TogglApiV9Tag[],
+): Promise<UpsertResult> {
   const records = tags.map(toDbTag);
+  log.info(`Saving tags... (${records.length} records)`);
 
-  for (let i = 0; i < records.length; i += BATCH_SIZE) {
-    const batch = records.slice(i, i + BATCH_SIZE);
+  const result = await upsertBatch(toggl, "tags", records, "id");
 
-    const { error } = await toggl
-      .from("tags")
-      .upsert(batch, { onConflict: "id" });
+  if (result.success > 0) log.success(`${result.success} records saved`);
+  if (result.failed > 0) log.error(`${result.failed} records failed`);
 
-    if (error) {
-      throw new Error(`Failed to upsert tags: ${error.message}`);
-    }
-  }
-
-  return records.length;
+  return result;
 }
 
 /**
- * エントリーをupsert
+ * エントリーを upsert
  */
 export async function upsertEntries(
   toggl: TogglSchema,
-  entries: TogglApiV9TimeEntry[]
-): Promise<number> {
-  if (entries.length === 0) return 0;
-
-  // 実行中エントリーを除外
+  entries: TogglApiV9TimeEntry[],
+): Promise<UpsertResult> {
   const records = entries
     .map(toDbEntry)
     .filter((entry): entry is DbEntry => entry !== null);
 
-  if (records.length === 0) return 0;
+  log.info(`Saving entries... (${records.length} records)`);
 
-  for (let i = 0; i < records.length; i += BATCH_SIZE) {
-    const batch = records.slice(i, i + BATCH_SIZE);
+  const result = await upsertBatch(toggl, "entries", records, "id");
 
-    const { error } = await toggl
-      .from("entries")
-      .upsert(batch, { onConflict: "id" });
+  if (result.success > 0) log.success(`${result.success} records saved`);
+  if (result.failed > 0) log.error(`${result.failed} records failed`);
 
-    if (error) {
-      throw new Error(`Failed to upsert entries: ${error.message}`);
-    }
-  }
-
-  return records.length;
+  return result;
 }
 
-// --- High-level helpers ---
+// =============================================================================
+// High-level Helpers
+// =============================================================================
 
 /**
- * メタデータ（clients, projects, tags）を並列upsert
+ * メタデータ（clients, projects, tags）を並列 upsert
  */
 export async function upsertMetadata(
   toggl: TogglSchema,
   clients: TogglApiV9Client[],
   projects: TogglApiV9Project[],
-  tags: TogglApiV9Tag[]
-): Promise<{ clients: number; projects: number; tags: number }> {
-  const [clientsCount, projectsCount, tagsCount] = await Promise.all([
+  tags: TogglApiV9Tag[],
+): Promise<{ clients: UpsertResult; projects: UpsertResult; tags: UpsertResult }> {
+  const [clientsResult, projectsResult, tagsResult] = await Promise.all([
     upsertClients(toggl, clients),
     upsertProjects(toggl, projects),
     upsertTags(toggl, tags),
   ]);
 
   return {
-    clients: clientsCount,
-    projects: projectsCount,
-    tags: tagsCount,
+    clients: clientsResult,
+    projects: projectsResult,
+    tags: tagsResult,
   };
 }

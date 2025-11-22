@@ -1,98 +1,91 @@
 # Toggl テスト
 
-## テスト方針
-
-個人プロジェクトにおける工数対効果を考慮し、以下の方針でテストを構成しています。
-
-### テスト対象の選定基準
-
-| 種類 | 対象 | 採用 | 理由 |
-|------|------|------|------|
-| 単体テスト | 純粋関数（入力→出力が決定的） | ✅ | 回帰検知に有効、実装コスト低 |
-| 統合テスト | 複数モジュールの連携 | ❌ | モック作成の工数が大きい |
-| 手動確認スクリプト | 外部API・DB連携 | ✅ | 実環境での動作確認に実用的 |
-
-### モジュール別テスト適用
-
-| ファイル | 単体テスト | 手動確認 | 理由 |
-|----------|-----------|----------|------|
-| `types.ts` | - | - | 型定義のみ |
-| `client.ts` | ❌ | ✅ | 外部API依存 |
-| `api.ts` | ❌ | ✅ | 外部API依存 |
-| `write_db.ts` | ✅ | - | `toDb*`変換関数は純粋関数 |
-| `sync_daily.ts` | ❌ | ✅ | オーケストレーター |
-
----
-
 ## ディレクトリ構成
 
 ```
 test/toggl/
 ├── README.md              # このファイル
-├── write_db.test.ts       # 変換関数の単体テスト
-└── manual/
-    ├── check_api.ts       # API疎通確認
-    └── check_sync.ts      # 同期動作確認（少量データ）
+├── api.test.ts            # formatDate, getDateRange
+├── write_db.test.ts       # toDb* 変換関数（4種類）
+├── check_api.ts           # API疎通確認
+└── check_sync.ts          # 同期確認（⚠️ DB書き込みあり）
 ```
 
----
+## 単体テスト（`*.test.ts`）
 
-## 単体テスト
-
-### 実行方法
+環境変数不要で実行可能。
 
 ```bash
-deno test --allow-env test/toggl/write_db.test.ts
+# deno task を使用（推奨）
+deno task test:toggl
+
+# または直接実行
+deno test test/toggl/ --allow-env --allow-read
 ```
 
-### テスト対象
+### テスト件数
 
-`write_db.ts` の変換関数：
-
-- `toDbClient()` - TogglApiV9Client → DbClient
-- `toDbProject()` - TogglApiV9Project → DbProject
-- `toDbTag()` - TogglApiV9Tag → DbTag
-- `toDbEntry()` - TogglApiV9TimeEntry → DbEntry | null
+| ファイル | 件数 | 対象 |
+|----------|------|------|
+| `api.test.ts` | 11件 | `formatDate`, `getDateRange` |
+| `write_db.test.ts` | 13件 | `toDbClient`, `toDbProject`, `toDbTag`, `toDbEntry` |
+| **合計** | **24件** | |
 
 ### テスト観点
 
+#### api.test.ts
+- `formatDate`: Date → YYYY-MM-DD 変換
+- `getDateRange`: 日付範囲計算（月またぎ、年またぎ）
+
+#### write_db.test.ts
+- 4種類のデータ変換関数
 - 必須フィールドの変換
-- オプショナルフィールドの null 変換
+- オプショナルフィールドの null/デフォルト変換
 - duration 秒 → ミリ秒変換
 - 実行中エントリー（duration < 0）のスキップ
-- stop 未設定時の end フィールド処理
 
----
+## 手動確認スクリプト（`check_*.ts`）
 
-## 手動確認スクリプト
+実環境のAPI・DBに接続するため、環境変数が必要。
 
-### check_api.ts
+### 必要な環境変数
 
-Toggl APIへの疎通確認。認証情報が正しく設定されているか、APIが応答するかを確認します。
-
-```bash
-deno run --allow-env --allow-net --allow-read test/toggl/manual/check_api.ts
+```
+TOGGL_API_TOKEN=xxxxx
+TOGGL_WORKSPACE_ID=xxxxx
+SUPABASE_URL=https://xxxxx.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=xxxxx
 ```
 
-### check_sync.ts
-
-少量データでの同期動作確認。直近1日分のデータを取得し、DBへの書き込みをテストします。
+### 推奨実行順序
 
 ```bash
-deno run --allow-env --allow-net --allow-read test/toggl/manual/check_sync.ts
+# 1. API疎通確認
+deno run --allow-env --allow-net --allow-read test/toggl/check_api.ts
+
+# 2. 同期確認（⚠️ DB書き込みあり）
+deno run --allow-env --allow-net --allow-read test/toggl/check_sync.ts
 ```
 
----
+## レート制限
 
-## 環境変数
+- Toggl API: 時間あたりの呼び出し制限あり
+- 無料プランではリセットまで300秒（5分）待機が必要
 
-テスト実行には以下の環境変数が必要です（`.env` または環境変数で設定）：
+## トラブルシューティング
 
-| 変数名 | 用途 |
-|--------|------|
-| `TOGGL_API_TOKEN` | 手動確認スクリプト |
-| `TOGGL_WORKSPACE_ID` | 手動確認スクリプト |
-| `SUPABASE_URL` | check_sync.ts |
-| `SUPABASE_SERVICE_ROLE_KEY` | check_sync.ts |
+### レート制限
 
-単体テスト（write_db.test.ts）は環境変数不要で実行可能です。
+```
+❌ エラー: 402 Payment Required
+```
+
+→ 5分待つか、翌日に再実行。
+
+### 認証エラー
+
+```
+❌ エラー: 403 Forbidden
+```
+
+→ TOGGL_API_TOKEN が正しいか確認。

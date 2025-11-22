@@ -1,14 +1,18 @@
-// zaim/oauth.ts
-
+/**
+ * Zaim OAuth 1.0a 認証クライアント
+ *
+ * OAuth 1.0a 署名付きリクエストを生成するクラス。
+ * トークンは環境変数から取得（リフレッシュ不要）。
+ */
 import OAuth from "npm:oauth-1.0a@2.2.6";
 import { createHmac } from "node:crypto";
-import type { OAuthConfig } from "./types.ts";
+import type { OAuth1Credentials } from "./types.ts";
 
 export class ZaimOAuth {
   private oauth: OAuth;
   private token: { key: string; secret: string };
 
-  constructor(config: OAuthConfig) {
+  constructor(config: OAuth1Credentials) {
     this.oauth = new OAuth({
       consumer: {
         key: config.consumerKey,
@@ -26,7 +30,7 @@ export class ZaimOAuth {
     };
   }
 
-  async get(url: string): Promise<any> {
+  async get(url: string): Promise<unknown> {
     const authHeader = this.oauth.toHeader(
       this.oauth.authorize({ url, method: "GET" }, this.token)
     );
@@ -45,7 +49,7 @@ export class ZaimOAuth {
     return response.json();
   }
 
-  async post(url: string, body: Record<string, any>): Promise<any> {
+  async post(url: string, body: Record<string, unknown>): Promise<unknown> {
     const authHeader = this.oauth.toHeader(
       this.oauth.authorize({ url, method: "POST" }, this.token)
     );

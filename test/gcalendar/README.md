@@ -1,111 +1,102 @@
 # Google Calendar テスト
 
-## テスト方針
-
-個人プロジェクトにおける工数対効果を考慮し、以下の方針でテストを構成しています。
-
-### テスト対象の選定基準
-
-| 種類 | 対象 | 採用 | 理由 |
-|------|------|------|------|
-| 単体テスト | 純粋関数（入力→出力が決定的） | ✅ | 回帰検知に有効、実装コスト低 |
-| 統合テスト | 複数モジュールの連携 | ❌ | モック作成の工数が大きい |
-| 手動確認スクリプト | 外部API・DB連携 | ✅ | 実環境での動作確認に実用的 |
-
-### モジュール別テスト適用
-
-| ファイル | 単体テスト | 手動確認 | 理由 |
-|----------|-----------|----------|------|
-| `types.ts` | - | - | 型定義のみ |
-| `auth.ts` | ❌ | ✅ | 外部API依存（JWT認証） |
-| `api.ts` | ❌ | ✅ | 外部API依存 |
-| `fetch_events.ts` | ✅ | - | `transformEvent()`は純粋関数 |
-| `write_db.ts` | ❌ | ✅ | DB依存 |
-| `sync_daily.ts` | ❌ | ✅ | 日次同期オーケストレーター |
-| `sync_all.ts` | ❌ | ✅ | 全件同期（期間指定） |
-
----
-
 ## ディレクトリ構成
 
 ```
 test/gcalendar/
-├── README.md                  # このファイル
-├── fetch_events.test.ts       # 変換関数の単体テスト
-└── manual/
-    ├── check_api.ts           # API疎通確認
-    ├── check_sync.ts          # 同期動作確認（少量データ）
-    └── check_sync_all.ts      # 全件同期動作確認
+├── README.md              # このファイル
+├── fetch_data.test.ts     # transformEvent 変換関数
+├── check_api.ts           # API疎通確認
+├── check_sync.ts          # 日次同期確認（⚠️ DB書き込みあり）
+└── check_sync_all.ts      # 全件同期確認（⚠️ DB書き込みあり）
 ```
 
----
+## 単体テスト（`*.test.ts`）
 
-## 単体テスト
-
-### 実行方法
+環境変数不要で実行可能。
 
 ```bash
-deno test test/gcalendar/fetch_events.test.ts
+# deno task を使用（推奨）
+deno task test:gcalendar
+
+# または直接実行
+deno test test/gcalendar/ --allow-env --allow-read
 ```
 
-### テスト対象
+### テスト件数
 
-`fetch_events.ts` の変換関数：
-
-- `transformEvent()` - GCalApiEvent → DbEvent
+| ファイル | 件数 | 対象 |
+|----------|------|------|
+| `fetch_data.test.ts` | 18件 | `transformEvent` |
+| **合計** | **18件** | |
 
 ### テスト観点
 
+- `transformEvent()`: GCalApiEvent → DbEvent 変換
 - 通常イベント（dateTime）の変換
-- 終日イベント（date → dateTimeへの変換）
+- 終日イベント（date → dateTime変換）
 - オプショナルフィールドの null 変換
-- status / colorId の変換
-- recurring_event_id の変換
+- status / colorId / recurring_event_id の変換
 - is_all_day フラグの判定
 
----
+## 手動確認スクリプト（`check_*.ts`）
 
-## 手動確認スクリプト
+実環境のAPI・DBに接続するため、環境変数が必要。
 
-### check_api.ts
+### 必要な環境変数
 
-Google Calendar APIへの疎通確認。サービスアカウント認証が正しく設定されているか、APIが応答するかを確認します。
-
-```bash
-deno run --allow-env --allow-net --allow-read test/gcalendar/manual/check_api.ts
+```
+GOOGLE_CALENDAR_ID=xxxxx@group.calendar.google.com
+GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account",...}
+SUPABASE_URL=https://xxxxx.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=xxxxx
 ```
 
-### check_sync.ts
-
-少量データでの同期動作確認。直近7日分のデータを取得し、DBへの書き込みをテストします。
+### 推奨実行順序
 
 ```bash
-deno run --allow-env --allow-net --allow-read test/gcalendar/manual/check_sync.ts
+# 1. API疎通確認
+deno run --allow-env --allow-net --allow-read test/gcalendar/check_api.ts
+
+# 2. 同期確認（直近7日、⚠️ DB書き込みあり）
+deno run --allow-env --allow-net --allow-read test/gcalendar/check_sync.ts
+
+# 3. 全件同期確認（特定期間、⚠️ DB書き込みあり）
+deno run --allow-env --allow-net --allow-read test/gcalendar/check_sync_all.ts
 ```
 
-### check_sync_all.ts
+### 期間指定
 
-期間指定での全件同期動作確認。sync_all.tsのCLIヘルプと動作確認。
+```bash
+# 全件同期の期間を指定
+GCAL_TEST_START=2025-01-01 GCAL_TEST_END=2025-12-31 \
+  deno run --allow-env --allow-net --allow-read test/gcalendar/check_sync_all.ts
+```
+
+### CLIで直接実行
 
 ```bash
 # ヘルプ表示
 deno run --allow-env --allow-net --allow-read src/services/gcalendar/sync_all.ts --help
 
-# 特定期間の同期（テスト用に短期間を指定）
+# 特定期間の同期
 deno run --allow-env --allow-net --allow-read src/services/gcalendar/sync_all.ts --start=2025-11-01 --end=2025-11-22
 ```
 
----
+## トラブルシューティング
 
-## 環境変数
+### 認証エラー
 
-テスト実行には以下の環境変数が必要です（`.env` または環境変数で設定）：
+```
+❌ エラー: The caller does not have permission
+```
 
-| 変数名 | 用途 |
-|--------|------|
-| `GOOGLE_CALENDAR_ID` | 手動確認スクリプト |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | 手動確認スクリプト |
-| `SUPABASE_URL` | check_sync.ts |
-| `SUPABASE_SERVICE_ROLE_KEY` | check_sync.ts |
+→ サービスアカウントがカレンダーに共有されているか確認。
 
-単体テスト（fetch_events.test.ts）は環境変数不要で実行可能です。
+### 環境変数エラー
+
+```
+❌ エラー: GOOGLE_CALENDAR_ID is not set
+```
+
+→ 環境変数を確認してください。

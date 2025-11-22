@@ -5,7 +5,7 @@
 import "https://deno.land/std@0.203.0/dotenv/load.ts";
 import { fetchZaimData } from './fetch_data.ts';
 import {
-  createZaimClient,
+  createZaimDbClient,
   syncMasters,
   syncTransactions,
   getExistingTransactionIds,
@@ -121,7 +121,7 @@ export async function syncAllTransactions(config: SyncConfig = {}): Promise<void
   console.log('🚀 全トランザクション同期開始（年単位チャンク方式）');
   console.log('='.repeat(70));
 
-  const zaim = createZaimClient();
+  const zaim = createZaimDbClient();
   const delayMs = config.delayBetweenYears || 200;
 
   // 終了年月（デフォルト: 今月）

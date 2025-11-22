@@ -1,101 +1,73 @@
 # Zaim テスト
 
-## テスト方針
-
-個人プロジェクトにおける工数対効果を考慮し、以下の方針でテストを構成しています。
-
-### テスト対象の選定基準
-
-| 種類 | 対象 | 採用 | 理由 |
-|------|------|------|------|
-| 単体テスト | 純粋関数（入力→出力が決定的） | ✅ | 回帰検知に有効、実装コスト低 |
-| 統合テスト | 複数モジュールの連携 | ❌ | モック作成の工数が大きい |
-| 手動確認スクリプト | 外部API・DB連携 | ✅ | 実環境での動作確認に実用的 |
-
-### モジュール別テスト適用
-
-| ファイル | 単体テスト | 手動確認 | 理由 |
-|----------|-----------|----------|------|
-| `types.ts` | - | - | 型定義のみ |
-| `auth.ts` | ❌ | ✅ | 外部ライブラリのラッパー |
-| `api.ts` | ❌ | ✅ | 外部API依存 |
-| `fetch_data.ts` | ❌ | ✅ | api.tsの組み合わせ |
-| `write_db.ts` | ✅ | - | `toDb*`変換関数は純粋関数 |
-| `sync_daily.ts` | ❌ | ✅ | オーケストレーター |
-| `sync_all_transactions.ts` | ❌ | ✅ | オーケストレーター |
-
----
-
 ## ディレクトリ構成
 
 ```
 test/zaim/
 ├── README.md              # このファイル
-├── write_db.test.ts       # 変換関数の単体テスト
-└── manual/
-    ├── check_api.ts       # API疎通確認
-    └── check_sync.ts      # 同期動作確認（少量データ）
+├── write_db.test.ts       # toDb* 変換関数（4種類）
+├── check_api.ts           # API疎通確認
+└── check_sync.ts          # 同期確認（⚠️ DB書き込みあり）
 ```
 
----
+## 単体テスト（`*.test.ts`）
 
-## 単体テスト
-
-### 実行方法
+環境変数不要で実行可能。
 
 ```bash
-deno test --allow-env test/zaim/write_db.test.ts
+# deno task を使用（推奨）
+deno task test:zaim
+
+# または直接実行
+deno test test/zaim/ --allow-env --allow-read
 ```
 
-### テスト対象
+### テスト件数
 
-`write_db.ts` の変換関数：
-
-- `toDbCategory()` - ZaimCategory → DbCategory
-- `toDbGenre()` - ZaimGenre → DbGenre
-- `toDbAccount()` - ZaimAccount → DbAccount
-- `toDbTransaction()` - ZaimTransaction → DbTransaction
+| ファイル | 件数 | 対象 |
+|----------|------|------|
+| `write_db.test.ts` | 12件 | `toDbCategory`, `toDbGenre`, `toDbAccount`, `toDbTransaction` |
+| **合計** | **12件** | |
 
 ### テスト観点
 
+- 4種類のデータ変換関数
 - 必須フィールドの変換
-- `active` フラグの boolean 変換（`1` → `true`, `0` → `false`）
+- `active` フラグの boolean 変換（`1` → `true`）
 - オプショナルフィールドの null 変換
-- `account_id = 0` の null 変換（toDbTransaction）
+- `account_id = 0` の null 変換
 
----
+## 手動確認スクリプト（`check_*.ts`）
 
-## 手動確認スクリプト
+実環境のAPI・DBに接続するため、環境変数が必要。
 
-### check_api.ts
+### 必要な環境変数
 
-Zaim APIへの疎通確認。認証情報が正しく設定されているか、APIが応答するかを確認します。
-
-```bash
-deno run --allow-env --allow-net --allow-read test/zaim/manual/check_api.ts
+```
+ZAIM_CONSUMER_KEY=xxxxx
+ZAIM_CONSUMER_SECRET=xxxxx
+ZAIM_ACCESS_TOKEN=xxxxx
+ZAIM_ACCESS_TOKEN_SECRET=xxxxx
+SUPABASE_URL=https://xxxxx.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=xxxxx
 ```
 
-### check_sync.ts
-
-少量データでの同期動作確認。直近1日分のデータを取得し、DBへの書き込みをテストします。
+### 推奨実行順序
 
 ```bash
-deno run --allow-env --allow-net --allow-read test/zaim/manual/check_sync.ts
+# 1. API疎通確認
+deno run --allow-env --allow-net --allow-read test/zaim/check_api.ts
+
+# 2. 同期確認（⚠️ DB書き込みあり）
+deno run --allow-env --allow-net --allow-read test/zaim/check_sync.ts
 ```
 
----
+## トラブルシューティング
 
-## 環境変数
+### OAuth認証エラー
 
-テスト実行には以下の環境変数が必要です（`.env` または環境変数で設定）：
+```
+❌ エラー: oauth_problem=signature_invalid
+```
 
-| 変数名 | 用途 |
-|--------|------|
-| `ZAIM_CONSUMER_KEY` | 手動確認スクリプト |
-| `ZAIM_CONSUMER_SECRET` | 手動確認スクリプト |
-| `ZAIM_ACCESS_TOKEN` | 手動確認スクリプト |
-| `ZAIM_ACCESS_TOKEN_SECRET` | 手動確認スクリプト |
-| `SUPABASE_URL` | check_sync.ts |
-| `SUPABASE_SERVICE_ROLE_KEY` | check_sync.ts |
-
-単体テスト（write_db.test.ts）は環境変数不要で実行可能です。
+→ 環境変数の4つのトークンが正しいか確認。

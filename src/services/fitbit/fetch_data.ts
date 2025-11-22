@@ -1,24 +1,28 @@
-// fetch_data.ts
-// Fitbit API からのデータ取得オーケストレーション
-// 長期間同期対応（全APIにチャンク処理適用、レート制限管理）
-
+/**
+ * Fitbit API データ取得オーケストレーション
+ *
+ * 長期間同期対応（全APIにチャンク処理適用、レート制限管理）
+ */
 import { FitbitAPI, formatFitbitDate } from "./api.ts";
+import * as log from "../../utils/log.ts";
 import type {
-  ActivitySummary,
-  AzmDay,
-  BreathingRateDay,
-  CardioScoreDay,
+  FitbitApiActivitySummary,
+  FitbitApiAzmDay,
+  FitbitApiBreathingRateDay,
+  FitbitApiCardioScoreDay,
+  FitbitApiHeartRateDay,
+  FitbitApiHeartRateIntraday,
+  FitbitApiHrvDay,
+  FitbitApiSleepLog,
+  FitbitApiSpo2Response,
+  FitbitApiTemperatureSkinDay,
   FetchOptions,
   FitbitData,
-  HeartRateDay,
-  HeartRateIntraday,
-  HrvDay,
-  SleepLog,
-  Spo2ApiResponse,
-  TemperatureSkinDay,
 } from "./types.ts";
 
-// ========== 定数 ==========
+// =============================================================================
+// Constants
+// =============================================================================
 
 // Fitbit API レート制限: 150リクエスト/時間
 const RATE_LIMIT = 150;
@@ -38,7 +42,9 @@ const CARDIO_SCORE_MAX_DAYS = 30;
 const TEMP_MAX_DAYS = 30;
 const AZM_MAX_DAYS = 30;
 
-// ========== レート制限管理 ==========
+// =============================================================================
+// Rate Limiter
+// =============================================================================
 
 class RateLimiter {
   private requestCount = 0;
@@ -60,8 +66,8 @@ class RateLimiter {
       const waitTime = RATE_LIMIT_WAIT_MS - (now - this.windowStart);
       if (waitTime > 0) {
         const waitMinutes = Math.ceil(waitTime / 60000);
-        console.log(`\n⏳ レート制限に近づきました（${this.requestCount}/${RATE_LIMIT}）`);
-        console.log(`   ${waitMinutes}分間待機します...\n`);
+        log.warn(`Rate limit approaching (${this.requestCount}/${RATE_LIMIT})`);
+        log.info(`Waiting ${waitMinutes} minutes...`);
         await sleep(waitTime);
         this.requestCount = 0;
         this.windowStart = Date.now();
@@ -81,7 +87,9 @@ class RateLimiter {
 // グローバルレートリミッター
 const rateLimiter = new RateLimiter();
 
-// ========== ヘルパー ==========
+// =============================================================================
+// Helper Functions
+// =============================================================================
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -177,7 +185,9 @@ export function generatePeriods(
   return periods;
 }
 
-// ========== 個別取得関数（全てチャンク対応・レート制限対応） ==========
+// =============================================================================
+// Individual Fetch Functions
+// =============================================================================
 
 interface FetchContext {
   api: FitbitAPI;
@@ -187,9 +197,9 @@ interface FetchContext {
   includeIntraday: boolean;
 }
 
-async function fetchSleep(ctx: FetchContext): Promise<SleepLog[]> {
-  console.log("😴 睡眠データ取得中...");
-  const results: SleepLog[] = [];
+async function fetchSleep(ctx: FetchContext): Promise<FitbitApiSleepLog[]> {
+  log.info("Fetching sleep data...");
+  const results: FitbitApiSleepLog[] = [];
 
   try {
     const periods = generatePeriods(ctx.startDate, ctx.endDate, SLEEP_MAX_DAYS);
@@ -203,17 +213,17 @@ async function fetchSleep(ctx: FetchContext): Promise<SleepLog[]> {
         // チャンクエラーは無視して続行
       }
     }
-    console.log(`   取得: ${results.length}件 (リクエスト残: ${rateLimiter.getRemainingInWindow()})`);
-  } catch (error) {
-    console.error(`   ❌ エラー: ${error instanceof Error ? error.message : error}`);
+    log.info(`Sleep: ${results.length} records (remaining: ${rateLimiter.getRemainingInWindow()})`);
+  } catch (err) {
+    log.error(`Sleep error: ${err instanceof Error ? err.message : err}`);
   }
 
   return results;
 }
 
-async function fetchHeartRate(ctx: FetchContext): Promise<HeartRateDay[]> {
-  console.log("❤️  心拍数データ取得中...");
-  const results: HeartRateDay[] = [];
+async function fetchHeartRate(ctx: FetchContext): Promise<FitbitApiHeartRateDay[]> {
+  log.info("Fetching heart rate data...");
+  const results: FitbitApiHeartRateDay[] = [];
 
   try {
     const periods = generatePeriods(ctx.startDate, ctx.endDate, HEART_RATE_MAX_DAYS);
@@ -227,17 +237,17 @@ async function fetchHeartRate(ctx: FetchContext): Promise<HeartRateDay[]> {
         // チャンクエラーは無視して続行
       }
     }
-    console.log(`   取得: ${results.length}日分 (リクエスト残: ${rateLimiter.getRemainingInWindow()})`);
-  } catch (error) {
-    console.error(`   ❌ エラー: ${error instanceof Error ? error.message : error}`);
+    log.info(`Heart rate: ${results.length} days (remaining: ${rateLimiter.getRemainingInWindow()})`);
+  } catch (err) {
+    log.error(`Heart rate error: ${err instanceof Error ? err.message : err}`);
   }
 
   return results;
 }
 
-async function fetchHrv(ctx: FetchContext): Promise<HrvDay[]> {
-  console.log("📈 HRVデータ取得中...");
-  const results: HrvDay[] = [];
+async function fetchHrv(ctx: FetchContext): Promise<FitbitApiHrvDay[]> {
+  log.info("Fetching HRV data...");
+  const results: FitbitApiHrvDay[] = [];
 
   try {
     const periods = generatePeriods(ctx.startDate, ctx.endDate, HRV_MAX_DAYS);
@@ -251,17 +261,17 @@ async function fetchHrv(ctx: FetchContext): Promise<HrvDay[]> {
         // チャンクエラーは無視（HRVは2020年以降のみ）
       }
     }
-    console.log(`   取得: ${results.length}日分 (リクエスト残: ${rateLimiter.getRemainingInWindow()})`);
-  } catch (error) {
-    console.error(`   ❌ エラー: ${error instanceof Error ? error.message : error}`);
+    log.info(`HRV: ${results.length} days (remaining: ${rateLimiter.getRemainingInWindow()})`);
+  } catch (err) {
+    log.error(`HRV error: ${err instanceof Error ? err.message : err}`);
   }
 
   return results;
 }
 
-async function fetchBreathingRate(ctx: FetchContext): Promise<BreathingRateDay[]> {
-  console.log("🌬️  呼吸数データ取得中...");
-  const results: BreathingRateDay[] = [];
+async function fetchBreathingRate(ctx: FetchContext): Promise<FitbitApiBreathingRateDay[]> {
+  log.info("Fetching breathing rate data...");
+  const results: FitbitApiBreathingRateDay[] = [];
 
   try {
     const periods = generatePeriods(ctx.startDate, ctx.endDate, BREATHING_RATE_MAX_DAYS);
@@ -275,17 +285,17 @@ async function fetchBreathingRate(ctx: FetchContext): Promise<BreathingRateDay[]
         // チャンクエラーは無視（呼吸数は2020年以降のみ）
       }
     }
-    console.log(`   取得: ${results.length}日分 (リクエスト残: ${rateLimiter.getRemainingInWindow()})`);
-  } catch (error) {
-    console.error(`   ❌ エラー: ${error instanceof Error ? error.message : error}`);
+    log.info(`Breathing rate: ${results.length} days (remaining: ${rateLimiter.getRemainingInWindow()})`);
+  } catch (err) {
+    log.error(`Breathing rate error: ${err instanceof Error ? err.message : err}`);
   }
 
   return results;
 }
 
-async function fetchCardioScore(ctx: FetchContext): Promise<CardioScoreDay[]> {
-  console.log("🏃 VO2 Maxデータ取得中...");
-  const results: CardioScoreDay[] = [];
+async function fetchCardioScore(ctx: FetchContext): Promise<FitbitApiCardioScoreDay[]> {
+  log.info("Fetching VO2 Max data...");
+  const results: FitbitApiCardioScoreDay[] = [];
 
   try {
     const periods = generatePeriods(ctx.startDate, ctx.endDate, CARDIO_SCORE_MAX_DAYS);
@@ -299,17 +309,17 @@ async function fetchCardioScore(ctx: FetchContext): Promise<CardioScoreDay[]> {
         // チャンクエラーは無視（VO2 Maxは2020年以降のみ）
       }
     }
-    console.log(`   取得: ${results.length}日分 (リクエスト残: ${rateLimiter.getRemainingInWindow()})`);
-  } catch (error) {
-    console.error(`   ❌ エラー: ${error instanceof Error ? error.message : error}`);
+    log.info(`VO2 Max: ${results.length} days (remaining: ${rateLimiter.getRemainingInWindow()})`);
+  } catch (err) {
+    log.error(`VO2 Max error: ${err instanceof Error ? err.message : err}`);
   }
 
   return results;
 }
 
-async function fetchTemperatureSkin(ctx: FetchContext): Promise<TemperatureSkinDay[]> {
-  console.log("🌡️  皮膚温度データ取得中...");
-  const results: TemperatureSkinDay[] = [];
+async function fetchTemperatureSkin(ctx: FetchContext): Promise<FitbitApiTemperatureSkinDay[]> {
+  log.info("Fetching skin temperature data...");
+  const results: FitbitApiTemperatureSkinDay[] = [];
 
   try {
     const periods = generatePeriods(ctx.startDate, ctx.endDate, TEMP_MAX_DAYS);
@@ -323,17 +333,17 @@ async function fetchTemperatureSkin(ctx: FetchContext): Promise<TemperatureSkinD
         // チャンクエラーは無視（皮膚温度は2020年以降のみ）
       }
     }
-    console.log(`   取得: ${results.length}日分 (リクエスト残: ${rateLimiter.getRemainingInWindow()})`);
-  } catch (error) {
-    console.error(`   ❌ エラー: ${error instanceof Error ? error.message : error}`);
+    log.info(`Skin temperature: ${results.length} days (remaining: ${rateLimiter.getRemainingInWindow()})`);
+  } catch (err) {
+    log.error(`Skin temperature error: ${err instanceof Error ? err.message : err}`);
   }
 
   return results;
 }
 
-async function fetchAzm(ctx: FetchContext): Promise<AzmDay[]> {
-  console.log("⚡ AZMデータ取得中...");
-  const results: AzmDay[] = [];
+async function fetchAzm(ctx: FetchContext): Promise<FitbitApiAzmDay[]> {
+  log.info("Fetching AZM data...");
+  const results: FitbitApiAzmDay[] = [];
 
   try {
     const periods = generatePeriods(ctx.startDate, ctx.endDate, AZM_MAX_DAYS);
@@ -347,17 +357,17 @@ async function fetchAzm(ctx: FetchContext): Promise<AzmDay[]> {
         // チャンクエラーは無視（AZMは2020年以降のみ）
       }
     }
-    console.log(`   取得: ${results.length}日分 (リクエスト残: ${rateLimiter.getRemainingInWindow()})`);
-  } catch (error) {
-    console.error(`   ❌ エラー: ${error instanceof Error ? error.message : error}`);
+    log.info(`AZM: ${results.length} days (remaining: ${rateLimiter.getRemainingInWindow()})`);
+  } catch (err) {
+    log.error(`AZM error: ${err instanceof Error ? err.message : err}`);
   }
 
   return results;
 }
 
-async function fetchSpo2(ctx: FetchContext): Promise<Map<string, Spo2ApiResponse>> {
-  console.log("🫁 SpO2データ取得中...");
-  const results = new Map<string, Spo2ApiResponse>();
+async function fetchSpo2(ctx: FetchContext): Promise<Map<string, FitbitApiSpo2Response>> {
+  log.info("Fetching SpO2 data...");
+  const results = new Map<string, FitbitApiSpo2Response>();
 
   await parallelWithLimit(
     ctx.dates,
@@ -375,13 +385,13 @@ async function fetchSpo2(ctx: FetchContext): Promise<Map<string, Spo2ApiResponse
     API_DELAY_MS,
   );
 
-  console.log(`   取得: ${results.size}日分 (リクエスト残: ${rateLimiter.getRemainingInWindow()})`);
+  log.info(`SpO2: ${results.size} days (remaining: ${rateLimiter.getRemainingInWindow()})`);
   return results;
 }
 
-async function fetchActivity(ctx: FetchContext): Promise<Map<string, ActivitySummary>> {
-  console.log("🚶 活動データ取得中...");
-  const results = new Map<string, ActivitySummary>();
+async function fetchActivity(ctx: FetchContext): Promise<Map<string, FitbitApiActivitySummary>> {
+  log.info("Fetching activity data...");
+  const results = new Map<string, FitbitApiActivitySummary>();
 
   await parallelWithLimit(
     ctx.dates,
@@ -397,15 +407,15 @@ async function fetchActivity(ctx: FetchContext): Promise<Map<string, ActivitySum
     API_DELAY_MS,
   );
 
-  console.log(`   取得: ${results.size}日分 (リクエスト残: ${rateLimiter.getRemainingInWindow()})`);
+  log.info(`Activity: ${results.size} days (remaining: ${rateLimiter.getRemainingInWindow()})`);
   return results;
 }
 
 async function fetchHeartRateIntraday(
   ctx: FetchContext,
-): Promise<Map<string, HeartRateIntraday>> {
-  console.log("❤️  心拍数Intradayデータ取得中...");
-  const results = new Map<string, HeartRateIntraday>();
+): Promise<Map<string, FitbitApiHeartRateIntraday>> {
+  log.info("Fetching heart rate intraday data...");
+  const results = new Map<string, FitbitApiHeartRateIntraday>();
 
   await parallelWithLimit(
     ctx.dates,
@@ -424,11 +434,13 @@ async function fetchHeartRateIntraday(
     API_DELAY_MS,
   );
 
-  console.log(`   取得: ${results.size}日分 (リクエスト残: ${rateLimiter.getRemainingInWindow()})`);
+  log.info(`Heart rate intraday: ${results.size} days (remaining: ${rateLimiter.getRemainingInWindow()})`);
   return results;
 }
 
-// ========== メイン関数 ==========
+// =============================================================================
+// Main Function
+// =============================================================================
 
 /**
  * 推定リクエスト数を計算
@@ -487,24 +499,20 @@ export async function fetchFitbitData(
     includeIntraday,
   };
 
-  console.log(
-    `📅 取得期間: ${formatFitbitDate(startDate)} 〜 ${formatFitbitDate(endDate)}`,
-  );
-  console.log(`   対象日数: ${dates.length}日間`);
-  console.log(`   推定リクエスト数: ${estimatedRequests}件`);
-  console.log(`   Intraday: ${includeIntraday ? "あり" : "なし"}`);
-  console.log(`   モード: ${isLongRange ? "長期間（順次処理）" : "短期間（並列処理）"}\n`);
+  log.info(`Period: ${formatFitbitDate(startDate)} - ${formatFitbitDate(endDate)}`);
+  log.info(`Days: ${dates.length}, Estimated requests: ${estimatedRequests}`);
+  log.info(`Intraday: ${includeIntraday ? "yes" : "no"}, Mode: ${isLongRange ? "sequential" : "parallel"}`);
 
-  let sleepData: SleepLog[];
-  let heartRateData: HeartRateDay[];
-  let hrvData: HrvDay[];
-  let breathingRateData: BreathingRateDay[];
-  let cardioScoreData: CardioScoreDay[];
-  let temperatureSkinData: TemperatureSkinDay[];
-  let azmData: AzmDay[];
-  let spo2Data: Map<string, Spo2ApiResponse>;
-  let activityData: Map<string, ActivitySummary>;
-  let heartRateIntradayData: Map<string, HeartRateIntraday>;
+  let sleepData: FitbitApiSleepLog[];
+  let heartRateData: FitbitApiHeartRateDay[];
+  let hrvData: FitbitApiHrvDay[];
+  let breathingRateData: FitbitApiBreathingRateDay[];
+  let cardioScoreData: FitbitApiCardioScoreDay[];
+  let temperatureSkinData: FitbitApiTemperatureSkinDay[];
+  let azmData: FitbitApiAzmDay[];
+  let spo2Data: Map<string, FitbitApiSpo2Response>;
+  let activityData: Map<string, FitbitApiActivitySummary>;
+  let heartRateIntradayData: Map<string, FitbitApiHeartRateIntraday>;
 
   if (isLongRange) {
     // 長期間: 順次処理でレート制限回避
@@ -560,16 +568,16 @@ export async function fetchFitbitData(
     azm: azmData,
   };
 
-  console.log("\n📊 取得完了");
-  console.log(`   睡眠: ${result.sleep.length}件`);
-  console.log(`   心拍: ${result.heartRate.length}日分`);
-  console.log(`   HRV: ${result.hrv.length}日分`);
-  console.log(`   SpO2: ${result.spo2.size}日分`);
-  console.log(`   呼吸数: ${result.breathingRate.length}日分`);
-  console.log(`   VO2 Max: ${result.cardioScore.length}日分`);
-  console.log(`   皮膚温度: ${result.temperatureSkin.length}日分`);
-  console.log(`   活動: ${result.activity.size}日分`);
-  console.log(`   総リクエスト数: ${rateLimiter.getCount()}件`);
+  log.section("Fetch Summary");
+  log.info(`Sleep: ${result.sleep.length}`);
+  log.info(`Heart rate: ${result.heartRate.length} days`);
+  log.info(`HRV: ${result.hrv.length} days`);
+  log.info(`SpO2: ${result.spo2.size} days`);
+  log.info(`Breathing rate: ${result.breathingRate.length} days`);
+  log.info(`VO2 Max: ${result.cardioScore.length} days`);
+  log.info(`Skin temperature: ${result.temperatureSkin.length} days`);
+  log.info(`Activity: ${result.activity.size} days`);
+  log.info(`Total requests: ${rateLimiter.getCount()}`);
 
   return result;
 }

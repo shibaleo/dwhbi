@@ -1,6 +1,8 @@
-// api.ts - Toggl APIデータ取得
+/**
+ * Toggl Track API クライアント
+ */
 
-import { togglFetch, workspaceId } from "./client.ts";
+import { togglFetch, workspaceId } from "./auth.ts";
 import type {
   TogglApiV9Client,
   TogglApiV9Project,
@@ -8,23 +10,29 @@ import type {
   TogglApiV9TimeEntry,
 } from "./types.ts";
 
-// --- Date utilities ---
+// =============================================================================
+// Helper Functions
+// =============================================================================
 
 /**
  * Date を YYYY-MM-DD 形式に変換
  */
-function formatDate(date: Date): string {
+export function formatDate(date: Date): string {
   return date.toISOString().split("T")[0];
 }
 
 /**
  * 日付範囲を計算: days日前から今日までを取得
  * @param days 取得する日数
+ * @param baseDate 基準日（デフォルト: 現在）- テスト時に固定日付を渡せる
  * @returns start: days日前, end: 明日（APIは排他的終点のため、今日を含めるには明日を指定）
  */
-function getDateRange(days: number): { start: string; end: string } {
-  // endDate = 明日
-  const end = new Date();
+export function getDateRange(
+  days: number,
+  baseDate: Date = new Date()
+): { start: string; end: string } {
+  // endDate = baseDate + 1日
+  const end = new Date(baseDate);
   end.setDate(end.getDate() + 1);
 
   // startDate = endDate - (days + 1)
@@ -37,7 +45,9 @@ function getDateRange(days: number): { start: string; end: string } {
   };
 }
 
-// --- API functions ---
+// =============================================================================
+// API Functions
+// =============================================================================
 
 /**
  * クライアント一覧を取得
@@ -87,40 +97,4 @@ export async function fetchEntriesByRange(
 export async function fetchEntries(days: number = 3): Promise<TogglApiV9TimeEntry[]> {
   const { start, end } = getDateRange(days);
   return await fetchEntriesByRange(start, end);
-}
-
-// --- Aggregated fetch ---
-
-/**
- * 全データの取得結果
- */
-export interface TogglData {
-  clients: TogglApiV9Client[];
-  projects: TogglApiV9Project[];
-  tags: TogglApiV9Tag[];
-  entries: TogglApiV9TimeEntry[];
-}
-
-/**
- * 全データを並列取得（staggered delay でAPIバーストを回避）
- * @param days エントリーを取得する日数
- */
-export async function fetchAllData(days: number = 3): Promise<TogglData> {
-  const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-  const [clients, projects, tags, entries] = await Promise.all([
-    // clients: 即座に開始
-    fetchClients(),
-
-    // projects: 200ms後に開始
-    delay(200).then(() => fetchProjects()),
-
-    // tags: 400ms後に開始
-    delay(400).then(() => fetchTags()),
-
-    // entries: 600ms後に開始
-    delay(600).then(() => fetchEntries(days)),
-  ]);
-
-  return { clients, projects, tags, entries };
 }

@@ -1,9 +1,7 @@
 name: Tanita Daily Sync
 
 on:
-  schedule:
-    # 毎日 JST 00:00 (UTC 15:00) に実行
-    - cron: "0 15 * * *"
+  # 手動実行のみ（定期実行は sync-all.yml に統合）
   workflow_dispatch:
     inputs:
       sync_days:

@@ -1,15 +1,20 @@
-// types.ts
-// Fitbit API / DB 型定義
+/**
+ * Fitbit 型定義
+ *
+ * API レスポンス型、DB テーブル型、同期関連型
+ */
 
-// ========== API レスポンス型 ==========
+// =============================================================================
+// Fitbit API Response Types
+// =============================================================================
 
 /** Sleep API レスポンス */
-export interface SleepApiResponse {
-  sleep: SleepLog[];
-  summary?: SleepSummary;
+export interface FitbitApiSleepResponse {
+  sleep: FitbitApiSleepLog[];
+  summary?: FitbitApiSleepSummary;
 }
 
-export interface SleepLog {
+export interface FitbitApiSleepLog {
   logId: number;
   dateOfSleep: string; // YYYY-MM-DD
   startTime: string; // ISO8601
@@ -21,35 +26,35 @@ export interface SleepLog {
   minutesAwake: number;
   timeInBed: number;
   type: "stages" | "classic";
-  levels?: SleepLevels;
+  levels?: FitbitApiSleepLevels;
 }
 
-export interface SleepLevels {
-  data: SleepLevelData[];
-  shortData?: SleepLevelData[];
+export interface FitbitApiSleepLevels {
+  data: FitbitApiSleepLevelData[];
+  shortData?: FitbitApiSleepLevelData[];
   summary: Record<string, { count: number; minutes: number; thirtyDayAvgMinutes?: number }>;
 }
 
-export interface SleepLevelData {
+export interface FitbitApiSleepLevelData {
   dateTime: string;
   level: string;
   seconds: number;
 }
 
-export interface SleepSummary {
+export interface FitbitApiSleepSummary {
   totalMinutesAsleep: number;
   totalSleepRecords: number;
   totalTimeInBed: number;
 }
 
 /** Activity Daily Summary レスポンス */
-export interface ActivityDailySummary {
+export interface FitbitApiActivityDailySummary {
   activities: unknown[];
-  goals: ActivityGoals;
-  summary: ActivitySummary;
+  goals: FitbitApiActivityGoals;
+  summary: FitbitApiActivitySummary;
 }
 
-export interface ActivityGoals {
+export interface FitbitApiActivityGoals {
   activeMinutes: number;
   caloriesOut: number;
   distance: number;
@@ -57,7 +62,7 @@ export interface ActivityGoals {
   steps: number;
 }
 
-export interface ActivitySummary {
+export interface FitbitApiActivitySummary {
   steps: number;
   floors: number;
   caloriesOut: number;
@@ -71,21 +76,21 @@ export interface ActivitySummary {
 }
 
 /** Heart Rate Time Series レスポンス */
-export interface HeartRateTimeSeriesResponse {
-  "activities-heart": HeartRateDay[];
-  "activities-heart-intraday"?: HeartRateIntraday;
+export interface FitbitApiHeartRateTimeSeriesResponse {
+  "activities-heart": FitbitApiHeartRateDay[];
+  "activities-heart-intraday"?: FitbitApiHeartRateIntraday;
 }
 
-export interface HeartRateDay {
+export interface FitbitApiHeartRateDay {
   dateTime: string; // YYYY-MM-DD
   value: {
-    customHeartRateZones?: HeartRateZone[];
-    heartRateZones: HeartRateZone[];
+    customHeartRateZones?: FitbitApiHeartRateZone[];
+    heartRateZones: FitbitApiHeartRateZone[];
     restingHeartRate?: number;
   };
 }
 
-export interface HeartRateZone {
+export interface FitbitApiHeartRateZone {
   name: string;
   min: number;
   max: number;
@@ -93,27 +98,27 @@ export interface HeartRateZone {
   caloriesOut: number;
 }
 
-export interface HeartRateIntraday {
+export interface FitbitApiHeartRateIntraday {
   dataset: { time: string; value: number }[];
   datasetInterval: number;
   datasetType: string;
 }
 
 /** HRV API レスポンス */
-export interface HrvApiResponse {
-  hrv: HrvDay[];
+export interface FitbitApiHrvResponse {
+  hrv: FitbitApiHrvDay[];
 }
 
-export interface HrvDay {
+export interface FitbitApiHrvDay {
   dateTime: string;
   value: {
     dailyRmssd: number;
     deepRmssd: number;
   };
-  minutes?: HrvMinute[];
+  minutes?: FitbitApiHrvMinute[];
 }
 
-export interface HrvMinute {
+export interface FitbitApiHrvMinute {
   minute: string;
   value: {
     rmssd: number;
@@ -124,7 +129,7 @@ export interface HrvMinute {
 }
 
 /** SpO2 API レスポンス */
-export interface Spo2ApiResponse {
+export interface FitbitApiSpo2Response {
   dateTime?: string;
   value?: {
     avg: number;
@@ -134,11 +139,11 @@ export interface Spo2ApiResponse {
 }
 
 /** Breathing Rate API レスポンス */
-export interface BreathingRateApiResponse {
-  br: BreathingRateDay[];
+export interface FitbitApiBreathingRateResponse {
+  br: FitbitApiBreathingRateDay[];
 }
 
-export interface BreathingRateDay {
+export interface FitbitApiBreathingRateDay {
   dateTime: string;
   value: {
     breathingRate: number;
@@ -146,11 +151,11 @@ export interface BreathingRateDay {
 }
 
 /** Cardio Score (VO2 Max) API レスポンス */
-export interface CardioScoreApiResponse {
-  cardioScore: CardioScoreDay[];
+export interface FitbitApiCardioScoreResponse {
+  cardioScore: FitbitApiCardioScoreDay[];
 }
 
-export interface CardioScoreDay {
+export interface FitbitApiCardioScoreDay {
   dateTime: string;
   value: {
     vo2Max: string; // "30-35" 形式または数値
@@ -158,11 +163,11 @@ export interface CardioScoreDay {
 }
 
 /** Temperature Skin API レスポンス */
-export interface TemperatureSkinApiResponse {
-  tempSkin: TemperatureSkinDay[];
+export interface FitbitApiTemperatureSkinResponse {
+  tempSkin: FitbitApiTemperatureSkinDay[];
 }
 
-export interface TemperatureSkinDay {
+export interface FitbitApiTemperatureSkinDay {
   dateTime: string;
   value: {
     nightlyRelative: number;
@@ -171,11 +176,11 @@ export interface TemperatureSkinDay {
 }
 
 /** Active Zone Minutes API レスポンス */
-export interface AzmApiResponse {
-  "activities-active-zone-minutes": AzmDay[];
+export interface FitbitApiAzmResponse {
+  "activities-active-zone-minutes": FitbitApiAzmDay[];
 }
 
-export interface AzmDay {
+export interface FitbitApiAzmDay {
   dateTime: string;
   value: {
     activeZoneMinutes: number;
@@ -184,6 +189,10 @@ export interface AzmDay {
     peakActiveZoneMinutes: number;
   };
 }
+
+// =============================================================================
+// Auth Types
+// =============================================================================
 
 /** OAuth2.0 トークンレスポンス */
 export interface TokenResponse {
@@ -195,7 +204,15 @@ export interface TokenResponse {
   user_id: string;
 }
 
-// ========== DB レコード型 ==========
+/** 認証オプション */
+export interface AuthOptions {
+  forceRefresh?: boolean;
+  thresholdMinutes?: number; // デフォルト: 60（Fitbitトークンは8時間有効）
+}
+
+// =============================================================================
+// Database Table Types (fitbit schema)
+// =============================================================================
 
 /** fitbit.tokens テーブル */
 export interface DbToken {
@@ -307,13 +324,9 @@ export interface DbTemperatureSkinDaily {
   synced_at?: string;
 }
 
-// ========== 設定・オプション型 ==========
-
-/** 認証オプション */
-export interface AuthOptions {
-  forceRefresh?: boolean;
-  thresholdMinutes?: number; // デフォルト: 60（Fitbitトークンは8時間有効）
-}
+// =============================================================================
+// Fetch Options & Data Types
+// =============================================================================
 
 /** データ取得オプション */
 export interface FetchOptions {
@@ -322,34 +335,78 @@ export interface FetchOptions {
   includeIntraday?: boolean;
 }
 
+/** 取得データ（fetch_data.ts の出力） */
+export interface FitbitData {
+  sleep: FitbitApiSleepLog[];
+  activity: Map<string, FitbitApiActivitySummary>;
+  heartRate: FitbitApiHeartRateDay[];
+  heartRateIntraday: Map<string, FitbitApiHeartRateIntraday>;
+  hrv: FitbitApiHrvDay[];
+  spo2: Map<string, FitbitApiSpo2Response>;
+  breathingRate: FitbitApiBreathingRateDay[];
+  cardioScore: FitbitApiCardioScoreDay[];
+  temperatureSkin: FitbitApiTemperatureSkinDay[];
+  azm: FitbitApiAzmDay[];
+}
+
+// =============================================================================
+// Sync Result Types
+// =============================================================================
+
+/** 同期統計 */
+export interface SyncStats {
+  sleep: number;
+  activity: number;
+  heartRate: number;
+  hrv: number;
+  spo2: number;
+  breathingRate: number;
+  cardioScore: number;
+  temperatureSkin: number;
+}
+
 /** 同期結果 */
 export interface SyncResult {
   success: boolean;
   timestamp: string;
-  stats: {
-    sleep: number;
-    activity: number;
-    heartRate: number;
-    hrv: number;
-    spo2: number;
-    breathingRate: number;
-    cardioScore: number;
-    temperatureSkin: number;
-  };
+  stats: SyncStats;
   errors: string[];
   elapsedSeconds: number;
 }
 
-/** 取得データ（fetch_data.tsの出力） */
-export interface FitbitData {
-  sleep: SleepLog[];
-  activity: Map<string, ActivitySummary>;
-  heartRate: HeartRateDay[];
-  heartRateIntraday: Map<string, HeartRateIntraday>;
-  hrv: HrvDay[];
-  spo2: Map<string, Spo2ApiResponse>;
-  breathingRate: BreathingRateDay[];
-  cardioScore: CardioScoreDay[];
-  temperatureSkin: TemperatureSkinDay[];
-  azm: AzmDay[];
-}
+// =============================================================================
+// Type Aliases (後方互換性のため)
+// =============================================================================
+
+/** @deprecated Use FitbitApiSleepLog instead */
+export type SleepLog = FitbitApiSleepLog;
+/** @deprecated Use FitbitApiSleepLevels instead */
+export type SleepLevels = FitbitApiSleepLevels;
+/** @deprecated Use FitbitApiSleepLevelData instead */
+export type SleepLevelData = FitbitApiSleepLevelData;
+/** @deprecated Use FitbitApiSleepSummary instead */
+export type SleepSummary = FitbitApiSleepSummary;
+/** @deprecated Use FitbitApiActivitySummary instead */
+export type ActivitySummary = FitbitApiActivitySummary;
+/** @deprecated Use FitbitApiActivityGoals instead */
+export type ActivityGoals = FitbitApiActivityGoals;
+/** @deprecated Use FitbitApiHeartRateDay instead */
+export type HeartRateDay = FitbitApiHeartRateDay;
+/** @deprecated Use FitbitApiHeartRateZone instead */
+export type HeartRateZone = FitbitApiHeartRateZone;
+/** @deprecated Use FitbitApiHeartRateIntraday instead */
+export type HeartRateIntraday = FitbitApiHeartRateIntraday;
+/** @deprecated Use FitbitApiHrvDay instead */
+export type HrvDay = FitbitApiHrvDay;
+/** @deprecated Use FitbitApiHrvMinute instead */
+export type HrvMinute = FitbitApiHrvMinute;
+/** @deprecated Use FitbitApiSpo2Response instead */
+export type Spo2ApiResponse = FitbitApiSpo2Response;
+/** @deprecated Use FitbitApiBreathingRateDay instead */
+export type BreathingRateDay = FitbitApiBreathingRateDay;
+/** @deprecated Use FitbitApiCardioScoreDay instead */
+export type CardioScoreDay = FitbitApiCardioScoreDay;
+/** @deprecated Use FitbitApiTemperatureSkinDay instead */
+export type TemperatureSkinDay = FitbitApiTemperatureSkinDay;
+/** @deprecated Use FitbitApiAzmDay instead */
+export type AzmDay = FitbitApiAzmDay;

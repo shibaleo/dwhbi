@@ -1,37 +1,45 @@
-// auth.ts
-// Fitbit OAuth2.0 認証管理
-//
-// 使用例:
-//   deno run --allow-env --allow-net --allow-read auth.ts              # 有効性確認（必要ならリフレッシュ）
-//   deno run --allow-env --allow-net --allow-read auth.ts --refresh    # 強制リフレッシュ
+/**
+ * Fitbit OAuth2.0 認証管理
+ *
+ * 使用例:
+ *   deno run --allow-env --allow-net --allow-read auth.ts              # 有効性確認（必要ならリフレッシュ）
+ *   deno run --allow-env --allow-net --allow-read auth.ts --refresh    # 強制リフレッシュ
+ */
 
 import "jsr:@std/dotenv/load";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import { encodeBase64 } from "jsr:@std/encoding/base64";
+import * as log from "../../utils/log.ts";
 import type { AuthOptions, DbToken, TokenResponse } from "./types.ts";
 
-// ========== 定数 ==========
+// =============================================================================
+// Constants
+// =============================================================================
 
 const OAUTH_TOKEN_URL = "https://api.fitbit.com/oauth2/token";
 const DEFAULT_THRESHOLD_MINUTES = 60; // 1時間前にリフレッシュ
 const SCHEMA = "fitbit";
 const TABLE = "tokens";
 
-// ========== Supabase クライアント ==========
+// =============================================================================
+// Supabase Client
+// =============================================================================
 
-function createFitbitClient(): SupabaseClient {
+function createSupabaseClient(): SupabaseClient {
   const url = Deno.env.get("SUPABASE_URL");
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
   if (!url || !key) {
-    throw new Error("SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY が必要です");
+    throw new Error("SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY are required");
   }
 
   return createClient(url, key);
 }
 
-// ========== トークン有効性チェック（DBのみ参照） ==========
+// =============================================================================
+// Token Validation
+// =============================================================================
 
 /**
  * トークンが期限切れ間近かどうかを判定
@@ -47,7 +55,9 @@ export function isTokenExpiringSoon(
   return minutesUntilExpiry <= thresholdMinutes;
 }
 
-// ========== DB操作 ==========
+// =============================================================================
+// Database Operations
+// =============================================================================
 
 /**
  * DBからトークンを取得
@@ -67,7 +77,7 @@ export async function getTokenFromDb(
       // レコードなし
       return null;
     }
-    throw new Error(`トークン取得エラー: ${error.message}`);
+    throw new Error(`Token fetch error: ${error.message}`);
   }
 
   return data as DbToken;
@@ -96,7 +106,7 @@ export async function saveTokenToDb(
       .eq("id", existingId);
 
     if (error) {
-      throw new Error(`トークン更新エラー: ${error.message}`);
+      throw new Error(`Token update error: ${error.message}`);
     }
   } else {
     // 新規作成
@@ -111,12 +121,14 @@ export async function saveTokenToDb(
       });
 
     if (error) {
-      throw new Error(`トークン作成エラー: ${error.message}`);
+      throw new Error(`Token create error: ${error.message}`);
     }
   }
 }
 
-// ========== API操作 ==========
+// =============================================================================
+// API Operations
+// =============================================================================
 
 /**
  * Basic認証ヘッダーを生成
@@ -126,7 +138,7 @@ function getBasicAuthHeader(): string {
   const clientSecret = Deno.env.get("FITBIT_CLIENT_SECRET");
 
   if (!clientId || !clientSecret) {
-    throw new Error("FITBIT_CLIENT_ID, FITBIT_CLIENT_SECRET が必要です");
+    throw new Error("FITBIT_CLIENT_ID, FITBIT_CLIENT_SECRET are required");
   }
 
   const credentials = `${clientId}:${clientSecret}`;
@@ -155,13 +167,15 @@ export async function refreshTokenFromApi(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`リフレッシュエラー: ${response.status} - ${errorText}`);
+    throw new Error(`Refresh error: ${response.status} - ${errorText}`);
   }
 
   return await response.json() as TokenResponse;
 }
 
-// ========== メイン関数 ==========
+// =============================================================================
+// Main Function
+// =============================================================================
 
 /**
  * 有効なアクセストークンを保証して返す
@@ -174,12 +188,12 @@ export async function ensureValidToken(
   const { forceRefresh = false, thresholdMinutes = DEFAULT_THRESHOLD_MINUTES } =
     options;
 
-  const supabase = createFitbitClient();
+  const supabase = createSupabaseClient();
   const token = await getTokenFromDb(supabase);
 
   if (!token) {
     throw new Error(
-      "トークンがDBに存在しません。手動でトークンを登録してください",
+      "Token not found in DB. Please register token manually.",
     );
   }
 
@@ -189,11 +203,11 @@ export async function ensureValidToken(
 
   if (!needsRefresh) {
     const minutesUntilExpiry = (expiresAt.getTime() - Date.now()) / (1000 * 60);
-    console.log(`✅ トークン有効（残り ${minutesUntilExpiry.toFixed(0)} 分）`);
+    log.success(`Token valid (${minutesUntilExpiry.toFixed(0)} min remaining)`);
     return token.access_token;
   }
 
-  console.log("🔄 トークンをリフレッシュ中...");
+  log.info("Refreshing token...");
   const newToken = await refreshTokenFromApi(token.refresh_token);
 
   // 新しいトークンをDBに保存
@@ -211,13 +225,13 @@ export async function ensureValidToken(
     token.id,
   );
 
-  console.log(
-    `✅ トークンをリフレッシュしました（新しい有効期限: ${newExpiresAt.toISOString()}）`,
-  );
+  log.success(`Token refreshed (expires: ${newExpiresAt.toISOString()})`);
   return newToken.access_token;
 }
 
-// ========== CLI実行 ==========
+// =============================================================================
+// CLI Entry Point
+// =============================================================================
 
 async function main() {
   const args = parseArgs(Deno.args, {
@@ -227,23 +241,23 @@ async function main() {
 
   if (args.help) {
     console.log(`
-Fitbit OAuth2.0 認証管理
+Fitbit OAuth2.0 Auth Manager
 
-使用法:
-  deno run --allow-env --allow-net --allow-read auth.ts [オプション]
+Usage:
+  deno run --allow-env --allow-net --allow-read auth.ts [options]
 
-オプション:
-  --help, -h      このヘルプを表示
-  --refresh, -r   強制的にトークンをリフレッシュ
+Options:
+  --help, -h      Show this help
+  --refresh, -r   Force token refresh
 
-例:
-  # 有効性確認（必要ならリフレッシュ）
+Examples:
+  # Check validity (refresh if needed)
   deno run --allow-env --allow-net --allow-read auth.ts
 
-  # 強制リフレッシュ
+  # Force refresh
   deno run --allow-env --allow-net --allow-read auth.ts --refresh
 
-環境変数:
+Environment Variables:
   SUPABASE_URL              Supabase URL
   SUPABASE_SERVICE_ROLE_KEY Supabase Service Role Key
   FITBIT_CLIENT_ID          Fitbit Client ID
@@ -255,8 +269,8 @@ Fitbit OAuth2.0 認証管理
   // 通常実行: 有効性確認（必要ならリフレッシュ）
   try {
     await ensureValidToken({ forceRefresh: args.refresh });
-  } catch (error) {
-    console.error(`❌ ${error instanceof Error ? error.message : error}`);
+  } catch (err) {
+    log.error(err instanceof Error ? err.message : String(err));
     Deno.exit(1);
   }
 }

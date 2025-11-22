@@ -1,13 +1,22 @@
-// write_db.ts
-// Fitbit データの Supabase 書き込み
+/**
+ * Fitbit データの Supabase 書き込み
+ *
+ * fitbit スキーマへのデータ変換と upsert 処理
+ */
 
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
-import { formatFitbitDate } from "./api.ts";
+import * as log from "../../utils/log.ts";
 import type {
-  ActivitySummary,
-  AzmDay,
-  BreathingRateDay,
-  CardioScoreDay,
+  FitbitApiActivitySummary,
+  FitbitApiAzmDay,
+  FitbitApiBreathingRateDay,
+  FitbitApiCardioScoreDay,
+  FitbitApiHeartRateDay,
+  FitbitApiHeartRateIntraday,
+  FitbitApiHrvDay,
+  FitbitApiSleepLog,
+  FitbitApiSpo2Response,
+  FitbitApiTemperatureSkinDay,
   DbActivityDaily,
   DbBreathingRateDaily,
   DbCardioScoreDaily,
@@ -17,38 +26,54 @@ import type {
   DbSpo2Daily,
   DbTemperatureSkinDaily,
   FitbitData,
-  HeartRateDay,
-  HeartRateIntraday,
-  HrvDay,
-  SleepLog,
-  Spo2ApiResponse,
-  TemperatureSkinDay,
 } from "./types.ts";
 
-// ========== 定数 ==========
+// =============================================================================
+// Types
+// =============================================================================
 
-const SCHEMA = "fitbit";
-const BATCH_SIZE = 100;
+/** fitbit スキーマ用クライアント型 */
+export type FitbitSchema = ReturnType<SupabaseClient["schema"]>;
 
-// ========== Supabase クライアント ==========
+/** upsert 結果 */
+export interface UpsertResult {
+  success: number;
+  failed: number;
+}
 
-export function createFitbitDbClient(): SupabaseClient {
+// =============================================================================
+// Constants
+// =============================================================================
+
+const BATCH_SIZE = 1000;
+
+// =============================================================================
+// Client Factory
+// =============================================================================
+
+/**
+ * fitbit スキーマ専用の Supabase クライアントを作成
+ */
+export function createFitbitDbClient(): FitbitSchema {
   const url = Deno.env.get("SUPABASE_URL");
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
   if (!url || !key) {
-    throw new Error("SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY が必要です");
+    throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set");
   }
 
-  return createClient(url, key);
+  const supabase = createClient(url, key);
+  return supabase.schema("fitbit");
 }
 
-// ========== 変換関数: API → DB レコード ==========
+// =============================================================================
+// Transform Functions: API → DB Record
+// =============================================================================
 
 /**
- * 睡眠データをDBレコードに変換
+ * 睡眠データを DB レコードに変換
  */
-export function toDbSleep(items: SleepLog[]): DbSleep[] {
+export function toDbSleep(items: FitbitApiSleepLog[]): DbSleep[] {
   return items.map((item) => ({
     date: item.dateOfSleep,
     start_time: item.startTime,
@@ -66,15 +91,14 @@ export function toDbSleep(items: SleepLog[]): DbSleep[] {
 }
 
 /**
- * 活動データをDBレコードに変換
+ * 活動データを DB レコードに変換
  */
 export function toDbActivityDaily(
-  activityMap: Map<string, ActivitySummary>,
-  azmData: AzmDay[],
+  activityMap: Map<string, FitbitApiActivitySummary>,
+  azmData: FitbitApiAzmDay[],
   intradayMap?: Map<string, unknown>,
 ): DbActivityDaily[] {
-  // AZMをMapに変換
-  const azmMap = new Map<string, AzmDay>();
+  const azmMap = new Map<string, FitbitApiAzmDay>();
   for (const azm of azmData) {
     azmMap.set(azm.dateTime, azm);
   }
@@ -82,7 +106,6 @@ export function toDbActivityDaily(
   const records: DbActivityDaily[] = [];
 
   for (const [date, summary] of activityMap) {
-    // 距離を取得（総距離）
     const totalDistance = summary.distances?.find(
       (d) => d.activity === "total",
     )?.distance;
@@ -110,11 +133,11 @@ export function toDbActivityDaily(
 }
 
 /**
- * 心拍データをDBレコードに変換
+ * 心拍データを DB レコードに変換
  */
 export function toDbHeartRateDaily(
-  items: HeartRateDay[],
-  intradayMap?: Map<string, HeartRateIntraday>,
+  items: FitbitApiHeartRateDay[],
+  intradayMap?: Map<string, FitbitApiHeartRateIntraday>,
 ): DbHeartRateDaily[] {
   return items.map((item) => ({
     date: item.dateTime,
@@ -125,9 +148,9 @@ export function toDbHeartRateDaily(
 }
 
 /**
- * HRVデータをDBレコードに変換
+ * HRV データを DB レコードに変換
  */
-export function toDbHrvDaily(items: HrvDay[]): DbHrvDaily[] {
+export function toDbHrvDaily(items: FitbitApiHrvDay[]): DbHrvDaily[] {
   return items.map((item) => ({
     date: item.dateTime,
     daily_rmssd: item.value.dailyRmssd,
@@ -137,10 +160,10 @@ export function toDbHrvDaily(items: HrvDay[]): DbHrvDaily[] {
 }
 
 /**
- * SpO2データをDBレコードに変換
+ * SpO2 データを DB レコードに変換
  */
 export function toDbSpo2Daily(
-  spo2Map: Map<string, Spo2ApiResponse>,
+  spo2Map: Map<string, FitbitApiSpo2Response>,
 ): DbSpo2Daily[] {
   const records: DbSpo2Daily[] = [];
 
@@ -159,10 +182,10 @@ export function toDbSpo2Daily(
 }
 
 /**
- * 呼吸数データをDBレコードに変換
+ * 呼吸数データを DB レコードに変換
  */
 export function toDbBreathingRateDaily(
-  items: BreathingRateDay[],
+  items: FitbitApiBreathingRateDay[],
 ): DbBreathingRateDaily[] {
   return items.map((item) => ({
     date: item.dateTime,
@@ -171,13 +194,12 @@ export function toDbBreathingRateDaily(
 }
 
 /**
- * VO2 MaxデータをDBレコードに変換
+ * VO2 Max データを DB レコードに変換
  */
 export function toDbCardioScoreDaily(
-  items: CardioScoreDay[],
+  items: FitbitApiCardioScoreDay[],
 ): DbCardioScoreDaily[] {
   return items.map((item) => {
-    // VO2 Maxは "30-35" 形式または数値
     const vo2Value = item.value.vo2Max;
     let vo2Max: number | undefined;
     let vo2MaxRangeLow: number | undefined;
@@ -187,7 +209,7 @@ export function toDbCardioScoreDaily(
       const [low, high] = vo2Value.split("-").map(Number);
       vo2MaxRangeLow = low;
       vo2MaxRangeHigh = high;
-      vo2Max = (low + high) / 2; // 中央値
+      vo2Max = (low + high) / 2;
     } else {
       vo2Max = parseFloat(vo2Value);
     }
@@ -202,10 +224,10 @@ export function toDbCardioScoreDaily(
 }
 
 /**
- * 皮膚温度データをDBレコードに変換
+ * 皮膚温度データを DB レコードに変換
  */
 export function toDbTemperatureSkinDaily(
-  items: TemperatureSkinDay[],
+  items: FitbitApiTemperatureSkinDay[],
 ): DbTemperatureSkinDaily[] {
   return items.map((item) => ({
     date: item.dateTime,
@@ -214,18 +236,15 @@ export function toDbTemperatureSkinDaily(
   }));
 }
 
-// ========== DB書き込み ==========
-
-export interface UpsertResult {
-  success: number;
-  failed: number;
-}
+// =============================================================================
+// Batch Upsert
+// =============================================================================
 
 /**
- * バッチupsert
+ * バッチ upsert
  */
 async function upsertBatch<T extends object>(
-  supabase: SupabaseClient,
+  fitbit: FitbitSchema,
   table: string,
   records: T[],
   onConflict: string,
@@ -240,15 +259,12 @@ async function upsertBatch<T extends object>(
   for (let i = 0; i < records.length; i += BATCH_SIZE) {
     const batch = records.slice(i, i + BATCH_SIZE);
 
-    const { error } = await supabase
-      .schema(SCHEMA)
+    const { error } = await fitbit
       .from(table)
       .upsert(batch, { onConflict });
 
     if (error) {
-      console.error(
-        `   ❌ バッチ ${Math.floor(i / BATCH_SIZE) + 1} エラー: ${error.message}`,
-      );
+      log.error(`${table} batch ${Math.floor(i / BATCH_SIZE) + 1}: ${error.message}`);
       failed += batch.length;
     } else {
       success += batch.length;
@@ -258,177 +274,161 @@ async function upsertBatch<T extends object>(
   return { success, failed };
 }
 
+// =============================================================================
+// Save Functions
+// =============================================================================
+
 /**
- * 睡眠データをDBに保存
+ * 睡眠データを DB に保存
  */
 export async function saveSleep(
-  supabase: SupabaseClient,
-  items: SleepLog[],
+  fitbit: FitbitSchema,
+  items: FitbitApiSleepLog[],
 ): Promise<UpsertResult> {
   const records = toDbSleep(items);
-  console.log(`💾 睡眠データ保存中... (${records.length}件)`);
+  log.info(`Saving sleep... (${records.length} records)`);
 
-  const result = await upsertBatch(supabase, "sleep", records, "log_id");
+  const result = await upsertBatch(fitbit, "sleep", records, "log_id");
 
-  if (result.success > 0) console.log(`   ✓ ${result.success}件保存`);
-  if (result.failed > 0) console.log(`   ✗ ${result.failed}件失敗`);
+  if (result.success > 0) log.success(`${result.success} records saved`);
+  if (result.failed > 0) log.error(`${result.failed} records failed`);
 
   return result;
 }
 
 /**
- * 活動データをDBに保存
+ * 活動データを DB に保存
  */
 export async function saveActivityDaily(
-  supabase: SupabaseClient,
-  activityMap: Map<string, ActivitySummary>,
-  azmData: AzmDay[],
+  fitbit: FitbitSchema,
+  activityMap: Map<string, FitbitApiActivitySummary>,
+  azmData: FitbitApiAzmDay[],
 ): Promise<UpsertResult> {
   const records = toDbActivityDaily(activityMap, azmData);
-  console.log(`💾 活動データ保存中... (${records.length}件)`);
+  log.info(`Saving activity... (${records.length} records)`);
 
-  const result = await upsertBatch(supabase, "activity_daily", records, "date");
+  const result = await upsertBatch(fitbit, "activity_daily", records, "date");
 
-  if (result.success > 0) console.log(`   ✓ ${result.success}件保存`);
-  if (result.failed > 0) console.log(`   ✗ ${result.failed}件失敗`);
+  if (result.success > 0) log.success(`${result.success} records saved`);
+  if (result.failed > 0) log.error(`${result.failed} records failed`);
 
   return result;
 }
 
 /**
- * 心拍数データをDBに保存
+ * 心拍数データを DB に保存
  */
 export async function saveHeartRateDaily(
-  supabase: SupabaseClient,
-  items: HeartRateDay[],
-  intradayMap?: Map<string, HeartRateIntraday>,
+  fitbit: FitbitSchema,
+  items: FitbitApiHeartRateDay[],
+  intradayMap?: Map<string, FitbitApiHeartRateIntraday>,
 ): Promise<UpsertResult> {
   const records = toDbHeartRateDaily(items, intradayMap);
-  console.log(`💾 心拍数データ保存中... (${records.length}件)`);
+  log.info(`Saving heart rate... (${records.length} records)`);
 
-  const result = await upsertBatch(
-    supabase,
-    "heart_rate_daily",
-    records,
-    "date",
-  );
+  const result = await upsertBatch(fitbit, "heart_rate_daily", records, "date");
 
-  if (result.success > 0) console.log(`   ✓ ${result.success}件保存`);
-  if (result.failed > 0) console.log(`   ✗ ${result.failed}件失敗`);
+  if (result.success > 0) log.success(`${result.success} records saved`);
+  if (result.failed > 0) log.error(`${result.failed} records failed`);
 
   return result;
 }
 
 /**
- * HRVデータをDBに保存
+ * HRV データを DB に保存
  */
 export async function saveHrvDaily(
-  supabase: SupabaseClient,
-  items: HrvDay[],
+  fitbit: FitbitSchema,
+  items: FitbitApiHrvDay[],
 ): Promise<UpsertResult> {
   const records = toDbHrvDaily(items);
-  console.log(`💾 HRVデータ保存中... (${records.length}件)`);
+  log.info(`Saving HRV... (${records.length} records)`);
 
-  const result = await upsertBatch(supabase, "hrv_daily", records, "date");
+  const result = await upsertBatch(fitbit, "hrv_daily", records, "date");
 
-  if (result.success > 0) console.log(`   ✓ ${result.success}件保存`);
-  if (result.failed > 0) console.log(`   ✗ ${result.failed}件失敗`);
+  if (result.success > 0) log.success(`${result.success} records saved`);
+  if (result.failed > 0) log.error(`${result.failed} records failed`);
 
   return result;
 }
 
 /**
- * SpO2データをDBに保存
+ * SpO2 データを DB に保存
  */
 export async function saveSpo2Daily(
-  supabase: SupabaseClient,
-  spo2Map: Map<string, Spo2ApiResponse>,
+  fitbit: FitbitSchema,
+  spo2Map: Map<string, FitbitApiSpo2Response>,
 ): Promise<UpsertResult> {
   const records = toDbSpo2Daily(spo2Map);
-  console.log(`💾 SpO2データ保存中... (${records.length}件)`);
+  log.info(`Saving SpO2... (${records.length} records)`);
 
-  const result = await upsertBatch(supabase, "spo2_daily", records, "date");
+  const result = await upsertBatch(fitbit, "spo2_daily", records, "date");
 
-  if (result.success > 0) console.log(`   ✓ ${result.success}件保存`);
-  if (result.failed > 0) console.log(`   ✗ ${result.failed}件失敗`);
+  if (result.success > 0) log.success(`${result.success} records saved`);
+  if (result.failed > 0) log.error(`${result.failed} records failed`);
 
   return result;
 }
 
 /**
- * 呼吸数データをDBに保存
+ * 呼吸数データを DB に保存
  */
 export async function saveBreathingRateDaily(
-  supabase: SupabaseClient,
-  items: BreathingRateDay[],
+  fitbit: FitbitSchema,
+  items: FitbitApiBreathingRateDay[],
 ): Promise<UpsertResult> {
   const records = toDbBreathingRateDaily(items);
-  console.log(`💾 呼吸数データ保存中... (${records.length}件)`);
+  log.info(`Saving breathing rate... (${records.length} records)`);
 
-  const result = await upsertBatch(
-    supabase,
-    "breathing_rate_daily",
-    records,
-    "date",
-  );
+  const result = await upsertBatch(fitbit, "breathing_rate_daily", records, "date");
 
-  if (result.success > 0) console.log(`   ✓ ${result.success}件保存`);
-  if (result.failed > 0) console.log(`   ✗ ${result.failed}件失敗`);
+  if (result.success > 0) log.success(`${result.success} records saved`);
+  if (result.failed > 0) log.error(`${result.failed} records failed`);
 
   return result;
 }
 
 /**
- * VO2 MaxデータをDBに保存
+ * VO2 Max データを DB に保存
  */
 export async function saveCardioScoreDaily(
-  supabase: SupabaseClient,
-  items: CardioScoreDay[],
+  fitbit: FitbitSchema,
+  items: FitbitApiCardioScoreDay[],
 ): Promise<UpsertResult> {
   const records = toDbCardioScoreDaily(items);
-  console.log(`💾 VO2 Maxデータ保存中... (${records.length}件)`);
+  log.info(`Saving VO2 Max... (${records.length} records)`);
 
-  const result = await upsertBatch(
-    supabase,
-    "cardio_score_daily",
-    records,
-    "date",
-  );
+  const result = await upsertBatch(fitbit, "cardio_score_daily", records, "date");
 
-  if (result.success > 0) console.log(`   ✓ ${result.success}件保存`);
-  if (result.failed > 0) console.log(`   ✗ ${result.failed}件失敗`);
+  if (result.success > 0) log.success(`${result.success} records saved`);
+  if (result.failed > 0) log.error(`${result.failed} records failed`);
 
   return result;
 }
 
 /**
- * 皮膚温度データをDBに保存
+ * 皮膚温度データを DB に保存
  */
 export async function saveTemperatureSkinDaily(
-  supabase: SupabaseClient,
-  items: TemperatureSkinDay[],
+  fitbit: FitbitSchema,
+  items: FitbitApiTemperatureSkinDay[],
 ): Promise<UpsertResult> {
   const records = toDbTemperatureSkinDaily(items);
-  console.log(`💾 皮膚温度データ保存中... (${records.length}件)`);
+  log.info(`Saving skin temperature... (${records.length} records)`);
 
-  const result = await upsertBatch(
-    supabase,
-    "temperature_skin_daily",
-    records,
-    "date",
-  );
+  const result = await upsertBatch(fitbit, "temperature_skin_daily", records, "date");
 
-  if (result.success > 0) console.log(`   ✓ ${result.success}件保存`);
-  if (result.failed > 0) console.log(`   ✗ ${result.failed}件失敗`);
+  if (result.success > 0) log.success(`${result.success} records saved`);
+  if (result.failed > 0) log.error(`${result.failed} records failed`);
 
   return result;
 }
 
 /**
- * 全データをDBに保存（並列実行で高速化）
+ * 全データを DB に保存（並列実行で高速化）
  */
 export async function saveAllFitbitData(
-  supabase: SupabaseClient,
+  fitbit: FitbitSchema,
   data: FitbitData,
 ): Promise<{
   sleep: UpsertResult;
@@ -440,7 +440,6 @@ export async function saveAllFitbitData(
   cardioScore: UpsertResult;
   temperatureSkin: UpsertResult;
 }> {
-  // 全テーブルへの保存を並列実行
   const [
     sleepResult,
     activityResult,
@@ -451,14 +450,14 @@ export async function saveAllFitbitData(
     cardioScoreResult,
     temperatureSkinResult,
   ] = await Promise.all([
-    saveSleep(supabase, data.sleep),
-    saveActivityDaily(supabase, data.activity, data.azm),
-    saveHeartRateDaily(supabase, data.heartRate, data.heartRateIntraday),
-    saveHrvDaily(supabase, data.hrv),
-    saveSpo2Daily(supabase, data.spo2),
-    saveBreathingRateDaily(supabase, data.breathingRate),
-    saveCardioScoreDaily(supabase, data.cardioScore),
-    saveTemperatureSkinDaily(supabase, data.temperatureSkin),
+    saveSleep(fitbit, data.sleep),
+    saveActivityDaily(fitbit, data.activity, data.azm),
+    saveHeartRateDaily(fitbit, data.heartRate, data.heartRateIntraday),
+    saveHrvDaily(fitbit, data.hrv),
+    saveSpo2Daily(fitbit, data.spo2),
+    saveBreathingRateDaily(fitbit, data.breathingRate),
+    saveCardioScoreDaily(fitbit, data.cardioScore),
+    saveTemperatureSkinDaily(fitbit, data.temperatureSkin),
   ]);
 
   return {

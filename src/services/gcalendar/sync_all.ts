@@ -8,8 +8,8 @@
 
 import "https://deno.land/std@0.203.0/dotenv/load.ts";
 import { parse as parseArgs } from "https://deno.land/std@0.203.0/flags/mod.ts";
-import { fetchAllEvents } from "./fetch_events.ts";
-import { createGCalClient, upsertEvents } from "./write_db.ts";
+import { fetchAllEvents } from "./fetch_data.ts";
+import { createGCalendarDbClient, upsertEvents } from "./write_db.ts";
 import { SyncStats } from "./types.ts";
 
 // =============================================================================
@@ -73,8 +73,9 @@ export async function syncAllGCalEvents(
 
     // Step 2: DB書き込み
     log("INFO", "Step 2: Upserting events to Supabase...");
-    const client = createGCalClient();
-    const upsertedCount = await upsertEvents(client, events);
+    const client = createGCalendarDbClient();
+    const result = await upsertEvents(client, events);
+    const upsertedCount = result.success;
     log("SUCCESS", `Upserted ${upsertedCount} events`);
 
     // 統計

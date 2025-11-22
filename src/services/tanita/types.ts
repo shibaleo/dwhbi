@@ -1,23 +1,32 @@
-// types.ts
-// Tanita Health Planet API / DB 型定義
+/**
+ * Tanita Health Planet 型定義
+ *
+ * API レスポンス型、DB テーブル型、同期関連型
+ */
 
-// ========== API レスポンス型 ==========
+// =============================================================================
+// Tanita API Response Types
+// =============================================================================
 
 /** Tanita API 共通レスポンス */
 export interface TanitaApiResponse {
   birth_date?: string;
   height?: string;
   sex?: string;
-  data?: TanitaDataItem[];
+  data?: TanitaApiDataItem[];
 }
 
 /** Tanita API データアイテム（tag単位で返される） */
-export interface TanitaDataItem {
+export interface TanitaApiDataItem {
   date: string; // YYYYMMDDHHmm形式
   keydata: string; // 測定値（文字列）
   model: string; // 測定機器コード
   tag: string; // 測定タグ（6021, 6022, 622E等）
 }
+
+// =============================================================================
+// Auth Types
+// =============================================================================
 
 /** OAuth2.0 トークンレスポンス */
 export interface TokenResponse {
@@ -27,7 +36,15 @@ export interface TokenResponse {
   token_type?: string;
 }
 
-// ========== DB レコード型 ==========
+/** 認証オプション */
+export interface AuthOptions {
+  forceRefresh?: boolean;
+  thresholdDays?: number; // デフォルト: 7
+}
+
+// =============================================================================
+// Database Table Types (tanita schema)
+// =============================================================================
 
 /** tanita.tokens テーブル */
 export interface DbToken {
@@ -73,13 +90,9 @@ export interface DbSteps {
   synced_at?: string;
 }
 
-// ========== 設定・オプション型 ==========
-
-/** 認証オプション */
-export interface AuthOptions {
-  forceRefresh?: boolean;
-  thresholdDays?: number; // デフォルト: 7
-}
+// =============================================================================
+// Fetch Options & Data Types
+// =============================================================================
 
 /** データ取得オプション */
 export interface FetchOptions {
@@ -87,27 +100,36 @@ export interface FetchOptions {
   endDate?: Date;
 }
 
+/** 取得データ（fetch_data.ts の出力） */
+export interface TanitaData {
+  bodyComposition: TanitaApiDataItem[];
+  bloodPressure: TanitaApiDataItem[];
+  steps: TanitaApiDataItem[];
+}
+
+// =============================================================================
+// Sync Result Types
+// =============================================================================
+
+/** 同期統計 */
+export interface SyncStats {
+  bodyComposition: number;
+  bloodPressure: number;
+  steps: number;
+}
+
 /** 同期結果 */
 export interface SyncResult {
   success: boolean;
   timestamp: string;
-  stats: {
-    bodyComposition: number;
-    bloodPressure: number;
-    steps: number;
-  };
+  stats: SyncStats;
   errors: string[];
   elapsedSeconds: number;
 }
 
-/** 取得データ（fetch_data.tsの出力） */
-export interface TanitaData {
-  bodyComposition: TanitaDataItem[];
-  bloodPressure: TanitaDataItem[];
-  steps: TanitaDataItem[];
-}
-
-// ========== タグ定数 ==========
+// =============================================================================
+// Constants
+// =============================================================================
 
 export const TAGS = {
   // innerscan
@@ -122,6 +144,12 @@ export const TAGS = {
 } as const;
 
 export const INNERSCAN_TAGS = `${TAGS.WEIGHT},${TAGS.BODY_FAT_PERCENT}`;
-export const SPHYGMOMANOMETER_TAGS =
-  `${TAGS.SYSTOLIC},${TAGS.DIASTOLIC},${TAGS.PULSE}`;
+export const SPHYGMOMANOMETER_TAGS = `${TAGS.SYSTOLIC},${TAGS.DIASTOLIC},${TAGS.PULSE}`;
 export const PEDOMETER_TAGS = TAGS.STEPS;
+
+// =============================================================================
+// Type Aliases (後方互換性のため)
+// =============================================================================
+
+/** @deprecated Use TanitaApiDataItem instead */
+export type TanitaDataItem = TanitaApiDataItem;

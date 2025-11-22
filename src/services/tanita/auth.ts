@@ -1,17 +1,21 @@
-// auth.ts
-// Tanita Health Planet OAuth2.0 認証管理
-//
-// 使用例:
-//   deno run --allow-env --allow-net --allow-read auth.ts              # 有効性確認（必要ならリフレッシュ）
-//   deno run --allow-env --allow-net --allow-read auth.ts --refresh    # 強制リフレッシュ
-//   deno run --allow-env --allow-net --allow-read auth.ts --init       # 初回トークン取得（TANITA_AUTH_CODE必要）
+/**
+ * Tanita Health Planet OAuth2.0 認証管理
+ *
+ * 使用例:
+ *   deno run --allow-env --allow-net --allow-read auth.ts              # 有効性確認（必要ならリフレッシュ）
+ *   deno run --allow-env --allow-net --allow-read auth.ts --refresh    # 強制リフレッシュ
+ *   deno run --allow-env --allow-net --allow-read auth.ts --init       # 初回トークン取得（TANITA_AUTH_CODE必要）
+ */
 
 import "jsr:@std/dotenv/load";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { parseArgs } from "jsr:@std/cli/parse-args";
+import * as log from "../../utils/log.ts";
 import type { AuthOptions, DbToken, TokenResponse } from "./types.ts";
 
-// ========== 定数 ==========
+// =============================================================================
+// Constants
+// =============================================================================
 
 const OAUTH_TOKEN_URL = "https://www.healthplanet.jp/oauth/token";
 const REDIRECT_URI = "https://www.healthplanet.jp/success.html";
@@ -19,20 +23,24 @@ const DEFAULT_THRESHOLD_DAYS = 7;
 const SCHEMA = "tanita";
 const TABLE = "tokens";
 
-// ========== Supabase クライアント ==========
+// =============================================================================
+// Supabase Client
+// =============================================================================
 
-function createTanitaClient(): SupabaseClient {
+function createSupabaseClient(): SupabaseClient {
   const url = Deno.env.get("SUPABASE_URL");
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
   if (!url || !key) {
-    throw new Error("SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY が必要です");
+    throw new Error("SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY are required");
   }
 
   return createClient(url, key);
 }
 
-// ========== トークン有効性チェック（DBのみ参照） ==========
+// =============================================================================
+// Token Validation
+// =============================================================================
 
 /**
  * トークンが期限切れ間近かどうかを判定
@@ -49,7 +57,9 @@ export function isTokenExpiringSoon(
   return daysUntilExpiry <= thresholdDays;
 }
 
-// ========== DB操作 ==========
+// =============================================================================
+// Database Operations
+// =============================================================================
 
 /**
  * DBからトークンを取得
@@ -69,7 +79,7 @@ export async function getTokenFromDb(
       // レコードなし
       return null;
     }
-    throw new Error(`トークン取得エラー: ${error.message}`);
+    throw new Error(`Token fetch error: ${error.message}`);
   }
 
   return data as DbToken;
@@ -98,7 +108,7 @@ export async function saveTokenToDb(
       .eq("id", existingId);
 
     if (error) {
-      throw new Error(`トークン更新エラー: ${error.message}`);
+      throw new Error(`Token update error: ${error.message}`);
     }
   } else {
     // 新規作成
@@ -113,12 +123,14 @@ export async function saveTokenToDb(
       });
 
     if (error) {
-      throw new Error(`トークン作成エラー: ${error.message}`);
+      throw new Error(`Token create error: ${error.message}`);
     }
   }
 }
 
-// ========== API操作 ==========
+// =============================================================================
+// API Operations
+// =============================================================================
 
 /**
  * 認可コードからトークンを取得（初回のみ）
@@ -128,7 +140,7 @@ export async function getInitialToken(code: string): Promise<TokenResponse> {
   const clientSecret = Deno.env.get("TANITA_CLIENT_SECRET");
 
   if (!clientId || !clientSecret) {
-    throw new Error("TANITA_CLIENT_ID, TANITA_CLIENT_SECRET が必要です");
+    throw new Error("TANITA_CLIENT_ID, TANITA_CLIENT_SECRET are required");
   }
 
   const params = new URLSearchParams({
@@ -148,7 +160,7 @@ export async function getInitialToken(code: string): Promise<TokenResponse> {
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(
-      `初回トークン取得エラー: ${response.status} - ${errorText}`,
+      `Initial token error: ${response.status} - ${errorText}`,
     );
   }
 
@@ -167,7 +179,7 @@ export async function refreshTokenFromApi(
   const clientSecret = Deno.env.get("TANITA_CLIENT_SECRET");
 
   if (!clientId || !clientSecret) {
-    throw new Error("TANITA_CLIENT_ID, TANITA_CLIENT_SECRET が必要です");
+    throw new Error("TANITA_CLIENT_ID, TANITA_CLIENT_SECRET are required");
   }
 
   const params = new URLSearchParams({
@@ -186,7 +198,7 @@ export async function refreshTokenFromApi(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`リフレッシュエラー: ${response.status} - ${errorText}`);
+    throw new Error(`Refresh error: ${response.status} - ${errorText}`);
   }
 
   const responseText = await response.text();
@@ -200,11 +212,13 @@ export async function refreshTokenFromApi(
   try {
     return JSON.parse(responseText) as TokenResponse;
   } catch {
-    throw new Error(`レスポンスパースエラー: ${responseText}`);
+    throw new Error(`Response parse error: ${responseText}`);
   }
 }
 
-// ========== メイン関数 ==========
+// =============================================================================
+// Main Function
+// =============================================================================
 
 /**
  * 有効なアクセストークンを保証して返す
@@ -217,12 +231,12 @@ export async function ensureValidToken(
   const { forceRefresh = false, thresholdDays = DEFAULT_THRESHOLD_DAYS } =
     options;
 
-  const supabase = createTanitaClient();
+  const supabase = createSupabaseClient();
   const token = await getTokenFromDb(supabase);
 
   if (!token) {
     throw new Error(
-      "トークンがDBに存在しません。--init で初回トークンを取得してください",
+      "Token not found in DB. Use --init to get initial token.",
     );
   }
 
@@ -233,16 +247,16 @@ export async function ensureValidToken(
   if (!needsRefresh) {
     const daysUntilExpiry = (expiresAt.getTime() - Date.now()) /
       (1000 * 60 * 60 * 24);
-    console.log(`✅ トークン有効（残り ${daysUntilExpiry.toFixed(1)} 日）`);
+    log.success(`Token valid (${daysUntilExpiry.toFixed(1)} days remaining)`);
     return token.access_token;
   }
 
-  console.log("🔄 トークンをリフレッシュ中...");
+  log.info("Refreshing token...");
   const newToken = await refreshTokenFromApi(token.refresh_token);
 
   if (newToken === null) {
     // SUCCESS: トークンは既に有効
-    console.log("✅ トークンは既に最新です（APIがSUCCESSを返しました）");
+    log.success("Token already valid (API returned SUCCESS)");
     return token.access_token;
   }
 
@@ -259,13 +273,13 @@ export async function ensureValidToken(
     token.id,
   );
 
-  console.log(
-    `✅ トークンをリフレッシュしました（新しい有効期限: ${newExpiresAt.toISOString()}）`,
-  );
+  log.success(`Token refreshed (expires: ${newExpiresAt.toISOString()})`);
   return newToken.access_token;
 }
 
-// ========== CLI実行 ==========
+// =============================================================================
+// CLI Entry Point
+// =============================================================================
 
 async function main() {
   const args = parseArgs(Deno.args, {
@@ -276,33 +290,33 @@ async function main() {
 
   if (args.help) {
     console.log(`
-Tanita Health Planet OAuth2.0 認証管理
+Tanita Health Planet OAuth2.0 Auth Manager
 
-使用法:
-  deno run --allow-env --allow-net --allow-read auth.ts [オプション]
+Usage:
+  deno run --allow-env --allow-net --allow-read auth.ts [options]
 
-オプション:
-  --help, -h      このヘルプを表示
-  --refresh, -r   強制的にトークンをリフレッシュ
-  --init, -i      初回トークン取得（--code が必要）
-  --code, -c      認可コード（--init 時に使用）
+Options:
+  --help, -h      Show this help
+  --refresh, -r   Force token refresh
+  --init, -i      Get initial token (requires --code)
+  --code, -c      Authorization code (used with --init)
 
-例:
-  # 有効性確認（必要ならリフレッシュ）
+Examples:
+  # Check validity (refresh if needed)
   deno run --allow-env --allow-net --allow-read auth.ts
 
-  # 強制リフレッシュ
+  # Force refresh
   deno run --allow-env --allow-net --allow-read auth.ts --refresh
 
-  # 初回トークン取得
+  # Get initial token
   deno run --allow-env --allow-net --allow-read auth.ts --init --code=YOUR_AUTH_CODE
 
-環境変数:
+Environment Variables:
   SUPABASE_URL              Supabase URL
   SUPABASE_SERVICE_ROLE_KEY Supabase Service Role Key
   TANITA_CLIENT_ID          Tanita Client ID
   TANITA_CLIENT_SECRET      Tanita Client Secret
-  TANITA_AUTH_CODE          認可コード（--init で --code を省略した場合）
+  TANITA_AUTH_CODE          Authorization code (alternative to --code)
 `);
     Deno.exit(0);
   }
@@ -311,15 +325,15 @@ Tanita Health Planet OAuth2.0 認証管理
     // 初回トークン取得
     const code = args.code || Deno.env.get("TANITA_AUTH_CODE");
     if (!code) {
-      console.error("❌ --code または TANITA_AUTH_CODE が必要です");
+      log.error("--code or TANITA_AUTH_CODE is required");
       Deno.exit(1);
     }
 
-    console.log("🔑 認可コードをトークンに交換中...");
+    log.info("Exchanging authorization code for token...");
     const tokenResponse = await getInitialToken(code);
     const expiresAt = new Date(Date.now() + tokenResponse.expires_in * 1000);
 
-    const supabase = createTanitaClient();
+    const supabase = createSupabaseClient();
     const existing = await getTokenFromDb(supabase);
 
     await saveTokenToDb(
@@ -334,16 +348,16 @@ Tanita Health Planet OAuth2.0 認証管理
       existing?.id,
     );
 
-    console.log("✅ 初回トークン取得・保存完了");
-    console.log(`   有効期限: ${expiresAt.toISOString()}`);
+    log.success("Initial token saved");
+    log.info(`Expires: ${expiresAt.toISOString()}`);
     Deno.exit(0);
   }
 
   // 通常実行: 有効性確認（必要ならリフレッシュ）
   try {
     await ensureValidToken({ forceRefresh: args.refresh });
-  } catch (error) {
-    console.error(`❌ ${error instanceof Error ? error.message : error}`);
+  } catch (err) {
+    log.error(err instanceof Error ? err.message : String(err));
     Deno.exit(1);
   }
 }

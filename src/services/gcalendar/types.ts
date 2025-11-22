@@ -1,16 +1,18 @@
 /**
- * Google Calendar 同期モジュール 型定義
+ * Google Calendar 型定義
+ *
+ * API レスポンス型、DB テーブル型、同期関連型
  */
 
 // =============================================================================
-// Google Calendar API レスポンス型
+// Google Calendar API Response Types
 // =============================================================================
 
 /**
  * Google Calendar API v3 Event レスポンス型
  * @see https://developers.google.com/calendar/api/v3/reference/events
  */
-export interface GCalApiEvent {
+export interface GCalendarApiEvent {
   id: string;
   etag?: string;
   status?: "confirmed" | "tentative" | "cancelled";
@@ -21,8 +23,8 @@ export interface GCalApiEvent {
   description?: string;
   colorId?: string;
   recurringEventId?: string;
-  start: GCalDateTime;
-  end: GCalDateTime;
+  start: GCalendarApiDateTime;
+  end: GCalendarApiDateTime;
 }
 
 /**
@@ -30,7 +32,7 @@ export interface GCalApiEvent {
  * 通常イベント: dateTime が設定される
  * 終日イベント: date が設定される
  */
-export interface GCalDateTime {
+export interface GCalendarApiDateTime {
   date?: string;        // YYYY-MM-DD（終日イベント）
   dateTime?: string;    // ISO 8601（通常イベント）
   timeZone?: string;
@@ -39,7 +41,7 @@ export interface GCalDateTime {
 /**
  * Google Calendar API Events.list レスポンス型
  */
-export interface GCalEventsListResponse {
+export interface GCalendarApiEventsListResponse {
   kind: "calendar#events";
   etag: string;
   summary?: string;
@@ -48,11 +50,40 @@ export interface GCalEventsListResponse {
   accessRole?: string;
   nextPageToken?: string;
   nextSyncToken?: string;
-  items: GCalApiEvent[];
+  items: GCalendarApiEvent[];
 }
 
 // =============================================================================
-// DB テーブル型
+// Auth Types
+// =============================================================================
+
+/**
+ * Google Service Account Credentials
+ */
+export interface ServiceAccountCredentials {
+  type: "service_account";
+  project_id: string;
+  private_key_id: string;
+  private_key: string;
+  client_email: string;
+  client_id: string;
+  auth_uri: string;
+  token_uri: string;
+  auth_provider_x509_cert_url: string;
+  client_x509_cert_url: string;
+}
+
+/**
+ * JWT Token レスポンス
+ */
+export interface TokenResponse {
+  access_token: string;
+  expires_in: number;
+  token_type: "Bearer";
+}
+
+// =============================================================================
+// Database Table Types (gcalendar schema)
 // =============================================================================
 
 /**
@@ -84,13 +115,13 @@ export interface DbEventRead extends DbEvent {
 }
 
 // =============================================================================
-// 同期オプション・結果型
+// Fetch Options & Data Types
 // =============================================================================
 
 /**
- * 同期オプション
+ * データ取得オプション
  */
-export interface SyncOptions {
+export interface FetchOptions {
   /** 開始日時（ISO 8601） */
   timeMin?: string;
   /** 終了日時（ISO 8601） */
@@ -98,6 +129,18 @@ export interface SyncOptions {
   /** カレンダーID（デフォルト: 環境変数から取得） */
   calendarId?: string;
 }
+
+/**
+ * 取得データ（fetch_data.ts の出力）
+ */
+export interface GCalendarData {
+  events: DbEvent[];
+  calendarId: string;
+}
+
+// =============================================================================
+// Sync Result Types
+// =============================================================================
 
 /**
  * 同期統計
@@ -119,34 +162,18 @@ export interface SyncResult {
   timestamp: string;
   stats: SyncStats;
   elapsedSeconds: number;
-  error?: string;
+  errors: string[];
 }
 
 // =============================================================================
-// 認証関連型
+// Type Aliases (後方互換性のため)
 // =============================================================================
 
-/**
- * Google Service Account Credentials
- */
-export interface ServiceAccountCredentials {
-  type: "service_account";
-  project_id: string;
-  private_key_id: string;
-  private_key: string;
-  client_email: string;
-  client_id: string;
-  auth_uri: string;
-  token_uri: string;
-  auth_provider_x509_cert_url: string;
-  client_x509_cert_url: string;
-}
-
-/**
- * JWT Token レスポンス
- */
-export interface TokenResponse {
-  access_token: string;
-  expires_in: number;
-  token_type: "Bearer";
-}
+/** @deprecated Use FetchOptions instead */
+export type SyncOptions = FetchOptions;
+/** @deprecated Use GCalendarApiEvent instead */
+export type GCalApiEvent = GCalendarApiEvent;
+/** @deprecated Use GCalendarApiDateTime instead */
+export type GCalDateTime = GCalendarApiDateTime;
+/** @deprecated Use GCalendarApiEventsListResponse instead */
+export type GCalEventsListResponse = GCalendarApiEventsListResponse;

@@ -1,21 +1,32 @@
-// sync_daily.ts
-// Fitbit日次同期（直近N日間）
-//
-// 使用例:
-//   deno run --allow-env --allow-net --allow-read sync_daily.ts
-//   FITBIT_SYNC_DAYS=7 deno run --allow-env --allow-net --allow-read sync_daily.ts
+/**
+ * Fitbit → Supabase 日次同期
+ *
+ * 使用例:
+ *   deno run --allow-env --allow-net --allow-read sync_daily.ts
+ *   FITBIT_SYNC_DAYS=7 deno run --allow-env --allow-net --allow-read sync_daily.ts
+ */
 
 import "jsr:@std/dotenv/load";
+import * as log from "../../utils/log.ts";
 import { ensureValidToken } from "./auth.ts";
 import { fetchFitbitData } from "./fetch_data.ts";
 import { createFitbitDbClient, saveAllFitbitData } from "./write_db.ts";
 import type { SyncResult } from "./types.ts";
 
-// ========== 定数 ==========
+// =============================================================================
+// Constants
+// =============================================================================
 
 const DEFAULT_SYNC_DAYS = 3;
 
-// ========== メイン関数 ==========
+// =============================================================================
+// Sync Function
+// =============================================================================
+
+/**
+ * Fitbit データを Supabase に同期
+ * @param syncDays 同期する日数（デフォルト: 3）
+ */
 
 export async function syncFitbitByDays(syncDays?: number): Promise<SyncResult> {
   const startTime = Date.now();
@@ -23,16 +34,15 @@ export async function syncFitbitByDays(syncDays?: number): Promise<SyncResult> {
     parseInt(Deno.env.get("FITBIT_SYNC_DAYS") || String(DEFAULT_SYNC_DAYS));
   const errors: string[] = [];
 
-  console.log("🔄 Fitbit 日次同期開始");
-  console.log(`   同期日数: ${days}日間\n`);
+  log.syncStart("Fitbit", days);
 
   // 1. トークン確認（必要ならリフレッシュ）
   let accessToken: string;
   try {
     accessToken = await ensureValidToken();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`❌ 認証エラー: ${message}`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log.error(`Auth error: ${message}`);
     return {
       success: false,
       timestamp: new Date().toISOString(),
@@ -61,25 +71,24 @@ export async function syncFitbitByDays(syncDays?: number): Promise<SyncResult> {
   const startDate = new Date(endDate);
   startDate.setDate(startDate.getDate() - days - 1);
 
-  console.log("");
   const data = await fetchFitbitData(accessToken, { startDate, endDate });
 
   // 3. DB保存
-  console.log("");
+  log.section("Saving to DB");
   const supabase = createFitbitDbClient();
   const results = await saveAllFitbitData(supabase, data);
 
   // 4. 結果集計
   const elapsedSeconds = (Date.now() - startTime) / 1000;
 
-  if (results.sleep.failed > 0) errors.push(`睡眠: ${results.sleep.failed}件失敗`);
-  if (results.activity.failed > 0) errors.push(`活動: ${results.activity.failed}件失敗`);
-  if (results.heartRate.failed > 0) errors.push(`心拍: ${results.heartRate.failed}件失敗`);
-  if (results.hrv.failed > 0) errors.push(`HRV: ${results.hrv.failed}件失敗`);
-  if (results.spo2.failed > 0) errors.push(`SpO2: ${results.spo2.failed}件失敗`);
-  if (results.breathingRate.failed > 0) errors.push(`呼吸数: ${results.breathingRate.failed}件失敗`);
-  if (results.cardioScore.failed > 0) errors.push(`VO2Max: ${results.cardioScore.failed}件失敗`);
-  if (results.temperatureSkin.failed > 0) errors.push(`皮膚温度: ${results.temperatureSkin.failed}件失敗`);
+  if (results.sleep.failed > 0) errors.push(`sleep: ${results.sleep.failed} failed`);
+  if (results.activity.failed > 0) errors.push(`activity: ${results.activity.failed} failed`);
+  if (results.heartRate.failed > 0) errors.push(`heart rate: ${results.heartRate.failed} failed`);
+  if (results.hrv.failed > 0) errors.push(`HRV: ${results.hrv.failed} failed`);
+  if (results.spo2.failed > 0) errors.push(`SpO2: ${results.spo2.failed} failed`);
+  if (results.breathingRate.failed > 0) errors.push(`breathing rate: ${results.breathingRate.failed} failed`);
+  if (results.cardioScore.failed > 0) errors.push(`VO2 Max: ${results.cardioScore.failed} failed`);
+  if (results.temperatureSkin.failed > 0) errors.push(`skin temp: ${results.temperatureSkin.failed} failed`);
 
   const result: SyncResult = {
     success: errors.length === 0,
@@ -99,26 +108,25 @@ export async function syncFitbitByDays(syncDays?: number): Promise<SyncResult> {
   };
 
   // 5. サマリー表示
-  console.log("\n" + "=".repeat(60));
-  console.log(result.success ? "✅ 同期完了" : "⚠️  同期完了（エラーあり）");
-  console.log(`   睡眠: ${result.stats.sleep}件`);
-  console.log(`   活動: ${result.stats.activity}件`);
-  console.log(`   心拍: ${result.stats.heartRate}件`);
-  console.log(`   HRV: ${result.stats.hrv}件`);
-  console.log(`   SpO2: ${result.stats.spo2}件`);
-  console.log(`   呼吸数: ${result.stats.breathingRate}件`);
-  console.log(`   VO2 Max: ${result.stats.cardioScore}件`);
-  console.log(`   皮膚温度: ${result.stats.temperatureSkin}件`);
-  console.log(`   処理時間: ${result.elapsedSeconds.toFixed(1)}秒`);
+  log.syncEnd(result.success, result.elapsedSeconds);
+  log.info(`Sleep: ${result.stats.sleep}`);
+  log.info(`Activity: ${result.stats.activity}`);
+  log.info(`Heart rate: ${result.stats.heartRate}`);
+  log.info(`HRV: ${result.stats.hrv}`);
+  log.info(`SpO2: ${result.stats.spo2}`);
+  log.info(`Breathing rate: ${result.stats.breathingRate}`);
+  log.info(`VO2 Max: ${result.stats.cardioScore}`);
+  log.info(`Skin temperature: ${result.stats.temperatureSkin}`);
   if (errors.length > 0) {
-    console.log(`   エラー: ${errors.join(", ")}`);
+    log.warn(`Errors: ${errors.join(", ")}`);
   }
-  console.log("=".repeat(60));
 
   return result;
 }
 
-// ========== CLI実行 ==========
+// =============================================================================
+// CLI Entry Point
+// =============================================================================
 
 if (import.meta.main) {
   const result = await syncFitbitByDays();

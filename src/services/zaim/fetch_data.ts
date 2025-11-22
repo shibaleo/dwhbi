@@ -1,50 +1,32 @@
-// fetch_data.ts
-// Zaim APIからデータを取得する責務に特化
+/**
+ * Zaim API データ取得オーケストレーション
+ */
 
 import "https://deno.land/std@0.203.0/dotenv/load.ts";
 import { ZaimAPI } from './api.ts';
+import * as log from "../../utils/log.ts";
 import type {
-  ZaimTransaction,
-  ZaimCategory,
-  ZaimGenre,
-  ZaimAccount
+  ZaimApiTransaction,
+  ZaimData,
+  FetchOptions,
 } from "./types.ts";
 
-// ============================================================
-// 型定義
-// ============================================================
-
-export interface ZaimData {
-  zaimUserId: number;
-  categories: ZaimCategory[];
-  genres: ZaimGenre[];
-  accounts: ZaimAccount[];
-  transactions: ZaimTransaction[];
-}
-
-export interface FetchOptions {
-  startDate?: string;  // YYYY-MM-DD
-  endDate?: string;    // YYYY-MM-DD
-  mode?: 'payment' | 'income' | 'transfer';
-  limit?: number;      // 1回のAPI取得件数（デフォルト100）
-}
-
-// ============================================================
-// メイン関数
-// ============================================================
+// =============================================================================
+// Main Function
+// =============================================================================
 
 export async function fetchZaimData(options: FetchOptions = {}): Promise<ZaimData> {
   const api = new ZaimAPI();
 
   // 1. User ID取得
-  console.log('📡 Zaim APIに接続中...');
+  log.info("Connecting to Zaim API...");
   const userInfo = await api.verifyUser();
   const zaimUserId = userInfo.me.id;
-  const maskedId = `******${String(zaimUserId).slice(-2)}`;
-  console.log(`✓ Zaim User ID: ${maskedId}`);
+  const maskedId = log.mask(String(zaimUserId), 2);
+  log.success(`Zaim User ID: ${maskedId}`);
 
   // 2. マスタデータを並列取得
-  console.log('\n📚 マスタデータを取得中...');
+  log.section("Fetching Master Data");
   const [categoriesRes, genresRes, accountsRes] = await Promise.all([
     api.getCategories(),
     api.getGenres(),
@@ -55,9 +37,9 @@ export async function fetchZaimData(options: FetchOptions = {}): Promise<ZaimDat
   const genres = genresRes.genres;
   const accounts = accountsRes.accounts;
 
-  console.log(`✓ カテゴリ: ${categories.length}件`);
-  console.log(`✓ ジャンル: ${genres.length}件`);
-  console.log(`✓ 口座: ${accounts.length}件`);
+  log.success(`Categories: ${categories.length}`);
+  log.success(`Genres: ${genres.length}`);
+  log.success(`Accounts: ${accounts.length}`);
 
   // 3. トランザクション取得（ページネーション）
   const transactions = await fetchTransactions(api, options);
@@ -71,14 +53,14 @@ export async function fetchZaimData(options: FetchOptions = {}): Promise<ZaimDat
   };
 }
 
-// ============================================================
-// トランザクション取得（ページネーション対応）
-// ============================================================
+// =============================================================================
+// Transaction Fetch (with Pagination)
+// =============================================================================
 
 async function fetchTransactions(
   api: ZaimAPI,
   options: FetchOptions
-): Promise<ZaimTransaction[]> {
+): Promise<ZaimApiTransaction[]> {
   // デフォルト: 過去30日間
   const endDate = options.endDate || new Date().toISOString().split('T')[0];
   const startDate = options.startDate || (() => {
@@ -87,22 +69,22 @@ async function fetchTransactions(
     return date.toISOString().split('T')[0];
   })();
 
-  console.log(`\n💰 トランザクションを取得中...`);
-  console.log(`   期間: ${startDate} 〜 ${endDate}`);
+  log.section("Fetching Transactions");
+  log.info(`Period: ${startDate} - ${endDate}`);
   if (options.mode) {
-    console.log(`   種別: ${options.mode}`);
+    log.info(`Mode: ${options.mode}`);
   }
 
   const limit = options.limit || 100;
   const maxPages = 1000;
   const seenIds = new Set<number>();
-  const allTransactions: ZaimTransaction[] = [];
+  const allTransactions: ZaimApiTransaction[] = [];
 
   let page = 1;
   let hasMore = true;
 
   while (hasMore && page <= maxPages) {
-    const params: any = {
+    const params: Record<string, unknown> = {
       start_date: startDate,
       end_date: endDate,
       page,
@@ -125,7 +107,7 @@ async function fetchTransactions(
     const isDuplicate = pageIds.every(id => seenIds.has(id));
 
     if (isDuplicate && page > 1) {
-      console.log(`   ⚠️ 重複ページ検出（ページ ${page}）: 取得完了`);
+      log.warn(`Duplicate page detected (page ${page}): fetch complete`);
       hasMore = false;
       break;
     }
@@ -140,7 +122,7 @@ async function fetchTransactions(
 
     // 進捗表示（10ページごと）
     if (page % 10 === 0) {
-      console.log(`   ページ ${page}: 累計 ${allTransactions.length}件`);
+      log.info(`Page ${page}: total ${allTransactions.length} records`);
     }
 
     // 次ページ判定
@@ -152,17 +134,17 @@ async function fetchTransactions(
   }
 
   if (page > maxPages) {
-    console.warn(`   ⚠️ 最大ページ数 ${maxPages} に到達`);
+    log.warn(`Max pages reached: ${maxPages}`);
   }
 
-  console.log(`✓ トランザクション: ${allTransactions.length}件`);
+  log.success(`Transactions: ${allTransactions.length}`);
 
   return allTransactions;
 }
 
-// ============================================================
-// CLI実行用
-// ============================================================
+// =============================================================================
+// CLI Entry Point
+// =============================================================================
 
 if (import.meta.main) {
   const syncDays = parseInt(Deno.env.get('ZAIM_SYNC_DAYS') || '3', 10);
@@ -171,8 +153,7 @@ if (import.meta.main) {
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - syncDays);
 
-  console.log('🚀 Zaim データ取得開始');
-  console.log('='.repeat(60));
+  log.syncStart("Zaim Fetch");
 
   try {
     const data = await fetchZaimData({
@@ -180,19 +161,18 @@ if (import.meta.main) {
       endDate: endDate.toISOString().split('T')[0],
     });
 
-    console.log('\n' + '='.repeat(60));
-    console.log('📊 取得結果サマリー');
-    console.log('='.repeat(60));
-    console.log(`Zaim User ID: ******${String(data.zaimUserId).slice(-2)}`);
-    console.log(`カテゴリ: ${data.categories.length}件`);
-    console.log(`ジャンル: ${data.genres.length}件`);
-    console.log(`口座: ${data.accounts.length}件`);
-    console.log(`トランザクション: ${data.transactions.length}件`);
-    console.log('='.repeat(60));
+    log.section("Fetch Summary");
+    log.info(`Zaim User ID: ${log.mask(String(data.zaimUserId), 2)}`);
+    log.info(`Categories: ${data.categories.length}`);
+    log.info(`Genres: ${data.genres.length}`);
+    log.info(`Accounts: ${data.accounts.length}`);
+    log.info(`Transactions: ${data.transactions.length}`);
+    log.syncEnd(true);
 
     Deno.exit(0);
-  } catch (error) {
-    console.error('❌ データ取得エラー:', error);
+  } catch (err) {
+    log.error(`Fetch error: ${err instanceof Error ? err.message : err}`);
+    log.syncEnd(false);
     Deno.exit(1);
   }
 }

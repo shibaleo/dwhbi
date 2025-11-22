@@ -1,7 +1,11 @@
-// write_db.ts
-// Tanita データの Supabase 書き込み
+/**
+ * Tanita データの Supabase 書き込み
+ *
+ * tanita スキーマへのデータ変換と upsert 処理
+ */
 
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
+import * as log from "../../utils/log.ts";
 import { parseTanitaDate } from "./api.ts";
 import type {
   DbBloodPressure,
@@ -11,28 +15,50 @@ import type {
 } from "./types.ts";
 import { TAGS } from "./types.ts";
 
-// ========== 定数 ==========
+// =============================================================================
+// Types
+// =============================================================================
 
-const SCHEMA = "tanita";
+/** tanita スキーマ用クライアント型 */
+export type TanitaSchema = ReturnType<SupabaseClient["schema"]>;
+
+/** upsert 結果 */
+export interface UpsertResult {
+  success: number;
+  failed: number;
+}
+
+// =============================================================================
+// Constants
+// =============================================================================
+
 const BATCH_SIZE = 1000;
 
-// ========== Supabase クライアント ==========
+// =============================================================================
+// Client Factory
+// =============================================================================
 
-export function createTanitaDbClient(): SupabaseClient {
+/**
+ * tanita スキーマ専用の Supabase クライアントを作成
+ */
+export function createTanitaDbClient(): TanitaSchema {
   const url = Deno.env.get("SUPABASE_URL");
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
   if (!url || !key) {
-    throw new Error("SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY が必要です");
+    throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set");
   }
 
-  return createClient(url, key);
+  const supabase = createClient(url, key);
+  return supabase.schema("tanita");
 }
 
-// ========== 変換関数: API → DB レコード ==========
+// =============================================================================
+// Transform Functions: API → DB Record
+// =============================================================================
 
 /**
- * 体組成データを測定時刻でグループ化してDBレコードに変換
+ * 体組成データを測定時刻でグループ化して DB レコードに変換
  */
 export function toDbBodyComposition(
   items: TanitaDataItem[],
@@ -58,7 +84,6 @@ export function toDbBodyComposition(
       record.body_fat_percent = parseFloat(item.keydata);
     }
 
-    // 最新のmodelを保持
     if (item.model !== "00000000") {
       record.model = item.model;
     }
@@ -68,7 +93,7 @@ export function toDbBodyComposition(
 }
 
 /**
- * 血圧データを測定時刻でグループ化してDBレコードに変換
+ * 血圧データを測定時刻でグループ化して DB レコードに変換
  */
 export function toDbBloodPressure(items: TanitaDataItem[]): DbBloodPressure[] {
   const byTimestamp: Map<string, DbBloodPressure> = new Map();
@@ -103,7 +128,7 @@ export function toDbBloodPressure(items: TanitaDataItem[]): DbBloodPressure[] {
 }
 
 /**
- * 歩数データを測定時刻でグループ化してDBレコードに変換
+ * 歩数データを測定時刻でグループ化して DB レコードに変換
  */
 export function toDbSteps(items: TanitaDataItem[]): DbSteps[] {
   const byTimestamp: Map<string, DbSteps> = new Map();
@@ -133,18 +158,15 @@ export function toDbSteps(items: TanitaDataItem[]): DbSteps[] {
   return Array.from(byTimestamp.values());
 }
 
-// ========== DB書き込み ==========
-
-export interface UpsertResult {
-  success: number;
-  failed: number;
-}
+// =============================================================================
+// Batch Upsert
+// =============================================================================
 
 /**
- * バッチupsert
+ * バッチ upsert
  */
 async function upsertBatch<T extends object>(
-  supabase: SupabaseClient,
+  tanita: TanitaSchema,
   table: string,
   records: T[],
   onConflict: string,
@@ -156,21 +178,15 @@ async function upsertBatch<T extends object>(
   let success = 0;
   let failed = 0;
 
-  // バッチ処理
   for (let i = 0; i < records.length; i += BATCH_SIZE) {
     const batch = records.slice(i, i + BATCH_SIZE);
 
-    const { error } = await supabase
-      .schema(SCHEMA)
+    const { error } = await tanita
       .from(table)
       .upsert(batch, { onConflict });
 
     if (error) {
-      console.error(
-        `   ❌ バッチ ${
-          Math.floor(i / BATCH_SIZE) + 1
-        } エラー: ${error.message}`,
-      );
+      log.error(`${table} batch ${Math.floor(i / BATCH_SIZE) + 1}: ${error.message}`);
       failed += batch.length;
     } else {
       success += batch.length;
@@ -180,78 +196,60 @@ async function upsertBatch<T extends object>(
   return { success, failed };
 }
 
+// =============================================================================
+// Save Functions
+// =============================================================================
+
 /**
- * 体組成データをDBに保存
+ * 体組成データを DB に保存
  */
 export async function saveBodyComposition(
-  supabase: SupabaseClient,
+  tanita: TanitaSchema,
   items: TanitaDataItem[],
 ): Promise<UpsertResult> {
   const records = toDbBodyComposition(items);
-  console.log(`💾 体組成データ保存中... (${records.length}件)`);
+  log.info(`Saving body composition data... (${records.length} records)`);
 
-  const result = await upsertBatch(
-    supabase,
-    "body_composition",
-    records,
-    "measured_at",
-  );
+  const result = await upsertBatch(tanita, "body_composition", records, "measured_at");
 
-  if (result.success > 0) {
-    console.log(`   ✓ ${result.success}件保存`);
-  }
-  if (result.failed > 0) {
-    console.log(`   ✗ ${result.failed}件失敗`);
-  }
+  if (result.success > 0) log.success(`${result.success} records saved`);
+  if (result.failed > 0) log.error(`${result.failed} records failed`);
 
   return result;
 }
 
 /**
- * 血圧データをDBに保存
+ * 血圧データを DB に保存
  */
 export async function saveBloodPressure(
-  supabase: SupabaseClient,
+  tanita: TanitaSchema,
   items: TanitaDataItem[],
 ): Promise<UpsertResult> {
   const records = toDbBloodPressure(items);
-  console.log(`💾 血圧データ保存中... (${records.length}件)`);
+  log.info(`Saving blood pressure data... (${records.length} records)`);
 
-  const result = await upsertBatch(
-    supabase,
-    "blood_pressure",
-    records,
-    "measured_at",
-  );
+  const result = await upsertBatch(tanita, "blood_pressure", records, "measured_at");
 
-  if (result.success > 0) {
-    console.log(`   ✓ ${result.success}件保存`);
-  }
-  if (result.failed > 0) {
-    console.log(`   ✗ ${result.failed}件失敗`);
-  }
+  if (result.success > 0) log.success(`${result.success} records saved`);
+  if (result.failed > 0) log.error(`${result.failed} records failed`);
 
   return result;
 }
 
 /**
- * 歩数データをDBに保存
+ * 歩数データを DB に保存
  */
 export async function saveSteps(
-  supabase: SupabaseClient,
+  tanita: TanitaSchema,
   items: TanitaDataItem[],
 ): Promise<UpsertResult> {
   const records = toDbSteps(items);
-  console.log(`💾 歩数データ保存中... (${records.length}件)`);
+  log.info(`Saving steps data... (${records.length} records)`);
 
-  const result = await upsertBatch(supabase, "steps", records, "measured_at");
+  const result = await upsertBatch(tanita, "steps", records, "measured_at");
 
-  if (result.success > 0) {
-    console.log(`   ✓ ${result.success}件保存`);
-  }
-  if (result.failed > 0) {
-    console.log(`   ✗ ${result.failed}件失敗`);
-  }
+  if (result.success > 0) log.success(`${result.success} records saved`);
+  if (result.failed > 0) log.error(`${result.failed} records failed`);
 
   return result;
 }

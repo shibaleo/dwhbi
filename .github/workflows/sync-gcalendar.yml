@@ -1,11 +1,7 @@
 name: Google Calendar Daily Sync
 
 on:
-  # 毎日 JST 00:00 に実行（UTC 15:00）
-  schedule:
-    - cron: "0 15 * * *"
-
-  # 手動実行を許可
+  # 手動実行のみ（定期実行は sync-all.yml に統合）
   workflow_dispatch:
     inputs:
       sync_days:

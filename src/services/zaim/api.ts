@@ -1,17 +1,28 @@
-// zaim/api.ts
+/**
+ * Zaim API クライアント
+ */
 
 import "https://deno.land/std@0.203.0/dotenv/load.ts";
 import { ZaimOAuth } from "./auth.ts";
 import type {
-  ZaimTransaction,
-  ZaimCategory,
-  ZaimGenre,
-  ZaimAccount
+  ZaimApiTransaction,
+  ZaimApiCategory,
+  ZaimApiGenre,
+  ZaimApiAccount,
 } from "./types.ts";
+
+// =============================================================================
+// Constants
+// =============================================================================
+
+const BASE_URL = "https://api.zaim.net/v2";
+
+// =============================================================================
+// API Client
+// =============================================================================
 
 export class ZaimAPI {
   private oauth: ZaimOAuth;
-  private baseUrl = "https://api.zaim.net/v2";
 
   constructor() {
     const consumerKey = Deno.env.get("ZAIM_CONSUMER_KEY");
@@ -40,8 +51,8 @@ export class ZaimAPI {
     end_date?: string;
     page?: number;
     limit?: number;
-  }): Promise<{ money: ZaimTransaction[] }> {
-    const url = new URL(`${this.baseUrl}/home/money`);
+  }): Promise<{ money: ZaimApiTransaction[] }> {
+    const url = new URL(`${BASE_URL}/home/money`);
 
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
@@ -55,26 +66,26 @@ export class ZaimAPI {
   }
 
   // カテゴリ一覧取得
-  async getCategories(): Promise<{ categories: ZaimCategory[] }> {
-    const url = `${this.baseUrl}/home/category`;
+  async getCategories(): Promise<{ categories: ZaimApiCategory[] }> {
+    const url = `${BASE_URL}/home/category`;
     return await this.oauth.get(url);
   }
 
   // ジャンル一覧取得
-  async getGenres(): Promise<{ genres: ZaimGenre[] }> {
-    const url = `${this.baseUrl}/home/genre`;
+  async getGenres(): Promise<{ genres: ZaimApiGenre[] }> {
+    const url = `${BASE_URL}/home/genre`;
     return await this.oauth.get(url);
   }
 
   // 口座一覧取得
-  async getAccounts(): Promise<{ accounts: ZaimAccount[] }> {
-    const url = `${this.baseUrl}/home/account`;
+  async getAccounts(): Promise<{ accounts: ZaimApiAccount[] }> {
+    const url = `${BASE_URL}/home/account`;
     return await this.oauth.get(url);
   }
 
   // ユーザー情報確認
-  async verifyUser(): Promise<any> {
-    const url = `${this.baseUrl}/home/user/verify`;
+  async verifyUser(): Promise<unknown> {
+    const url = `${BASE_URL}/home/user/verify`;
     return await this.oauth.get(url);
   }
 }

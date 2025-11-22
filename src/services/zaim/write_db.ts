@@ -1,112 +1,64 @@
-// write_db.ts
-// Supabase zaim スキーマへのデータ書き込みを担当
+/**
+ * Zaim データの Supabase 書き込み
+ *
+ * zaim スキーマへのデータ変換と upsert 処理
+ */
 
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
+import * as log from "../../utils/log.ts";
 import type {
-  ZaimTransaction,
-  ZaimCategory,
-  ZaimGenre,
-  ZaimAccount
+  ZaimApiTransaction,
+  ZaimApiCategory,
+  ZaimApiGenre,
+  ZaimApiAccount,
+  DbCategory,
+  DbGenre,
+  DbAccount,
+  DbTransaction,
+  SyncStatus,
+  UpsertResult,
 } from "./types.ts";
 
-// ============================================================
-// 型定義
-// ============================================================
+// =============================================================================
+// Types
+// =============================================================================
 
-/** Supabaseのzaimスキーマクライアント */
-export type ZaimSchema = ReturnType<SupabaseClient['schema']>;
+/** zaim スキーマ用クライアント型 */
+export type ZaimSchema = ReturnType<SupabaseClient["schema"]>;
 
-/** 同期ステータス */
-export type SyncStatus = 'running' | 'completed' | 'failed';
+// =============================================================================
+// Constants
+// =============================================================================
 
-/** DB用カテゴリレコード */
-export interface DbCategory {
-  id: number;
-  zaim_user_id: number;
-  name: string;
-  sort_order: number;
-  mode: string;
-  is_active: boolean;
-  synced_at: string;
-}
+const BATCH_SIZE = 1000;
 
-/** DB用ジャンルレコード */
-export interface DbGenre {
-  id: number;
-  zaim_user_id: number;
-  category_id: number;
-  name: string;
-  sort_order: number;
-  is_active: boolean;
-  synced_at: string;
-}
-
-/** DB用口座レコード */
-export interface DbAccount {
-  id: number;
-  zaim_user_id: number;
-  name: string;
-  sort_order: number;
-  is_active: boolean;
-  synced_at: string;
-}
-
-/** DB用トランザクションレコード */
-export interface DbTransaction {
-  zaim_user_id: number;
-  zaim_id: number;
-  transaction_type: string;
-  amount: number;
-  date: string;
-  created_at: string;
-  modified_at: string | null;
-  category_id: number | null;
-  genre_id: number | null;
-  from_account_id: number | null;
-  to_account_id: number | null;
-  place: string | null;
-  name: string | null;
-  comment: string | null;
-  is_active: boolean;
-  receipt_id: number | null;
-  synced_at: string;
-}
-
-/** upsert結果 */
-export interface UpsertResult {
-  success: number;
-  failed: number;
-}
-
-// ============================================================
-// Supabaseクライアント
-// ============================================================
+// =============================================================================
+// Client Factory
+// =============================================================================
 
 /**
- * Supabase zaim スキーマクライアントを作成
- * @returns zaimスキーマにバインドされたクライアント
- * @throws 環境変数未設定時
+ * zaim スキーマ専用の Supabase クライアントを作成
  */
-export function createZaimClient(): ZaimSchema {
-  const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
-  const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+export function createZaimDbClient(): ZaimSchema {
+  const url = Deno.env.get("SUPABASE_URL");
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    throw new Error('Supabase環境変数が設定されていません');
+  if (!url || !key) {
+    throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set");
   }
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-  return supabase.schema('zaim');
+  const supabase = createClient(url, key);
+  return supabase.schema("zaim");
 }
 
-// ============================================================
-// 変換関数: Zaim API → DB レコード
-// ============================================================
+// =============================================================================
+// Transform Functions: API → DB Record
+// =============================================================================
 
 /**
- * ZaimCategory → DbCategory
+ * ZaimApiCategory → DbCategory
  */
-export function toDbCategory(category: ZaimCategory, zaimUserId: number): DbCategory {
+export function toDbCategory(category: ZaimApiCategory, zaimUserId: number): DbCategory {
   return {
     id: category.id,
     zaim_user_id: zaimUserId,
@@ -119,9 +71,9 @@ export function toDbCategory(category: ZaimCategory, zaimUserId: number): DbCate
 }
 
 /**
- * ZaimGenre → DbGenre
+ * ZaimApiGenre → DbGenre
  */
-export function toDbGenre(genre: ZaimGenre, zaimUserId: number): DbGenre {
+export function toDbGenre(genre: ZaimApiGenre, zaimUserId: number): DbGenre {
   return {
     id: genre.id,
     zaim_user_id: zaimUserId,
@@ -134,9 +86,9 @@ export function toDbGenre(genre: ZaimGenre, zaimUserId: number): DbGenre {
 }
 
 /**
- * ZaimAccount → DbAccount
+ * ZaimApiAccount → DbAccount
  */
-export function toDbAccount(account: ZaimAccount, zaimUserId: number): DbAccount {
+export function toDbAccount(account: ZaimApiAccount, zaimUserId: number): DbAccount {
   return {
     id: account.id,
     zaim_user_id: zaimUserId,
@@ -148,14 +100,14 @@ export function toDbAccount(account: ZaimAccount, zaimUserId: number): DbAccount
 }
 
 /**
- * ZaimTransaction → DbTransaction
- * アカウントID 0 は NULL に変換
+ * ZaimApiTransaction → DbTransaction
+ * アカウント ID 0 は NULL に変換
  */
-export function toDbTransaction(tx: ZaimTransaction, zaimUserId: number): DbTransaction {
-  const fromAccountId = (tx.from_account_id && tx.from_account_id > 0)
-    ? tx.from_account_id : null;
-  const toAccountId = (tx.to_account_id && tx.to_account_id > 0)
-    ? tx.to_account_id : null;
+export function toDbTransaction(tx: ZaimApiTransaction, zaimUserId: number): DbTransaction {
+  const fromAccountId =
+    tx.from_account_id && tx.from_account_id > 0 ? tx.from_account_id : null;
+  const toAccountId =
+    tx.to_account_id && tx.to_account_id > 0 ? tx.to_account_id : null;
 
   return {
     zaim_user_id: zaimUserId,
@@ -178,37 +130,35 @@ export function toDbTransaction(tx: ZaimTransaction, zaimUserId: number): DbTran
   };
 }
 
-// ============================================================
-// バッチ upsert
-// ============================================================
+// =============================================================================
+// Batch Upsert
+// =============================================================================
 
 /**
- * レコードをバッチでupsert
- * @param zaim zaimスキーマクライアント
- * @param table テーブル名
- * @param records upsertするレコード配列
- * @param onConflict 競合キー（カンマ区切り）
- * @param batchSize バッチサイズ（デフォルト: 1000）
+ * バッチ upsert
  */
-export async function upsertBatch<T>(
+async function upsertBatch<T extends object>(
   zaim: ZaimSchema,
   table: string,
   records: T[],
   onConflict: string,
-  batchSize: number = 1000
 ): Promise<UpsertResult> {
+  if (records.length === 0) {
+    return { success: 0, failed: 0 };
+  }
+
   let success = 0;
   let failed = 0;
 
-  for (let i = 0; i < records.length; i += batchSize) {
-    const batch = records.slice(i, i + batchSize);
+  for (let i = 0; i < records.length; i += BATCH_SIZE) {
+    const batch = records.slice(i, i + BATCH_SIZE);
 
     const { error } = await zaim
       .from(table)
       .upsert(batch, { onConflict });
 
     if (error) {
-      console.error(`  ❌ ${table} バッチエラー:`, error.message);
+      log.error(`${table} batch ${Math.floor(i / BATCH_SIZE) + 1}: ${error.message}`);
       failed += batch.length;
     } else {
       success += batch.length;
@@ -218,31 +168,33 @@ export async function upsertBatch<T>(
   return { success, failed };
 }
 
-// ============================================================
-// 同期ログ
-// ============================================================
+// =============================================================================
+// Sync Log
+// =============================================================================
 
 /**
  * 同期ログを開始
- * @returns ログID
+ * @returns ログ ID
  */
 export async function startSyncLog(
   zaim: ZaimSchema,
   zaimUserId: number,
-  endpoint: string
+  endpoint: string,
 ): Promise<string> {
   const { data, error } = await zaim
-    .from('sync_log')
+    .from("sync_log")
     .insert({
       zaim_user_id: zaimUserId,
       sync_started_at: new Date().toISOString(),
-      sync_status: 'running' as SyncStatus,
+      sync_status: "running" as SyncStatus,
       api_endpoint: endpoint,
     })
-    .select('id')
+    .select("id")
     .single();
 
-  if (error) throw new Error(`同期ログ開始エラー: ${error.message}`);
+  if (error) {
+    throw new Error(`Failed to start sync log: ${error.message}`);
+  }
   return data.id;
 }
 
@@ -254,10 +206,10 @@ export async function completeSyncLog(
   logId: string,
   status: SyncStatus,
   stats: { fetched: number; inserted: number; updated: number },
-  errorMessage?: string
+  errorMessage?: string,
 ): Promise<void> {
   const { error } = await zaim
-    .from('sync_log')
+    .from("sync_log")
     .update({
       sync_completed_at: new Date().toISOString(),
       sync_status: status,
@@ -266,16 +218,16 @@ export async function completeSyncLog(
       records_updated: stats.updated,
       error_message: errorMessage,
     })
-    .eq('id', logId);
+    .eq("id", logId);
 
   if (error) {
-    console.error(`同期ログ更新エラー: ${error.message}`);
+    log.error(`Failed to update sync log: ${error.message}`);
   }
 }
 
-// ============================================================
-// マスタデータ同期ヘルパー
-// ============================================================
+// =============================================================================
+// Master Data Sync
+// =============================================================================
 
 /**
  * マスタデータ（categories, genres, accounts）を同期
@@ -283,47 +235,61 @@ export async function completeSyncLog(
 export async function syncMasters(
   zaim: ZaimSchema,
   zaimUserId: number,
-  categories: ZaimCategory[],
-  genres: ZaimGenre[],
-  accounts: ZaimAccount[]
-): Promise<{ categories: number; genres: number; accounts: number }> {
+  categories: ZaimApiCategory[],
+  genres: ZaimApiGenre[],
+  accounts: ZaimApiAccount[],
+): Promise<{ categories: UpsertResult; genres: UpsertResult; accounts: UpsertResult }> {
   // Categories
-  const catRecords = categories.map(c => toDbCategory(c, zaimUserId));
-  const catResult = await upsertBatch(zaim, 'categories', catRecords, 'zaim_user_id,id');
+  const catRecords = categories.map((c) => toDbCategory(c, zaimUserId));
+  log.info(`Saving categories... (${catRecords.length} records)`);
+  const catResult = await upsertBatch(zaim, "categories", catRecords, "zaim_user_id,id");
+  if (catResult.success > 0) log.success(`${catResult.success} records saved`);
+  if (catResult.failed > 0) log.error(`${catResult.failed} records failed`);
 
-  // Genres（categoriesの後）
-  const genRecords = genres.map(g => toDbGenre(g, zaimUserId));
-  const genResult = await upsertBatch(zaim, 'genres', genRecords, 'zaim_user_id,id');
+  // Genres（categories の後）
+  const genRecords = genres.map((g) => toDbGenre(g, zaimUserId));
+  log.info(`Saving genres... (${genRecords.length} records)`);
+  const genResult = await upsertBatch(zaim, "genres", genRecords, "zaim_user_id,id");
+  if (genResult.success > 0) log.success(`${genResult.success} records saved`);
+  if (genResult.failed > 0) log.error(`${genResult.failed} records failed`);
 
   // Accounts
-  const accRecords = accounts.map(a => toDbAccount(a, zaimUserId));
-  const accResult = await upsertBatch(zaim, 'accounts', accRecords, 'zaim_user_id,id');
+  const accRecords = accounts.map((a) => toDbAccount(a, zaimUserId));
+  log.info(`Saving accounts... (${accRecords.length} records)`);
+  const accResult = await upsertBatch(zaim, "accounts", accRecords, "zaim_user_id,id");
+  if (accResult.success > 0) log.success(`${accResult.success} records saved`);
+  if (accResult.failed > 0) log.error(`${accResult.failed} records failed`);
 
   return {
-    categories: catResult.success,
-    genres: genResult.success,
-    accounts: accResult.success,
+    categories: catResult,
+    genres: genResult,
+    accounts: accResult,
   };
 }
 
 /**
  * トランザクションを同期
- * @returns 同期結果
  */
 export async function syncTransactions(
   zaim: ZaimSchema,
   zaimUserId: number,
-  transactions: ZaimTransaction[],
-  existingIds: Set<number>
-): Promise<{ fetched: number; inserted: number; updated: number; skipped: number; failed: number }> {
+  transactions: ZaimApiTransaction[],
+  existingIds: Set<number>,
+): Promise<{
+  fetched: number;
+  inserted: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+}> {
   const txRecords: DbTransaction[] = [];
   let skipped = 0;
   let inserted = 0;
   let updated = 0;
 
   for (const tx of transactions) {
-    // valid_accounts制約: transferは両方のアカウントが必要
-    if (tx.mode === 'transfer') {
+    // valid_accounts 制約: transfer は両方のアカウントが必要
+    if (tx.mode === "transfer") {
       if (!tx.from_account_id || !tx.to_account_id) {
         skipped++;
         continue;
@@ -340,7 +306,12 @@ export async function syncTransactions(
     }
   }
 
-  const result = await upsertBatch(zaim, 'transactions', txRecords, 'zaim_user_id,zaim_id');
+  log.info(`Saving transactions... (${txRecords.length} records)`);
+  const result = await upsertBatch(zaim, "transactions", txRecords, "zaim_user_id,zaim_id");
+
+  if (result.success > 0) log.success(`${result.success} records saved`);
+  if (result.failed > 0) log.error(`${result.failed} records failed`);
+  if (skipped > 0) log.info(`${skipped} records skipped (invalid transfer)`);
 
   return {
     fetched: transactions.length,
@@ -352,20 +323,25 @@ export async function syncTransactions(
 }
 
 /**
- * 指定期間の既存トランザクションIDを取得
+ * 指定期間の既存トランザクション ID を取得
  */
 export async function getExistingTransactionIds(
   zaim: ZaimSchema,
   zaimUserId: number,
   startDate: string,
-  endDate: string
+  endDate: string,
 ): Promise<Set<number>> {
-  const { data: existingTx } = await zaim
-    .from('transactions')
-    .select('zaim_id')
-    .eq('zaim_user_id', zaimUserId)
-    .gte('date', startDate)
-    .lte('date', endDate);
+  const { data: existingTx, error } = await zaim
+    .from("transactions")
+    .select("zaim_id")
+    .eq("zaim_user_id", zaimUserId)
+    .gte("date", startDate)
+    .lte("date", endDate);
 
-  return new Set(existingTx?.map(t => t.zaim_id) || []);
+  if (error) {
+    log.error(`Failed to get existing transaction IDs: ${error.message}`);
+    return new Set();
+  }
+
+  return new Set(existingTx?.map((t) => t.zaim_id) || []);
 }
