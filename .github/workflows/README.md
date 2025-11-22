@@ -6,10 +6,13 @@
 
 | ワークフロー | スケジュール | 説明 |
 |--------------|--------------|------|
+| `sync-all.yml` | 毎日 JST 00:00 | 全サービス並列同期（推奨） |
 | `sync-toggl.yml` | 毎日 JST 00:00 | Toggl タイムエントリ同期 |
 | `sync-tanita.yml` | 毎日 JST 00:00 | Tanita 体組成データ同期 |
 | `sync-zaim.yml` | 毎日 JST 00:00 | Zaim 収支データ同期 |
 | `sync-gcalendar.yml` | 毎日 JST 00:00 | Google Calendar イベント同期 |
+
+> **Note**: `sync-all.yml` を使用する場合、個別のワークフローのスケジュール実行を無効化することを推奨します。
 
 ---
 
@@ -69,6 +72,16 @@ GitHubリポジトリで以下のSecretsを設定する必要があります：
 
 ### パラメータ付き手動実行
 
+#### All Services Daily Sync（推奨）
+- `toggl_sync_days`: Toggl同期日数（デフォルト: 1）
+- `tanita_sync_days`: Tanita同期日数（デフォルト: 7）
+- `zaim_sync_days`: Zaim同期日数（デフォルト: 3）
+- `gcal_sync_days`: Google Calendar同期日数（デフォルト: 3）
+
+> **Note**: `sync-all.yml` は単一ジョブで全サービスを**並列実行**します。
+> TypeScriptレベルで `Promise.allSettled` を使用し、
+> 1つのサービスが失敗しても他は継続します。
+
 #### Toggl Daily Sync
 - `sync_days`: 同期する日数（デフォルト: 1）
 
@@ -100,6 +113,7 @@ GitHubリポジトリで以下のSecretsを設定する必要があります：
 
 | ワークフロー | cron | UTC | JST |
 |--------------|------|-----|-----|
+| sync-all | `0 15 * * *` | 15:00 | 00:00 |
 | sync-toggl | `0 15 * * *` | 15:00 | 00:00 |
 | sync-tanita | `0 15 * * *` | 15:00 | 00:00 |
 | sync-zaim | `0 15 * * *` | 15:00 | 00:00 |

@@ -17,7 +17,7 @@ const DEFAULT_SYNC_DAYS = 7;
 
 // ========== メイン関数 ==========
 
-export async function syncFitbitDaily(syncDays?: number): Promise<SyncResult> {
+export async function syncFitbitByDays(syncDays?: number): Promise<SyncResult> {
   const startTime = Date.now();
   const days = syncDays ??
     parseInt(Deno.env.get("FITBIT_SYNC_DAYS") || String(DEFAULT_SYNC_DAYS));
@@ -52,7 +52,8 @@ export async function syncFitbitDaily(syncDays?: number): Promise<SyncResult> {
   }
 
   // 2. データ取得
-  const endDate = new Date();
+  // endDateを現在時刻+24時間に設定し、今日のデータも確実に取得
+  const endDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
   const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
   console.log("");
@@ -115,6 +116,6 @@ export async function syncFitbitDaily(syncDays?: number): Promise<SyncResult> {
 // ========== CLI実行 ==========
 
 if (import.meta.main) {
-  const result = await syncFitbitDaily();
+  const result = await syncFitbitByDays();
   Deno.exit(result.success ? 0 : 1);
 }
