@@ -1,4 +1,4 @@
-name: Tanita Health Planet Daily Sync
+name: Tanita Daily Sync
 
 on:
   schedule:
