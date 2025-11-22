@@ -1,71 +1,4 @@
-// types.ts - Normalized schema types for Toggl data
-
-// =====================================================
-// Database Table Types (正規化版)
-// =====================================================
-
-/**
- * toggl_clients_new テーブルの型
- */
-export interface TogglClient {
-  id: number;
-  workspace_id: number;
-  name: string;
-  is_archived: boolean;
-  created_at: string; // ISO 8601 timestamp
-  synced_at: string;
-}
-
-/**
- * toggl_projects_new テーブルの型
- */
-export interface TogglProject {
-  id: number;
-  workspace_id: number;
-  client_id: number | null;
-  name: string;
-  color: string | null;
-  is_private: boolean;
-  is_active: boolean;
-  is_billable: boolean;
-  created_at: string;
-  archived_at: string | null;
-  estimated_hours: number | null;
-  estimated_seconds: number | null;
-  rate: number | null;
-  rate_last_updated: string | null;
-  currency: string | null;
-  is_template: boolean;
-  template_id: number | null;
-  auto_estimates: boolean | null;
-  recurring: boolean;
-  recurring_parameters: any | null; // JSONB
-  fixed_fee: number | null;
-  can_track_time: boolean;
-  start_date: string | null; // ISO date format (YYYY-MM-DD)
-  synced_at: string;
-}
-
-/**
- * toggl_time_entries_new テーブルの型
- */
-export interface TogglTimeEntry {
-  id: number;
-  workspace_id: number;
-  project_id: number | null;
-  task_id: number | null;
-  user_id: number | null;
-  description: string | null;
-  start: string; // ISO 8601 timestamp
-  end: string; // ISO 8601 timestamp
-  duration_ms: number;
-  is_billable: boolean;
-  billable_amount: number | null;
-  currency: string | null;
-  tags: string[];
-  updated_at: string | null;
-  synced_at: string;
-}
+// types.ts - Toggl API型定義・DB型定義
 
 // =====================================================
 // Toggl API v9 Response Types
@@ -80,7 +13,7 @@ export interface TogglApiV9Client {
   wid: number;
   archived: boolean;
   name: string;
-  at: string; // timestamp
+  at: string;
   creator_id?: number;
   permissions?: string;
 }
@@ -110,7 +43,7 @@ export interface TogglApiV9Project {
   currency?: string | null;
   recurring?: boolean;
   template_id?: number | null;
-  recurring_parameters?: any | null;
+  recurring_parameters?: unknown | null;
   fixed_fee?: number | null;
   can_track_time?: boolean;
   start_date?: string;
@@ -119,9 +52,20 @@ export interface TogglApiV9Project {
 }
 
 /**
+ * Toggl API v9 - Tag response
+ * GET /api/v9/workspaces/{workspace_id}/tags
+ */
+export interface TogglApiV9Tag {
+  id: number;
+  workspace_id: number;
+  name: string;
+  at: string;
+  creator_id?: number;
+}
+
+/**
  * Toggl API v9 - Time Entry response
  * GET /api/v9/me/time_entries
- * GET /api/v9/me/time_entries/current
  */
 export interface TogglApiV9TimeEntry {
   id: number;
@@ -129,14 +73,14 @@ export interface TogglApiV9TimeEntry {
   project_id?: number | null;
   task_id?: number | null;
   billable: boolean;
-  start: string; // ISO 8601 timestamp
-  stop?: string | null; // ISO 8601 timestamp (null for running entries)
+  start: string;
+  stop?: string | null;
   duration: number; // seconds (negative for running entries)
   description?: string;
   tags?: string[];
   tag_ids?: number[];
   duronly: boolean;
-  at: string; // last update timestamp
+  at: string;
   server_deleted_at?: string | null;
   user_id: number;
   uid: number;
@@ -146,54 +90,94 @@ export interface TogglApiV9TimeEntry {
 }
 
 // =====================================================
-// Transformation Helper Types
+// Database Table Types (toggl スキーマ)
 // =====================================================
 
 /**
- * API v9データをDBスキーマに変換する際の中間型
+ * toggl.clients テーブル
  */
-export interface TimeEntryTransformInput {
-  apiEntry: TogglApiV9TimeEntry;
-  workspaceId: number;
+export interface DbClient {
+  id: number;
+  workspace_id: number;
+  name: string;
+  is_archived: boolean;
+  created_at: string;
 }
 
 /**
- * クライアント変換用の入力型
+ * toggl.projects テーブル
  */
-export interface ClientTransformInput {
-  apiClient: TogglApiV9Client;
+export interface DbProject {
+  id: number;
+  workspace_id: number;
+  client_id: number | null;
+  name: string;
+  color: string | null;
+  is_private: boolean;
+  is_active: boolean;
+  is_billable: boolean;
+  created_at: string;
+  archived_at: string | null;
+  estimated_hours: number | null;
+  estimated_seconds: number | null;
+  rate: number | null;
+  rate_last_updated: string | null;
+  currency: string | null;
+  is_template: boolean;
+  template_id: number | null;
+  auto_estimates: boolean | null;
+  recurring: boolean;
+  recurring_parameters: unknown | null;
+  fixed_fee: number | null;
+  can_track_time: boolean;
+  start_date: string | null;
 }
 
 /**
- * プロジェクト変換用の入力型
+ * toggl.tags テーブル
  */
-export interface ProjectTransformInput {
-  apiProject: TogglApiV9Project;
+export interface DbTag {
+  id: number;
+  workspace_id: number;
+  name: string;
+  created_at: string;
+}
+
+/**
+ * toggl.entries テーブル
+ */
+export interface DbEntry {
+  id: number;
+  workspace_id: number;
+  project_id: number | null;
+  task_id: number | null;
+  user_id: number | null;
+  description: string | null;
+  start: string;
+  end: string;
+  duration_ms: number;
+  is_billable: boolean;
+  billable_amount: number | null;
+  currency: string | null;
+  tags: string[];
+  updated_at: string | null;
 }
 
 // =====================================================
-// Utility Types
+// Sync Result Types
 // =====================================================
 
-/**
- * DB挿入用の型（synced_atを除く）
- */
-export type TogglClientInsert = Omit<TogglClient, 'synced_at'>;
-export type TogglProjectInsert = Omit<TogglProject, 'synced_at'>;
-export type TogglTimeEntryInsert = Omit<TogglTimeEntry, 'synced_at'>;
-
-/**
- * 日付範囲指定用の型
- */
-export interface DateRange {
-  start: Date;
-  end: Date;
+export interface SyncStats {
+  clients: number;
+  projects: number;
+  tags: number;
+  entries: number;
 }
 
-/**
- * ページネーション用の型
- */
-export interface PaginationParams {
-  page?: number;
-  per_page?: number;
+export interface SyncResult {
+  success: boolean;
+  timestamp: string;
+  stats: SyncStats;
+  elapsedSeconds: number;
+  error?: string;
 }
