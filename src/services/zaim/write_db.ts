@@ -226,13 +226,16 @@ export async function completeSyncLog(
 }
 
 // =============================================================================
-// Master Data Sync
+// Upsert Functions
 // =============================================================================
 
 /**
- * マスタデータ（categories, genres, accounts）を同期
+ * メタデータ（categories, genres, accounts）を upsert
+ * 
+ * 注意: genres は category_id への外部キー制約があるため、
+ * categories → genres → accounts の順序で実行する
  */
-export async function syncMasters(
+export async function upsertMetadata(
   zaim: ZaimSchema,
   zaimUserId: number,
   categories: ZaimApiCategory[],

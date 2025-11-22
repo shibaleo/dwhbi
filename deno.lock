@@ -7,6 +7,7 @@
     "jsr:@std/encoding@*": "1.0.10",
     "jsr:@std/internal@^1.0.12": "1.0.12",
     "npm:@supabase/supabase-js@2": "2.83.0",
+    "npm:@types/node@*": "24.2.0",
     "npm:oauth-1.0a@2.2.6": "2.2.6"
   },
   "jsr": {

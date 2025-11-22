@@ -5,6 +5,33 @@
  */
 
 // =============================================================================
+// Error Types
+// =============================================================================
+
+/** レート制限エラー（429） */
+export class ZaimRateLimitError extends Error {
+  constructor(
+    public readonly retryAfterSeconds: number,
+    message?: string
+  ) {
+    super(message ?? `Rate limited. Retry after ${retryAfterSeconds} seconds.`);
+    this.name = "ZaimRateLimitError";
+  }
+}
+
+/** API エラー（リトライ不可） */
+export class ZaimApiError extends Error {
+  constructor(
+    public readonly statusCode: number,
+    public readonly statusText: string,
+    message?: string
+  ) {
+    super(message ?? `Zaim API Error: ${statusCode} ${statusText}`);
+    this.name = "ZaimApiError";
+  }
+}
+
+// =============================================================================
 // Zaim API Response Types
 // =============================================================================
 

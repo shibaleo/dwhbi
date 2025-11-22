@@ -58,7 +58,26 @@ export function generatePeriods(
 // =============================================================================
 
 /**
- * 指定期間のTanitaデータを取得
+ * 日数指定でTanitaデータを取得（日次同期用）
+ * 日付範囲: days日前から今日まで
+ */
+export async function fetchTanitaDataByDays(
+  accessToken: string,
+  days: number,
+): Promise<TanitaData> {
+  // endDate = 明日（APIは排他的終点のため、今日を含めるには明日を指定）
+  const endDate = new Date();
+  endDate.setDate(endDate.getDate() + 1);
+
+  // startDate = endDate - (days + 1)
+  const startDate = new Date(endDate);
+  startDate.setDate(startDate.getDate() - days - 1);
+
+  return fetchTanitaData(accessToken, { startDate, endDate });
+}
+
+/**
+ * 指定期間のTanitaデータを取得（全件同期用）
  * 3ヶ月を超える期間は自動的にチャンク分割
  */
 export async function fetchTanitaData(

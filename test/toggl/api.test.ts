@@ -5,39 +5,37 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.208.0/assert/mod.ts";
 
-import {
-  formatDate,
-  getDateRange,
-} from "../../src/services/toggl/api.ts";
+import { formatTogglDate } from "../../src/services/toggl/api.ts";
+import { getDateRange } from "../../src/services/toggl/fetch_data.ts";
 
 // ============================================================
 // formatDate
 // ============================================================
 
-Deno.test("formatDate: 基本的な変換", () => {
+Deno.test("formatTogglDate: 基本的な変換", () => {
   const date = new Date("2025-01-15T00:00:00Z");
-  const result = formatDate(date);
+  const result = formatTogglDate(date);
 
   assertEquals(result, "2025-01-15");
 });
 
-Deno.test("formatDate: 月と日のゼロパディング", () => {
+Deno.test("formatTogglDate: 月と日のゼロパディング", () => {
   const date = new Date("2025-01-05T00:00:00Z");
-  const result = formatDate(date);
+  const result = formatTogglDate(date);
 
   assertEquals(result, "2025-01-05");
 });
 
-Deno.test("formatDate: 12月31日", () => {
+Deno.test("formatTogglDate: 12月31日", () => {
   const date = new Date("2025-12-31T00:00:00Z");
-  const result = formatDate(date);
+  const result = formatTogglDate(date);
 
   assertEquals(result, "2025-12-31");
 });
 
-Deno.test("formatDate: 年初", () => {
+Deno.test("formatTogglDate: 年初", () => {
   const date = new Date("2025-01-01T00:00:00Z");
-  const result = formatDate(date);
+  const result = formatTogglDate(date);
 
   assertEquals(result, "2025-01-01");
 });

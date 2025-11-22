@@ -4,6 +4,22 @@
  * API レスポンス型、DB テーブル型、同期関連型
  */
 
+import { RateLimitError } from "../../utils/errors.ts";
+
+// =============================================================================
+// Error Types
+// =============================================================================
+
+/**
+ * Fitbit レート制限エラー（429 Too Many Requests）
+ */
+export class FitbitRateLimitError extends RateLimitError {
+  constructor(retryAfterSeconds: number, message?: string) {
+    super(retryAfterSeconds, message ?? `Rate limit exceeded. Retry after ${retryAfterSeconds} seconds.`);
+    this.name = "FitbitRateLimitError";
+  }
+}
+
 // =============================================================================
 // Fitbit API Response Types
 // =============================================================================
@@ -333,6 +349,8 @@ export interface FetchOptions {
   startDate?: Date;
   endDate?: Date;
   includeIntraday?: boolean;
+  /** レートリミット時に待機してリトライするか（デフォルト: false） */
+  retryOnRateLimit?: boolean;
 }
 
 /** 取得データ（fetch_data.ts の出力） */

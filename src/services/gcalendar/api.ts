@@ -5,10 +5,11 @@
  */
 
 import { authenticatedFetch } from "./auth.ts";
-import {
+import type {
   GCalApiEvent,
   GCalEventsListResponse,
 } from "./types.ts";
+import { RateLimitError } from "../../utils/errors.ts";
 
 // =============================================================================
 // Constants
@@ -16,6 +17,20 @@ import {
 
 const BASE_URL = "https://www.googleapis.com/calendar/v3";
 const MAX_RESULTS_PER_PAGE = 2500; // API最大値
+
+// =============================================================================
+// Custom Error
+// =============================================================================
+
+/**
+ * Google Calendar API レート制限エラー
+ */
+export class GCalendarRateLimitError extends RateLimitError {
+  constructor(retryAfterSeconds: number, message?: string) {
+    super(retryAfterSeconds, message ?? `Rate limited. Retry after ${retryAfterSeconds} seconds.`);
+    this.name = "GCalendarRateLimitError";
+  }
+}
 
 // =============================================================================
 // Types
@@ -70,6 +85,12 @@ export async function fetchEvents(options: FetchEventsOptions): Promise<GCalApiE
     const url = `${BASE_URL}/calendars/${encodeURIComponent(calendarId)}/events?${params}`;
     
     const response = await authenticatedFetch(url);
+    
+    if (response.status === 429) {
+      const retryAfter = response.headers.get("Retry-After");
+      const retryAfterSeconds = retryAfter ? parseInt(retryAfter, 10) : 60;
+      throw new GCalendarRateLimitError(retryAfterSeconds);
+    }
     
     if (!response.ok) {
       const errorText = await response.text();

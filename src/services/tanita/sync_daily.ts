@@ -9,7 +9,7 @@
 import "jsr:@std/dotenv/load";
 import * as log from "../../utils/log.ts";
 import { ensureValidToken } from "./auth.ts";
-import { fetchTanitaData } from "./fetch_data.ts";
+import { fetchTanitaDataByDays } from "./fetch_data.ts";
 import {
   createTanitaDbClient,
   saveBloodPressure,
@@ -58,16 +58,7 @@ export async function syncTanitaByDays(syncDays?: number): Promise<SyncResult> {
   }
 
   // 2. データ取得
-  // 日付範囲: days日前から今日までを取得
-  // endDate = 明日（APIは排他的終点のため、今日を含めるには明日を指定）
-  // startDate = endDate - (days + 1)
-  const endDate = new Date();
-  endDate.setDate(endDate.getDate() + 1);
-
-  const startDate = new Date(endDate);
-  startDate.setDate(startDate.getDate() - days - 1);
-
-  const data = await fetchTanitaData(accessToken, { startDate, endDate });
+  const data = await fetchTanitaDataByDays(accessToken, days);
 
   // 3. DB保存
   log.section("Saving to DB");

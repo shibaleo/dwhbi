@@ -4,6 +4,32 @@
  * API レスポンス型、DB テーブル型、同期関連型
  */
 
+import { QuotaExceededError, RateLimitError } from "../../utils/errors.ts";
+
+// =============================================================================
+// Error Types
+// =============================================================================
+
+/**
+ * Reports API v3 クォータ超過エラー（402 Payment Required）
+ */
+export class ReportsApiQuotaError extends QuotaExceededError {
+  constructor(resetsInSeconds: number, message?: string) {
+    super(resetsInSeconds, message ?? `API quota exceeded. Resets in ${resetsInSeconds} seconds.`);
+    this.name = "ReportsApiQuotaError";
+  }
+}
+
+/**
+ * Reports API v3 レート制限エラー（429 Too Many Requests）
+ */
+export class ReportsApiRateLimitError extends RateLimitError {
+  constructor(retryAfterSeconds: number = 60, message?: string) {
+    super(retryAfterSeconds, message ?? "Rate limit exceeded (429). Please wait and retry.");
+    this.name = "ReportsApiRateLimitError";
+  }
+}
+
 // =============================================================================
 // Toggl API Response Types (v9)
 // =============================================================================

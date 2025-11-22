@@ -9,7 +9,7 @@
 import "jsr:@std/dotenv/load";
 import * as log from "../../utils/log.ts";
 import { ensureValidToken } from "./auth.ts";
-import { fetchFitbitData } from "./fetch_data.ts";
+import { fetchFitbitDataByDays } from "./fetch_data.ts";
 import { createFitbitDbClient, saveAllFitbitData } from "./write_db.ts";
 import type { SyncResult } from "./types.ts";
 
@@ -62,16 +62,7 @@ export async function syncFitbitByDays(syncDays?: number): Promise<SyncResult> {
   }
 
   // 2. データ取得
-  // 日付範囲: days日前から今日までを取得
-  // endDate = 明日（APIは排他的終点のため、今日を含めるには明日を指定）
-  // startDate = endDate - (days + 1)
-  const endDate = new Date();
-  endDate.setDate(endDate.getDate() + 1);
-
-  const startDate = new Date(endDate);
-  startDate.setDate(startDate.getDate() - days - 1);
-
-  const data = await fetchFitbitData(accessToken, { startDate, endDate });
+  const data = await fetchFitbitDataByDays(accessToken, days);
 
   // 3. DB保存
   log.section("Saving to DB");

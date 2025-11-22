@@ -13,16 +13,11 @@
 import "jsr:@std/dotenv/load";
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import * as log from "../../utils/log.ts";
+import { formatDate } from "./api.ts";
 import {
-  fetchClients,
-  fetchProjects,
-  fetchTags,
-  fetchEntriesByReportsApi,
-  formatDate,
-  ReportsApiQuotaError,
-  ReportsApiRateLimitError,
-  type ReportsApiQuota,
-} from "./api.ts";
+  fetchTogglMetadata,
+  fetchTogglDataWithChunks,
+} from "./fetch_data.ts";
 import {
   createTogglDbClient,
   upsertMetadata,
@@ -43,73 +38,22 @@ function getDefaultStartDate(): string {
   return startDate;
 }
 
-/** チャンクサイズ（12か月単位で分割） */
-export const CHUNK_MONTHS = 12;
-
-// =============================================================================
-// Helper Functions
-// =============================================================================
-
-/**
- * 日付範囲をチャンクに分割
- * Reports APIは長期間のリクエストで遅くなるため、2か月単位で分割
- */
-export function splitDateRange(
-  startDate: Date,
-  endDate: Date,
-  chunkMonths: number = CHUNK_MONTHS
-): Array<{ start: string; end: string }> {
-  const chunks: Array<{ start: string; end: string }> = [];
-  let current = new Date(startDate);
-
-  while (current < endDate) {
-    const chunkEnd = new Date(current);
-    chunkEnd.setMonth(chunkEnd.getMonth() + chunkMonths);
-
-    // endDateを超えないようにする
-    const actualEnd = chunkEnd > endDate ? endDate : chunkEnd;
-
-    chunks.push({
-      start: formatDate(current),
-      end: formatDate(actualEnd),
-    });
-
-    current = new Date(actualEnd);
-    current.setDate(current.getDate() + 1);
-  }
-
-  return chunks;
-}
-
 // =============================================================================
 // Sync Functions
 // =============================================================================
 
 /**
- * メタデータ（clients, projects, tags）のみを同期
+ * メタデータのみ同期
  */
 async function syncMetadataOnly(): Promise<{
   clients: number;
   projects: number;
   tags: number;
 }> {
-  log.section("Fetching metadata from Toggl API");
+  // メタデータ取得
+  const { clients, projects, tags } = await fetchTogglMetadata();
 
-  // 並列取得（staggered delay）
-  const [clients, projects, tags] = await Promise.all([
-    fetchClients(),
-    new Promise<Awaited<ReturnType<typeof fetchProjects>>>(resolve =>
-      setTimeout(() => resolve(fetchProjects()), 200)
-    ),
-    new Promise<Awaited<ReturnType<typeof fetchTags>>>(resolve =>
-      setTimeout(() => resolve(fetchTags()), 400)
-    ),
-  ]);
-
-  log.info(`Clients: ${clients.length}`);
-  log.info(`Projects: ${projects.length}`);
-  log.info(`Tags: ${tags.length}`);
-
+  // DB保存
   log.section("Saving metadata to DB");
   const toggl = createTogglDbClient();
   const metadataStats = await upsertMetadata(toggl, clients, projects, tags);
@@ -119,86 +63,6 @@ async function syncMetadataOnly(): Promise<{
     projects: metadataStats.projects.success,
     tags: metadataStats.tags.success,
   };
-}
-
-/**
- * 全期間のエントリーを同期（Reports API v3使用）
- *
- * レート制限:
- * - Free: 30 req/hour
- * - Starter: 240 req/hour
- * - Premium: 600 req/hour
- *
- * page_size=1000なので、無料プランでは1時間に30,000エントリーまで取得可能
- */
-async function syncAllEntries(
-  startDate: Date,
-  endDate: Date
-): Promise<number> {
-  const toggl = createTogglDbClient();
-  const chunks = splitDateRange(startDate, endDate);
-
-  log.info(`Total chunks: ${chunks.length} (${CHUNK_MONTHS}-month intervals)`);
-  log.info(`⚠️  Rate limit: waits on 402/429 errors`);
-
-  let totalEntries = 0;
-  let totalRequests = 0;
-
-  for (let i = 0; i < chunks.length; i++) {
-    const chunk = chunks[i];
-    log.section(`Chunk ${i + 1}/${chunks.length}: ${chunk.start} ~ ${chunk.end}`);
-
-    try {
-      // Reports API で取得
-      const entries = await fetchEntriesByReportsApi(
-        chunk.start,
-        chunk.end,
-        (fetched: number, quota: ReportsApiQuota) => {
-          totalRequests++;
-          // 進捗表示
-          const quotaInfo = quota.remaining !== null
-            ? ` [Quota: ${quota.remaining} remaining]`
-            : "";
-          // Denoでのインライン更新
-          const encoder = new TextEncoder();
-          Deno.stdout.writeSync(encoder.encode(`\r  Fetched ${fetched} entries...${quotaInfo}    `));
-        }
-      );
-
-      console.log(""); // 改行
-      log.info(`Fetched ${entries.length} entries (${totalRequests} API requests so far)`);
-
-      if (entries.length > 0) {
-        // DB保存
-        const result = await upsertEntriesFromReports(toggl, entries);
-        totalEntries += result.success;
-      }
-
-    } catch (err) {
-      if (err instanceof ReportsApiQuotaError) {
-        // クォータ超過: 待機してリトライ
-        log.warn(`Quota exceeded. Waiting ${err.resetsInSeconds}s for reset...`);
-        await new Promise(resolve => setTimeout(resolve, err.resetsInSeconds * 1000));
-        // 同じチャンクをリトライ
-        i--;
-        continue;
-      }
-
-      if (err instanceof ReportsApiRateLimitError) {
-        // 429: 60秒待機してリトライ
-        log.warn(`Rate limited (429). Waiting 60s...`);
-        await new Promise(resolve => setTimeout(resolve, 60000));
-        i--;
-        continue;
-      }
-
-      // その他のエラーは再スロー
-      throw err;
-    }
-  }
-
-  log.info(`\nTotal API requests: ${totalRequests}`);
-  return totalEntries;
 }
 
 /**
@@ -220,15 +84,52 @@ export async function syncAllTogglData(options: {
   console.log(`   メタデータのみ: ${options.metadataOnly ? "Yes" : "No"}\n`);
 
   try {
-    // Step 1: メタデータ同期（常に実行）
-    const metadataStats = await syncMetadataOnly();
-
+    let metadataStats = { clients: 0, projects: 0, tags: 0 };
     let entriesCount = 0;
 
-    // Step 2: エントリー同期（metadataOnlyでない場合）
-    if (!options.metadataOnly) {
-      log.section("Fetching entries from Reports API v3");
-      entriesCount = await syncAllEntries(options.startDate, options.endDate);
+    if (options.metadataOnly) {
+      // メタデータのみ同期
+      metadataStats = await syncMetadataOnly();
+    } else {
+      // 全データ取得（fetch_data.tsがチャンク処理を担当）
+      log.section("Step 1: Fetching all data");
+      const data = await fetchTogglDataWithChunks(
+        options.startDate,
+        options.endDate,
+        (progress) => {
+          // 進捗表示（インライン更新）
+          const quotaInfo = progress.quota.remaining !== null
+            ? ` [Quota: ${progress.quota.remaining}]`
+            : "";
+          const encoder = new TextEncoder();
+          Deno.stdout.writeSync(
+            encoder.encode(`\r  Fetched ${progress.entriesFetched} entries...${quotaInfo}    `)
+          );
+        }
+      );
+      console.log(""); // 改行
+
+      // Step 2: メタデータ保存
+      log.section("Step 2: Saving metadata to DB");
+      const toggl = createTogglDbClient();
+      const metaResult = await upsertMetadata(
+        toggl,
+        data.clients,
+        data.projects,
+        data.tags
+      );
+      metadataStats = {
+        clients: metaResult.clients.success,
+        projects: metaResult.projects.success,
+        tags: metaResult.tags.success,
+      };
+
+      // Step 3: エントリー保存
+      log.section("Step 3: Saving entries to DB");
+      if (data.entries.length > 0) {
+        const entryResult = await upsertEntriesFromReports(toggl, data.entries);
+        entriesCount = entryResult.success;
+      }
     }
 
     const elapsedSeconds = (Date.now() - startTime) / 1000;
@@ -252,7 +153,9 @@ export async function syncAllTogglData(options: {
     log.info(`Clients: ${result.stats.clients}`);
     log.info(`Projects: ${result.stats.projects}`);
     log.info(`Tags: ${result.stats.tags}`);
-    log.info(`Entries: ${result.stats.entries}`);
+    if (!options.metadataOnly) {
+      log.info(`Entries: ${result.stats.entries}`);
+    }
     console.log("=".repeat(60));
 
     return result;
@@ -296,10 +199,10 @@ v9 APIは3ヶ月前までしか取得できないため、Reports API v3を使�
   deno run --allow-env --allow-net --allow-read sync_all.ts [オプション]
 
 オプション:
-  --help, -h         このヘルプを表示
-  --start, -s        開始日（YYYY-MM-DD）デフォルト: 環境変数 TOGGL_SYNC_START_DATE
-  --end, -e          終了日（YYYY-MM-DD）デフォルト: 今日
-  --metadata-only, -m メタデータ（clients/projects/tags）のみ同期
+  --help, -h           このヘルプを表示
+  --start, -s          開始日（YYYY-MM-DD）デフォルト: 環境変数 TOGGL_SYNC_START_DATE
+  --end, -e            終了日（YYYY-MM-DD）デフォルト: 今日
+  --metadata-only, -m  メタデータ（clients/projects/tags）のみ同期
 
 例:
   # デフォルト（TOGGL_SYNC_START_DATEから今日まで）
@@ -319,9 +222,8 @@ v9 APIは3ヶ月前までしか取得できないため、Reports API v3を使�
   TOGGL_SYNC_START_DATE     デフォルト開始日（必須、--start未指定時）
 
 注意:
-  - レート制限 (Freeプラン): 30 req/hour
-  - 402/429エラー時は自動でリセットまで待機します
-  - 12か月単位でチャンク分割
+  - 12ヶ月単位でチャンク分割して取得します
+  - レート制限（402/429）エラー時は自動で待機・リトライします
 `);
     Deno.exit(0);
   }

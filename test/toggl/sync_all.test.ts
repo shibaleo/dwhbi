@@ -5,7 +5,7 @@
 //   deno test test/toggl/sync_all.test.ts
 
 import { assertEquals } from "jsr:@std/assert";
-import { splitDateRange, CHUNK_MONTHS } from "../../src/services/toggl/sync_all.ts";
+import { splitDateRange, CHUNK_MONTHS } from "../../src/services/toggl/fetch_data.ts";
 
 // =============================================================================
 // splitDateRange Tests

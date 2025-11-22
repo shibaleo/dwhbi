@@ -1,16 +1,17 @@
 /**
  * Fitbit Web API クライアント
  */
-import type {
-  FitbitApiActivityDailySummary,
-  FitbitApiAzmResponse,
-  FitbitApiBreathingRateResponse,
-  FitbitApiCardioScoreResponse,
-  FitbitApiHeartRateTimeSeriesResponse,
-  FitbitApiHrvResponse,
-  FitbitApiSleepResponse,
-  FitbitApiSpo2Response,
-  FitbitApiTemperatureSkinResponse,
+import {
+  type FitbitApiActivityDailySummary,
+  type FitbitApiAzmResponse,
+  type FitbitApiBreathingRateResponse,
+  type FitbitApiCardioScoreResponse,
+  type FitbitApiHeartRateTimeSeriesResponse,
+  type FitbitApiHrvResponse,
+  type FitbitApiSleepResponse,
+  type FitbitApiSpo2Response,
+  type FitbitApiTemperatureSkinResponse,
+  FitbitRateLimitError,
 } from "./types.ts";
 
 // =============================================================================
@@ -36,6 +37,9 @@ export function formatFitbitDate(date: Date): string {
 export function parseFitbitDate(dateStr: string): Date {
   return new Date(dateStr + "T00:00:00Z");
 }
+
+// Re-export for backward compatibility
+export { FitbitRateLimitError } from "./types.ts";
 
 // =============================================================================
 // API Client
@@ -64,6 +68,13 @@ export class FitbitAPI {
     });
 
     if (!response.ok) {
+      // レート制限エラー（429）の場合は専用エラーをスロー
+      if (response.status === 429) {
+        const retryAfter = response.headers.get("Retry-After");
+        const retryAfterSeconds = retryAfter ? parseInt(retryAfter, 10) : 3600;
+        throw new FitbitRateLimitError(retryAfterSeconds);
+      }
+
       const errorText = await response.text();
       throw new Error(
         `Fitbit API エラー: ${response.status} - ${errorText}`,

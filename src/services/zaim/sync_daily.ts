@@ -8,12 +8,12 @@
 
 import "jsr:@std/dotenv/load";
 import * as log from "../../utils/log.ts";
-import { fetchZaimData } from "./fetch_data.ts";
+import { fetchZaimDataByDays } from "./fetch_data.ts";
 import {
   createZaimDbClient,
   startSyncLog,
   completeSyncLog,
-  syncMasters,
+  upsertMetadata,
   syncTransactions,
   getExistingTransactionIds,
 } from "./write_db.ts";
@@ -41,15 +41,6 @@ export async function syncZaimByDays(syncDays?: number): Promise<SyncResult> {
 
   log.syncStart("Zaim", days);
 
-  // 日付範囲計算
-  const endDate = new Date();
-  endDate.setDate(endDate.getDate() + 1);
-  const startDate = new Date(endDate);
-  startDate.setDate(startDate.getDate() - days - 1);
-
-  const startDateStr = startDate.toISOString().split("T")[0];
-  const endDateStr = endDate.toISOString().split("T")[0];
-
   const zaim = createZaimDbClient();
   let logId: string | null = null;
 
@@ -64,8 +55,16 @@ export async function syncZaimByDays(syncDays?: number): Promise<SyncResult> {
   try {
     // Step 1: データ取得
     log.section("Fetching from Zaim API");
-    const data = await fetchZaimData({ startDate: startDateStr, endDate: endDateStr });
+    const data = await fetchZaimDataByDays(days);
     logId = await startSyncLog(zaim, data.zaimUserId, "/v2/home/*");
+
+    // 日付範囲計算（既存データチェック用）
+    const endDate = new Date();
+    endDate.setDate(endDate.getDate() + 1);
+    const startDate = new Date(endDate);
+    startDate.setDate(startDate.getDate() - days - 1);
+    const startDateStr = startDate.toISOString().split("T")[0];
+    const endDateStr = endDate.toISOString().split("T")[0];
 
     log.info(`Categories: ${data.categories.length}`);
     log.info(`Genres: ${data.genres.length}`);
@@ -82,9 +81,9 @@ export async function syncZaimByDays(syncDays?: number): Promise<SyncResult> {
     );
     log.info(`Existing transactions: ${existingIds.size}`);
 
-    // Step 3: マスタデータ同期
-    log.section("Saving masters to DB");
-    const masterResult = await syncMasters(
+    // Step 3: メタデータ upsert
+    log.section("Saving metadata to DB");
+    const masterResult = await upsertMetadata(
       zaim,
       data.zaimUserId,
       data.categories,

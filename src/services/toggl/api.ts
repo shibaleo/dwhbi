@@ -3,11 +3,13 @@
  */
 
 import { togglFetch, workspaceId } from "./auth.ts";
-import type {
-  TogglApiV9Client,
-  TogglApiV9Project,
-  TogglApiV9Tag,
-  TogglApiV9TimeEntry,
+import {
+  type TogglApiV9Client,
+  type TogglApiV9Project,
+  type TogglApiV9Tag,
+  type TogglApiV9TimeEntry,
+  ReportsApiQuotaError,
+  ReportsApiRateLimitError,
 } from "./types.ts";
 
 // =============================================================================
@@ -17,32 +19,8 @@ import type {
 /**
  * Date を YYYY-MM-DD 形式に変換
  */
-export function formatDate(date: Date): string {
+export function formatTogglDate(date: Date): string {
   return date.toISOString().split("T")[0];
-}
-
-/**
- * 日付範囲を計算: days日前から今日までを取得
- * @param days 取得する日数
- * @param baseDate 基準日（デフォルト: 現在）- テスト時に固定日付を渡せる
- * @returns start: days日前, end: 明日（APIは排他的終点のため、今日を含めるには明日を指定）
- */
-export function getDateRange(
-  days: number,
-  baseDate: Date = new Date()
-): { start: string; end: string } {
-  // endDate = baseDate + 1日
-  const end = new Date(baseDate);
-  end.setDate(end.getDate() + 1);
-
-  // startDate = endDate - (days + 1)
-  const start = new Date(end);
-  start.setDate(start.getDate() - days - 1);
-
-  return {
-    start: formatDate(start),
-    end: formatDate(end),
-  };
 }
 
 // =============================================================================
@@ -90,15 +68,6 @@ export async function fetchEntriesByRange(
   );
 }
 
-/**
- * 直近N日間の時間エントリーを取得
- * @param days 取得する日数（デフォルト: 3）
- */
-export async function fetchEntries(days: number = 3): Promise<TogglApiV9TimeEntry[]> {
-  const { start, end } = getDateRange(days);
-  return await fetchEntriesByRange(start, end);
-}
-
 // =============================================================================
 // Reports API v3 Functions
 // =============================================================================
@@ -107,6 +76,9 @@ import type {
   ReportsApiSearchRequest,
   ReportsApiTimeEntry,
 } from "./types.ts";
+
+// Re-export for backward compatibility
+export { ReportsApiQuotaError, ReportsApiRateLimitError } from "./types.ts";
 
 const REPORTS_API_BASE_URL = "https://api.track.toggl.com/reports/api/v3";
 const REPORTS_API_PAGE_SIZE = 1000; // max allowed
@@ -156,17 +128,12 @@ async function reportsFetch<T>(
   // 402: クォータ超過
   if (res.status === 402) {
     const waitSeconds = quota.resetsInSeconds ?? 3600;
-    throw new ReportsApiQuotaError(
-      `API quota exceeded. Resets in ${waitSeconds} seconds.`,
-      waitSeconds
-    );
+    throw new ReportsApiQuotaError(waitSeconds);
   }
 
   // 429: Too Many Requests (leaky bucket)
   if (res.status === 429) {
-    throw new ReportsApiRateLimitError(
-      "Rate limit exceeded (429). Please wait and retry."
-    );
+    throw new ReportsApiRateLimitError();
   }
 
   if (!res.ok) {
@@ -176,29 +143,6 @@ async function reportsFetch<T>(
 
   const data = await res.json();
   return { data, headers: res.headers, quota };
-}
-
-/**
- * クォータ超過エラー
- */
-export class ReportsApiQuotaError extends Error {
-  constructor(
-    message: string,
-    public readonly resetsInSeconds: number
-  ) {
-    super(message);
-    this.name = "ReportsApiQuotaError";
-  }
-}
-
-/**
- * レート制限エラー (429)
- */
-export class ReportsApiRateLimitError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ReportsApiRateLimitError";
-  }
 }
 
 /**
