@@ -1,7 +1,7 @@
 // zaim/api.ts
 
 import "https://deno.land/std@0.203.0/dotenv/load.ts";
-import { ZaimOAuth } from "./oauth.ts";
+import { ZaimOAuth } from "./auth.ts";
 import type {
   ZaimTransaction,
   ZaimCategory,

@@ -23,7 +23,7 @@ Zaim APIからデータを取得し、Supabaseの`zaim`スキーマに同期す�
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  ┌──────────────┐      ┌──────────────┐      ┌──────────────┐  │
-│  │   oauth.ts   │◄─────│    api.ts    │◄─────│ fetch_data.ts│  │
+│  │   auth.ts    │◄─────│    api.ts    │◄─────│ fetch_data.ts│  │
 │  │              │      │              │      │              │  │
 │  │ OAuth署名生成 │      │ APIクライアント│      │ データ取得   │  │
 │  └──────────────┘      └──────────────┘      └──────┬───────┘  │
@@ -50,7 +50,7 @@ Zaim APIからデータを取得し、Supabaseの`zaim`スキーマに同期す�
 | ファイル | 責務 | 実行可能 |
 |----------|------|----------|
 | `types.ts` | Zaim API型定義 | No |
-| `oauth.ts` | OAuth 1.0a署名生成・HTTPリクエスト | No |
+| `auth.ts` | OAuth 1.0a署名生成・HTTPリクエスト | No |
 | `api.ts` | Zaim APIクライアント | No |
 | `fetch_data.ts` | データ取得のオーケストレーション | Yes |
 | `write_db.ts` | Supabase DB書き込み（変換・upsert・ログ） | No |
@@ -75,7 +75,7 @@ export interface OAuthConfig { ... }
 
 ---
 
-### oauth.ts
+### auth.ts
 
 OAuth 1.0a認証を処理する低レベルモジュール。
 
@@ -107,7 +107,7 @@ export class ZaimAPI {
 }
 ```
 
-**依存**: `oauth.ts`, `types.ts`
+**依存**: `auth.ts`, `types.ts`
 
 **環境変数**: `ZAIM_CONSUMER_KEY`, `ZAIM_CONSUMER_SECRET`, `ZAIM_ACCESS_TOKEN`, `ZAIM_ACCESS_TOKEN_SECRET`
 
