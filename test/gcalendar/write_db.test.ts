@@ -1,11 +1,11 @@
-// test/gcalendar/fetch_data.test.ts
-// fetch_data.ts の変換関数に対する単体テスト
+// test/gcalendar/write_db.test.ts
+// write_db.ts の変換関数に対する単体テスト
 
 import {
   assertEquals,
 } from "https://deno.land/std@0.208.0/assert/mod.ts";
 
-import { transformEvent } from "../../src/services/gcalendar/fetch_data.ts";
+import { transformEvent } from "../../src/services/gcalendar/write_db.ts";
 import type { GCalApiEvent } from "../../src/services/gcalendar/types.ts";
 
 const TEST_CALENDAR_ID = "test-calendar@example.com";

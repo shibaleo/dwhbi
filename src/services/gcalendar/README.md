@@ -1,68 +1,45 @@
-# Google Calendar → Supabase 同期モジュール
+# Google Calendar 同期モジュール
 
-## 概要
+Google Calendar API から予定イベントを取得し、Supabase `gcalendar` スキーマに同期する。Toggl（実績）との予実管理を可能にする。
 
-Google Calendarの予定イベントをSupabaseに同期し、Toggl（実績）との予実管理を可能にする。
+## クイックスタート
 
-## 目的
+### 環境変数
 
-- 予定（Google Calendar）と実績（Toggl）の比較分析
-- 時間配分の意図と結果のギャップ把握
-- 長期的な振り返りのためのアカウンタビリティ確保
+| 変数名 | 必須 | 説明 |
+|--------|------|------|
+| `SUPABASE_URL` | Yes | Supabase プロジェクトURL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Supabase Service Role Key |
+| `GOOGLE_CALENDAR_ID` | Yes | 対象カレンダーID |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | Yes | サービスアカウントJSON（Base64または生JSON） |
+| `GCAL_SYNC_DAYS` | No | 同期日数（デフォルト: 3） |
 
-## データソース
+### 実行コマンド
 
-- Google Calendar API v3
-- 認証: サービスアカウント（credential は Notion に保管中 → 将来的に Supabase 移行検討）
+```bash
+# 日次同期（直近3日間）
+deno run --allow-env --allow-net --allow-read sync_daily.ts
 
-## 既存実装（移植元）
+# 日次同期（直近7日間）
+GCAL_SYNC_DAYS=7 deno run --allow-env --allow-net --allow-read sync_daily.ts
 
-`C:\Users\shiba\HOBBY\doc\mng\src\services\gcalendar\`
-
-| ファイル | 役割 |
-|----------|------|
-| `auth.js` | サービスアカウント認証（Notionからcredential取得） |
-| `fetch-events.js` | イベント取得 + colorIdでTogglクライアントマッピング |
-| `index.js` | キャッシュ付きエントリポイント |
-
-## 新規実装（Deno）
-
-```
-src/services/gcalendar/
-├── README.md          # このファイル
-├── types.ts           # 型定義
-├── auth.ts            # サービスアカウント認証
-├── api.ts             # Google Calendar APIラッパー
-├── fetch_events.ts    # イベント取得・変換
-├── write_db.ts        # Supabase書き込み
-├── sync_daily.ts      # 日次同期オーケストレーター
-├── sync_all.ts        # 全件同期（初回移行・リカバリ用）
-└── 001_create_schema.sql  # スキーマ・テーブル定義
+# 全件同期（期間指定）
+deno run --allow-env --allow-net --allow-read sync_all.ts --start=2024-01-01 --end=2024-12-31
 ```
 
-## Supabaseスキーマ設計
+---
 
-### スキーマ: `gcalendar`
+## アーキテクチャ
 
-### テーブル: `events`
+### データパイプライン
 
-| カラム | 型 | 制約 | コメント |
-|--------|-----|------|----------|
-| id | TEXT | PK | Google Calendar イベントID |
-| calendar_id | TEXT | NOT NULL | カレンダーID |
-| summary | TEXT | | イベント名（Toggl description に相当） |
-| description | TEXT | | イベント詳細（Toggl client に相当） |
-| start_time | TIMESTAMPTZ | NOT NULL | 開始日時 |
-| end_time | TIMESTAMPTZ | NOT NULL | 終了日時 |
-| is_all_day | BOOLEAN | DEFAULT FALSE | 終日イベントフラグ |
-| color_id | TEXT | | 時間の質的分類（Toggl project colorに直接対応） |
-| status | TEXT | | confirmed / tentative / cancelled |
-| recurring_event_id | TEXT | | 繰り返しイベントの親ID |
-| etag | TEXT | | 変更検出用ETag |
-| updated | TIMESTAMPTZ | | イベント更新日時（API） |
-| synced_at | TIMESTAMPTZ | DEFAULT NOW() | Supabase同期日時 |
+```
+Google Calendar API           変換                    Supabase
+──────────────────────────────────────────────────────────────
+events.list (pagination) →  transformEvent()  →  gcalendar.events
+```
 
-### Togglとの対応関係
+### Toggl との対応関係
 
 | GCal (予定) | Toggl (実績) | 備考 |
 |-------------|--------------|------|
@@ -71,82 +48,211 @@ src/services/gcalendar/
 | color_id | project.color | 時間の質的分類（直接対応） |
 | start_time / end_time | start / stop | 時間帯 |
 
-### カラー マッピング
+### ファイル構成
 
-`notion.gcal_colors` テーブルで管理（gcalendar スキーマ外）。
+| ファイル | 責務 | 実行可能 |
+|----------|------|----------|
+| `types.ts` | API/DB型定義 | No |
+| `auth.ts` | サービスアカウントJWT認証 | No |
+| `api.ts` | Google Calendar APIクライアント（ページネーション対応） | No |
+| `fetch_data.ts` | データ取得・API→DB変換 | No |
+| `write_db.ts` | DB書き込み（upsert） | No |
+| `sync_daily.ts` | 日次同期オーケストレーター | Yes |
+| `sync_all.ts` | 全件同期（初回移行・リカバリ用） | Yes |
 
-| gcal_color_id | name | toggl_hex | gcal_hex |
-|---------------|------|-----------|----------|
-| 1 | drift | #566614 | #7986cb |
-| 2 | household | #06a893 | #33b679 |
-| ... | ... | ... | ... |
+---
 
-ビューで結合してカテゴリ名を取得する設計。
+## モジュール詳細
 
-### テーブル: `tokens`（認証情報）
+### types.ts
 
-サービスアカウントの場合、トークン管理は不要（JWTで都度認証）。
-credential JSON は環境変数 or Notion から取得。
-
-## API → DB 変換処理
-
-Google Calendar APIのイベントは終日イベントと通常イベントで異なるフィールドを返す。
-DBでは統一した形式で保存する。
-
-### 終日イベント vs 通常イベント
-
-| 種別 | APIレスポンス | DB保存 |
-|------|---------------|--------|
-| 通常 | `start.dateTime`, `end.dateTime` | そのまま `start_time`, `end_time` |
-| 終日 | `start.date`, `end.date` | `T00:00:00+09:00` を付与して TIMESTAMPTZ に変換 |
-
-### 変換コード（TypeScript）
+API型・DB型・同期結果型を定義。
 
 ```typescript
-// Google Calendar API レスポンスから DB レコードへの変換
-function transformEvent(event: calendar_v3.Schema$Event, calendarId: string): DbEvent {
-  // 終日イベントの場合は date を TIMESTAMPTZ に変換
-  const startTime = event.start?.dateTime 
-    ?? `${event.start?.date}T00:00:00+09:00`;
-  const endTime = event.end?.dateTime 
-    ?? `${event.end?.date}T00:00:00+09:00`;
-  const isAllDay = !event.start?.dateTime;
+// API型（Google Calendar API レスポンス）
+interface GCalApiEvent {
+  id: string;
+  summary?: string;
+  description?: string;
+  start: { dateTime?: string; date?: string };
+  end: { dateTime?: string; date?: string };
+  colorId?: string;
+  status?: string;
+  recurringEventId?: string;
+  etag?: string;
+  updated?: string;
+}
 
-  return {
-    id: event.id!,
-    calendar_id: calendarId,
-    summary: event.summary ?? null,
-    description: event.description ?? null,
-    start_time: startTime,
-    end_time: endTime,
-    is_all_day: isAllDay,
-    color_id: event.colorId ?? null,
-    status: event.status ?? null,
-    recurring_event_id: event.recurringEventId ?? null,
-    etag: event.etag ?? null,
-    updated: event.updated ?? null,
-  };
+// DB型
+interface DbEvent {
+  id: string;               // Google Calendar イベントID
+  calendar_id: string;
+  summary: string | null;
+  description: string | null;
+  start_time: string;       // TIMESTAMPTZ
+  end_time: string;         // TIMESTAMPTZ
+  is_all_day: boolean;
+  color_id: string | null;
+  status: string | null;    // confirmed / tentative / cancelled
+  recurring_event_id: string | null;
+  etag: string | null;
+  updated: string | null;
+}
+
+// 同期結果型
+interface SyncResult {
+  success: boolean;
+  timestamp: string;
+  stats: { events: number };
+  elapsedSeconds: number;
+  error?: string;
 }
 ```
 
-## 環境変数
+### auth.ts
 
-| 変数名 | 用途 |
-|--------|------|
-| `SUPABASE_URL` | Supabase URL |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase Service Role Key |
-| `GOOGLE_CALENDAR_ID` | 対象カレンダーID |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | サービスアカウントJSON（または Notion から取得） |
-| `GCAL_SYNC_DAYS` | 同期日数（sync_daily.ts用、デフォルト: 3） |
+サービスアカウントJWT認証。トークンテーブルは不要（都度JWT生成）。
+
+```typescript
+// サービスアカウントクライアント取得
+async function getAuthClient(): Promise<JWT>
+```
+
+スコープ: `https://www.googleapis.com/auth/calendar.readonly`
+
+### api.ts
+
+Google Calendar APIクライアント。
+
+```typescript
+// イベント取得（ページネーション対応）
+async function fetchEvents(auth: JWT, options: {
+  calendarId: string;
+  timeMin: string;
+  timeMax: string;
+}): Promise<GCalApiEvent[]>
+```
+
+### fetch_data.ts
+
+データ取得・変換。
+
+```typescript
+// API → DB 変換
+function transformEvent(event: GCalApiEvent, calendarId: string): DbEvent
+
+// 認証〜取得〜変換のラッパー
+async function fetchAllEvents(options: FetchOptions): Promise<DbEvent[]>
+
+// 日数指定取得
+async function fetchEventsByDays(days: number): Promise<DbEvent[]>
+```
+
+**終日イベントの変換処理**:
+
+```typescript
+// 終日イベント: start.date → T00:00:00+09:00 を付与して TIMESTAMPTZ に変換
+// 通常イベント: start.dateTime をそのまま使用
+const startTime = event.start?.dateTime ?? `${event.start?.date}T00:00:00+09:00`;
+```
+
+### write_db.ts
+
+Supabase `gcalendar` スキーマへの書き込み。
+
+```typescript
+// Supabaseクライアント
+function createGCalClient(): SupabaseClient
+
+// バルクupsert
+async function upsertEvents(events: DbEvent[]): Promise<UpsertResult>
+```
+
+### sync_daily.ts
+
+日次同期オーケストレーター。
+
+```typescript
+async function syncGCalToSupabase(options?: FetchOptions): Promise<SyncResult>
+async function syncByDays(days: number): Promise<SyncResult>
+```
+
+### sync_all.ts
+
+全件同期（初回移行・リカバリ用）。
+
+```typescript
+async function syncAllGCalEvents(startDate: Date, endDate: Date): Promise<void>
+```
+
+---
+
+## データベーススキーマ
+
+### gcalendar スキーマ
+
+| テーブル | 主キー | 説明 |
+|----------|--------|------|
+| `events` | `id` (TEXT) | カレンダーイベント（Google イベントID） |
+
+### events テーブル詳細
+
+| カラム | 型 | 制約 | 説明 |
+|--------|-----|------|------|
+| id | TEXT | PK | Google Calendar イベントID |
+| calendar_id | TEXT | NOT NULL | カレンダーID |
+| summary | TEXT | | イベント名 |
+| description | TEXT | | イベント詳細 |
+| start_time | TIMESTAMPTZ | NOT NULL | 開始日時 |
+| end_time | TIMESTAMPTZ | NOT NULL | 終了日時 |
+| is_all_day | BOOLEAN | DEFAULT FALSE | 終日イベントフラグ |
+| color_id | TEXT | | カラーID |
+| status | TEXT | | confirmed / tentative / cancelled |
+| recurring_event_id | TEXT | | 繰り返しイベントの親ID |
+| etag | TEXT | | 変更検出用ETag |
+| updated | TIMESTAMPTZ | | イベント更新日時（API） |
+| synced_at | TIMESTAMPTZ | DEFAULT NOW() | 同期日時 |
+
+### カラーマッピング
+
+`notion.gcal_colors` テーブルで管理（gcalendar スキーマ外）。
+
+```sql
+-- ビューでカテゴリ名を取得
+SELECT e.*, c.ja_name AS category
+FROM gcalendar.events e
+LEFT JOIN notion.gcal_colors c ON e.color_id = c.gcal_color_id::text
+```
+
+---
+
+## API仕様
+
+### 認証方式
+
+サービスアカウントJWT。credential JSON は環境変数から取得。
+
+### エンドポイント
+
+| エンドポイント | 説明 |
+|---------------|------|
+| `events.list` | イベント一覧取得（ページネーション対応） |
+
+### 制約・制限
+
+| 項目 | 値 |
+|------|-----|
+| デフォルト取得期間 | 2019-01-01 〜 現在 |
+| ページサイズ | 最大2500件/リクエスト |
 
 ---
 
 ## 日付範囲の計算パターン
 
-全サービス共通の日付範囲計算パターン (`fetch_events.ts` の `fetchEventsByDays` 関数):
+全サービス共通パターン:
 
 ```typescript
-// endDate = 明日（APIは排他的終点のため、今日を含めるには明日を指定）
+// endDate = 明日（APIは排他的終点のため）
 const endDate = new Date();
 endDate.setDate(endDate.getDate() + 1);
 
@@ -155,108 +261,52 @@ const startDate = new Date(endDate);
 startDate.setDate(startDate.getDate() - days - 1);
 ```
 
-このパターンにより `days日前から今日まで` のデータを確実に取得できます。
+このパターンにより `days日前から今日まで` のデータを確実に取得。
 
-## 同期仕様
+---
 
-### 対象期間
+## テスト
 
-- デフォルト: 2019-01-01 〜 現在（Togglデータと合わせる）
-- 環境変数で指定可能
+### 単体テスト
 
-### 更新戦略
+```bash
+# 全テスト実行（18件）
+deno test test/gcalendar/ --allow-env --allow-read
 
-- イベントIDをキーにupsert
-- キャンセルされたイベントも `status = 'cancelled'` で保持
-
-### 運用パターン
-
-- 毎日の予定は基本的に recurring event を編集して管理
-- color_id で時間の質的分類を行う
-
-## 実装順序
-
-### 現状
-
-| 項目 | 状態 |
-|------|------|
-| README.md | ✅ 設計完了 |
-| notion.gcal_colors | ✅ 移行済み |
-| 既存Node.js実装 | ✅ 参照可能（auth.js, fetch-events.js） |
-| サービスアカウント認証 | ✅ 取得済み |
-
-### 実装手順（Togglパターン準拠）
-
-| Step | ファイル | 役割 | 依存 | 状態 |
-|------|----------|------|------|------|
-| 1 | `001_create_schema.sql` | スキーマ・テーブル・RLS | - | [x] |
-| 2 | `types.ts` | API型・DB型・同期結果型 | - | [x] |
-| 3 | `auth.ts` | サービスアカウントJWT認証 | types.ts | [x] |
-| 4 | `api.ts` | events.list + ページネーション | auth.ts | [x] |
-| 5 | `fetch_events.ts` | データ取得 + API→DB変換 | api.ts, types.ts | [x] |
-| 6 | `write_db.ts` | Supabase upsert | types.ts | [x] |
-| 7 | `sync_daily.ts` | 同期オーケストレーター | 全モジュール | [x] |
-| 8 | `.github/workflows/sync-gcalendar.yml` | GitHub Actions自動実行 | sync_daily.ts | [x] |
-
-### 認証方式
-
-サービスアカウントJWTを使用するため、Togglと異なりトークンテーブルは不要。
-認証情報は環境変数 `GOOGLE_SERVICE_ACCOUNT_JSON` から取得（Base64エンコードまたは生JSON）。
-
-### データパイプライン（Toggl対応）
-
-```
-Google Calendar API          変換                      Supabase
-────────────────────────────────────────────────────────────────
-events.list (pagination) →  transformEvent() →  gcalendar.events
+# 個別実行
+deno test test/gcalendar/write_db.test.ts --allow-env --allow-read  # transformEvent 変換関数
 ```
 
-Togglとの対応：
+### 手動統合テスト
 
-| Toggl | GCal | 備考 |
-|-------|------|------|
-| `client.ts` | `auth.ts` | 認証・HTTPリクエスト |
-| `api.ts` | `api.ts` | データ取得 |
-| `write_db.ts` | `write_db.ts` | DB書き込み（変換・upsert） |
-| `sync_daily.ts` | `sync_daily.ts` | オーケストレーター |
+```bash
+# 日次同期テスト（3日間）
+GCAL_SYNC_DAYS=3 deno run --allow-env --allow-net --allow-read sync_daily.ts
+```
 
-### モジュール境界設計
+---
 
-#### types.ts
-- `GCalApiEvent`: Google Calendar API レスポンス型
-- `DbEvent`: gcalendar.events テーブル型
-- `SyncResult`: 同期結果型
+## GitHub Actions
 
-#### auth.ts
-- `getAuthClient()`: サービスアカウントJWTクライアント取得
-- 環境変数からcredential JSON取得
-- スコープ: `https://www.googleapis.com/auth/calendar.readonly`
+定期実行は `sync-all.yml` に統合（毎日 JST 00:00）。
 
-#### api.ts
-- `fetchEvents(auth, options)`: イベント取得（ページネーション対応）
-- `options`: timeMin, timeMax, calendarId
+個別実行は `sync-gcalendar.yml` で手動トリガー可能。
 
-#### fetch_events.ts
-- `transformEvent(event, calendarId)`: API→DB変換
-- `fetchAllEvents(options)`: 認証〜取得〜変換のラッパー
+---
 
-#### write_db.ts
-- `createGCalClient()`: Supabaseクライアント（gcalendar schema）
-- `upsertEvents(events)`: バルクupsert
+## 初回セットアップ
 
-#### sync_daily.ts
-- `syncGCalToSupabase(options)`: 全期間同期オーケストレーター
-- `syncByDays(days)`: 日数指定同期（CLI実行時のデフォルト）
-- デフォルト同期日数: 環境変数 `GCAL_SYNC_DAYS` で指定（デフォルト3日）
+1. Google Cloud Console でプロジェクト作成
+2. Calendar API を有効化
+3. サービスアカウント作成、JSONキーをダウンロード
+4. カレンダーの共有設定でサービスアカウントのメールアドレスを追加
+5. 環境変数 `GOOGLE_SERVICE_ACCOUNT_JSON` にJSONを設定
 
-#### sync_all.ts
-- `syncAllGCalEvents(startDate, endDate)`: 期間指定で全件同期
-- 初回移行・リカバリ用
-- CLI引数: `--start`, `--end` で期間指定可能
+---
 
-## Togglとの連携（将来）
+## Toggl との連携（将来）
 
-予実管理ビューの設計時に、以下の結合を想定：
+予実管理ビューの設計:
 
 ```sql
 -- 日次予実比較
@@ -275,7 +325,8 @@ WHERE g.status = 'confirmed'
 GROUP BY DATE(g.start_time), g.description, c.ja_name
 ```
 
-## 参考
+---
 
-- [Google Calendar API](https://developers.google.com/calendar/api/v3/reference)
-- 既存Node.js実装: `doc/mng/src/services/gcalendar/`
+## 参考リンク
+
+- [Google Calendar API v3](https://developers.google.com/calendar/api/v3/reference)

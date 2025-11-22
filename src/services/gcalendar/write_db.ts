@@ -6,7 +6,7 @@
 
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
 import * as log from "../../utils/log.ts";
-import type { DbEvent } from "./types.ts";
+import type { DbEvent, GCalApiEvent } from "./types.ts";
 
 // =============================================================================
 // Types
@@ -26,6 +26,49 @@ export interface UpsertResult {
 // =============================================================================
 
 const BATCH_SIZE = 1000;
+
+/** JSTタイムゾーンオフセット */
+const JST_OFFSET = "+09:00";
+
+// =============================================================================
+// Transform Functions (API → DB)
+// =============================================================================
+
+/**
+ * Google Calendar API レスポンスを DB レコードに変換
+ *
+ * 終日イベントと通常イベントで異なるフィールドを統一形式に変換
+ */
+export function transformEvent(event: GCalApiEvent, calendarId: string): DbEvent {
+  // 終日イベントの場合は date を TIMESTAMPTZ に変換
+  const startTime = event.start.dateTime
+    ?? `${event.start.date}T00:00:00${JST_OFFSET}`;
+  const endTime = event.end.dateTime
+    ?? `${event.end.date}T00:00:00${JST_OFFSET}`;
+  const isAllDay = !event.start.dateTime;
+
+  return {
+    id: event.id,
+    calendar_id: calendarId,
+    summary: event.summary ?? null,
+    description: event.description ?? null,
+    start_time: startTime,
+    end_time: endTime,
+    is_all_day: isAllDay,
+    color_id: event.colorId ?? null,
+    status: event.status ?? null,
+    recurring_event_id: event.recurringEventId ?? null,
+    etag: event.etag ?? null,
+    updated: event.updated ?? null,
+  };
+}
+
+/**
+ * 複数のイベントを一括変換
+ */
+export function transformEvents(events: GCalApiEvent[], calendarId: string): DbEvent[] {
+  return events.map(event => transformEvent(event, calendarId));
+}
 
 // =============================================================================
 // Client Factory

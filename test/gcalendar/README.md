@@ -5,7 +5,8 @@
 ```
 test/gcalendar/
 ├── README.md              # このファイル
-├── fetch_data.test.ts     # transformEvent 変換関数
+├── write_db.test.ts       # transformEvent 変換関数
+├── check_all.ts           # 一括確認スクリプト
 ├── check_api.ts           # API疎通確認
 ├── check_sync.ts          # 日次同期確認（⚠️ DB書き込みあり）
 └── check_sync_all.ts      # 全件同期確認（⚠️ DB書き込みあり）
@@ -27,7 +28,7 @@ deno test test/gcalendar/ --allow-env --allow-read
 
 | ファイル | 件数 | 対象 |
 |----------|------|------|
-| `fetch_data.test.ts` | 18件 | `transformEvent` |
+| `write_db.test.ts` | 18件 | `transformEvent` |
 | **合計** | **18件** | |
 
 ### テスト観点

@@ -1,186 +1,170 @@
 # supabase-sync-jobs
 
-個人のライフログデータを各種サービスから取得し、Supabaseに統合・蓄積するための同期ジョブ群です。
+LIFETRACER の中核となるデータ同期基盤。複数の外部サービスから個人データを取得し、Supabase（PostgreSQL）に統合保存する。
 
-## 目的
+## 概要
 
-LIFETRACERプロジェクトの一環として、以下のデータソースを単一のSupabaseデータベースに集約し、長期的な自己理解・分析を可能にします。
+60年以上の長期データ保持と自己理解を目的とした個人データエコシステム。各サービスの専用ツールを活用しつつ、データは Supabase に集約し、ベンダー非依存の分析基盤を構築する。
 
-- **時間の使い方** → Toggl Track
-- **身体の状態** → Fitbit + Tanita Health Planet
-- **お金の流れ** → Zaim
+### データソース
 
-## サービス一覧
+| サービス | 用途 | スキーマ |
+|----------|------|---------|
+| [Toggl](src/services/toggl/) | 時間記録（実績） | `toggl` |
+| [Google Calendar](src/services/gcalendar/) | 予定（計画） | `gcalendar` |
+| [Fitbit](src/services/fitbit/) | 睡眠・心拍・活動 | `fitbit` |
+| [Tanita](src/services/tanita/) | 体組成・血圧 | `tanita` |
+| [Zaim](src/services/zaim/) | 家計簿 | `zaim` |
 
-| サービス | データ種別 | 認証方式 | 自動実行 |
-|----------|-----------|----------|----------|
-| **Toggl** | タイムエントリ、クライアント、プロジェクト、タグ | API Token | 毎日 JST 00:00 |
-| **Fitbit** | 睡眠、心拍数、活動量、体重、体脂肪、SpO2 | OAuth 2.0 | （手動） |
-| **Tanita** | 体組成データ（体重、体脂肪率、筋肉量等） | OAuth 2.0 | 毎日 JST 09:00 |
-| **Zaim** | 収支取引、カテゴリ、口座 | OAuth 1.0a | 毎日 JST 00:00 |
+## クイックスタート
+
+### 環境変数
+
+```bash
+# 共通（必須）
+SUPABASE_URL=https://xxxxx.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=xxxxx
+
+# 各サービス固有（詳細は各READMEを参照）
+```
+
+### 実行
+
+```bash
+# 全サービス日次同期
+deno run --allow-env --allow-net --allow-read src/sync_all.ts
+
+# 個別サービス同期
+deno run --allow-env --allow-net --allow-read src/services/toggl/sync_daily.ts
+deno run --allow-env --allow-net --allow-read src/services/fitbit/sync_daily.ts
+```
+
+### テスト
+
+```bash
+# 全単体テスト（154件）
+deno task test
+
+# 環境確認（API疎通、DB書き込みなし）
+deno task check
+
+# 同期確認（⚠️ DB書き込みあり）
+deno task check:sync
+```
 
 ## ディレクトリ構成
 
 ```
 supabase-sync-jobs/
-├── .github/workflows/       # GitHub Actions 自動実行設定
-│   ├── sync-toggl.yml
-│   ├── sync-tanita.yml
-│   ├── sync-zaim.yml
-│   └── refresh-tanita-token.yml
-│
-├── src/services/
-│   ├── fitbit/              # Fitbit同期モジュール
-│   ├── tanita/              # Tanita Health Planet同期モジュール
-│   ├── toggl/               # Toggl Track同期モジュール
-│   ├── zaim/                # Zaim同期モジュール
-│   └── supabase/            # Supabaseスキーマ定義SQL
-│
-├── supabase/
-│   └── migrations/          # Supabase CLIマイグレーション
-│
-└── test/                    # テストコード
+├── src/
+│   ├── services/           # サービス別モジュール
+│   │   ├── fitbit/         # Fitbit 同期
+│   │   ├── gcalendar/      # Google Calendar 同期
+│   │   ├── tanita/         # Tanita 同期
+│   │   ├── toggl/          # Toggl 同期
+│   │   └── zaim/           # Zaim 同期
+│   ├── utils/              # 共通ユーティリティ
+│   └── sync_all.ts         # 全サービス並列同期
+├── test/                   # テストスイート
+├── supabase/               # マイグレーション
+├── .github/workflows/      # GitHub Actions
+└── deno.json               # タスク定義
 ```
 
-## ランタイム
+## アーキテクチャ
 
-このプロジェクトは [Deno](https://deno.land/) をランタイムとして使用します。
+### サービス共通構成
 
-```bash
-# Denoのインストール（macOS/Linux）
-curl -fsSL https://deno.land/install.sh | sh
+各サービスは統一されたファイル構成に従う:
 
-# Denoのインストール（Windows PowerShell）
-irm https://deno.land/install.ps1 | iex
+| ファイル | 責務 |
+|----------|------|
+| `types.ts` | API型・DB型定義 |
+| `auth.ts` | 認証（OAuth/Basic） |
+| `api.ts` | APIクライアント |
+| `fetch_data.ts` | データ取得オーケストレーション |
+| `write_db.ts` | DB書き込み（変換・upsert） |
+| `sync_daily.ts` | 日次同期（実行可能） |
+| `sync_all.ts` | 全件同期（実行可能、一部サービス） |
+
+詳細: [src/services/README.md](src/services/README.md)
+
+### データベース設計
+
+サービス別スキーマ + 統合ビューのアーキテクチャ:
+
+```
+┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+│ fitbit.*    │  │ toggl.*     │  │ zaim.*      │
+│ (生データ)  │  │ (生データ)  │  │ (生データ)  │
+└──────┬──────┘  └──────┬──────┘  └──────┬──────┘
+       │                │                │
+       └────────────────┼────────────────┘
+                        ▼
+                ┌───────────────┐
+                │  public.*     │
+                │  (統合ビュー) │
+                └───────────────┘
 ```
 
-## 環境変数
+これによりベンダー切替時も `public` スキーマのAPIは安定。
 
-### 共通（Supabase）
+### 日付範囲の計算パターン
 
-| 変数名 | 説明 |
-|--------|------|
-| `SUPABASE_URL` | Supabase プロジェクトURL |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase Service Role Key |
+全サービス共通:
 
-### Toggl
+```typescript
+// endDate = 明日（APIは排他的終点のため）
+const endDate = new Date();
+endDate.setDate(endDate.getDate() + 1);
 
-| 変数名 | 説明 |
-|--------|------|
-| `TOGGL_API_TOKEN` | Toggl API トークン |
-| `TOGGL_WORKSPACE_ID` | Toggl ワークスペースID |
-| `TOGGL_SYNC_DAYS` | 同期日数（オプション、デフォルト: 1） |
+// startDate = endDate - (days + 1)
+const startDate = new Date(endDate);
+startDate.setDate(startDate.getDate() - days - 1);
+```
 
-### Fitbit
+## GitHub Actions
 
-| 変数名 | 説明 |
-|--------|------|
-| `FITBIT_CLIENT_ID` | Fitbit OAuth Client ID |
-| `FITBIT_CLIENT_SECRET` | Fitbit OAuth Client Secret |
+毎日 JST 00:00 に `sync-all.yml` で全サービスを並列同期。
 
-※ トークンはSupabase `fitbit_tokens` テーブルで管理
-
-### Tanita
-
-| 変数名 | 説明 |
-|--------|------|
-| `TANITA_CLIENT_ID` | Tanita OAuth Client ID |
-| `TANITA_CLIENT_SECRET` | Tanita OAuth Client Secret |
-| `HEIGHT_CM` | 身長（cm） |
-
-※ トークンはSupabase `tanita_tokens` テーブルで管理
-
-### Zaim
-
-| 変数名 | 説明 |
-|--------|------|
-| `ZAIM_CONSUMER_KEY` | Zaim OAuth Consumer Key |
-| `ZAIM_CONSUMER_SECRET` | Zaim OAuth Consumer Secret |
-| `ZAIM_ACCESS_TOKEN` | Zaim OAuth Access Token |
-| `ZAIM_ACCESS_TOKEN_SECRET` | Zaim OAuth Access Token Secret |
-| `ZAIM_SYNC_DAYS` | 同期日数（オプション、デフォルト: 3） |
-
-## GitHub Actions（自動実行）
-
-| ワークフロー | スケジュール | 説明 |
+| ワークフロー | スケジュール | 用途 |
 |--------------|--------------|------|
-| `sync-toggl.yml` | 毎日 JST 00:00 | Toggl タイムエントリ同期 |
-| `sync-tanita.yml` | 毎日 JST 09:00 | Tanita 体組成データ同期 |
-| `sync-zaim.yml` | 毎日 JST 00:00 | Zaim 収支データ同期 |
-| `refresh-tanita-token.yml` | 毎週日曜 JST 03:00 | Tanita トークンリフレッシュ |
+| `sync-all.yml` | 毎日 JST 00:00 | 全サービス並列同期（推奨） |
+| `sync-*.yml` | 手動のみ | 個別サービス同期 |
 
-### GitHub Secrets の設定
+詳細: [.github/workflows/README.md](.github/workflows/README.md)
 
-1. リポジトリの **Settings** > **Secrets and variables** > **Actions** に移動
-2. 上記の環境変数をすべて登録
+## テスト
 
-## 手動実行
+### 単体テスト件数
 
-### Toggl
+| サービス | 件数 |
+|----------|------|
+| Fitbit | 50 |
+| Tanita | 50 |
+| Toggl | 24 |
+| GCalendar | 18 |
+| Zaim | 12 |
+| **合計** | **154** |
 
-```bash
-# 日次同期（直近1日）
-deno run --allow-net --allow-env --allow-read src/services/toggl/sync_daily.ts
+詳細: [test/README.md](test/README.md)
 
-# 同期日数を指定
-TOGGL_SYNC_DAYS=7 deno run --allow-net --allow-env --allow-read src/services/toggl/sync_daily.ts
-```
+## ドキュメント
 
-### Tanita
+| カテゴリ | リンク |
+|----------|--------|
+| **サービス共通** | [src/services/README.md](src/services/README.md) |
+| **Fitbit** | [src/services/fitbit/README.md](src/services/fitbit/README.md) |
+| **Google Calendar** | [src/services/gcalendar/README.md](src/services/gcalendar/README.md) |
+| **Tanita** | [src/services/tanita/README.md](src/services/tanita/README.md) |
+| **Toggl** | [src/services/toggl/README.md](src/services/toggl/README.md) |
+| **Zaim** | [src/services/zaim/README.md](src/services/zaim/README.md) |
+| **GitHub Actions** | [.github/workflows/README.md](.github/workflows/README.md) |
+| **テスト** | [test/README.md](test/README.md) |
 
-```bash
-# 日次同期
-deno run --allow-net --allow-env --allow-read src/services/tanita/tanita_daily_sync.ts
+## 技術スタック
 
-# トークンリフレッシュ
-deno run --allow-net --allow-env --allow-read src/services/tanita/tanita_refresh_and_save.ts
-```
-
-### Fitbit
-
-```bash
-# データ取得（キャッシュ保存）
-deno run --allow-all src/services/fitbit/fetch_fitbit_data.ts 2025-01-01 2025-01-31
-
-# Supabaseへ同期
-deno run --allow-all src/services/fitbit/sync_fitbit_to_supabase.ts 2025-01-01 2025-01-31
-```
-
-### Zaim
-
-```bash
-# 日次同期（直近3日）
-deno run --allow-net --allow-env --allow-read src/services/zaim/sync_daily.ts
-
-# 全件同期（年単位）
-deno run --allow-net --allow-env --allow-read src/services/zaim/sync_all_transactions.ts --start=2024
-```
-
-## Supabaseスキーマ
-
-### public スキーマ
-
-- `toggl_clients` / `toggl_projects` / `toggl_tags` / `toggl_time_entries`
-- `health_data_*`（各種健康データ）
-- `fitbit_tokens` / `tanita_tokens`（OAuthトークン管理）
-
-### zaim スキーマ
-
-- `zaim.categories` / `zaim.genres` / `zaim.accounts` / `zaim.transactions`
-- `zaim.sync_log`（同期ログ）
-
-詳細は [`src/services/supabase/README.md`](src/services/supabase/README.md) を参照。
-
-## 各サービスの詳細ドキュメント
-
-| サービス | ドキュメント |
-|----------|--------------|
-| Fitbit | [`src/services/fitbit/README.md`](src/services/fitbit/README.md) |
-| Zaim | [`src/services/zaim/README.md`](src/services/zaim/README.md) |
-| Supabase | [`src/services/supabase/README.md`](src/services/supabase/README.md) |
-| Toggl | （未作成） |
-| Tanita | （未作成） |
-
-## ライセンス
-
-Private（個人利用）
+- **ランタイム**: Deno
+- **データベース**: Supabase (PostgreSQL)
+- **CI/CD**: GitHub Actions
+- **認証**: OAuth 2.0 (Fitbit, Tanita, Google), OAuth 1.0a (Zaim), Basic (Toggl)
