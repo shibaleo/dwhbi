@@ -87,6 +87,40 @@ supabase-sync-jobs/
 | `sync_daily.ts` | 日次同期（実行可能） |
 | `sync_all.ts` | 全件同期（実行可能、一部サービス） |
 
+### データフロー
+
+```
+sync_daily.ts / sync_all.ts（オーケストレーター）
+    │  同期日数決定、OAuth トークン確認、エラーハンドリング
+    ▼
+fetch_data.ts（データ取得層）
+    │  日付範囲計算、チャンク分割、レート制限対応
+    ▼
+api.ts（APIクライアント層）
+    │  外部APIリクエスト、auth.tsから認証情報取得
+    ▼
+write_db.ts（DB書き込み層）
+       API型→DB型変換、バッチupsert
+```
+
+### 認証パターン
+
+| パターン | サービス | 認証方式 | トークン管理 |
+|----------|----------|----------|-------------|
+| A | fitbit, tanita | OAuth 2.0 | Supabase DB |
+| B | gcalendar | Service Account (JWT) | メモリキャッシュ |
+| C | toggl, zaim | Basic / OAuth 1.0a | 環境変数 |
+
+### 主要な設計パターン
+
+**型命名規則:**
+- APIレスポンス型: `{Service}Api{Entity}` (例: `FitbitApiSleepResponse`)
+- DBテーブル型: `Db{Entity}` (例: `DbSleep`)
+
+**バッチupsert:** 全サービスで `BATCH_SIZE = 1000` で統一。
+
+**レート制限対応:** サービス固有のエラークラス (`FitbitRateLimitError` 等) で待機・リトライ。
+
 詳細: [src/services/README.md](src/services/README.md)
 
 ### データベース設計
