@@ -1,0 +1,90 @@
+name: All Services Daily Sync
+
+on:
+  # 毎日 JST 00:00 に実行（UTC 15:00）
+  schedule:
+    - cron: "0 15 * * *"
+
+  # 手動実行を許可
+  workflow_dispatch:
+    inputs:
+      toggl_sync_days:
+        description: "Toggl: 同期日数"
+        required: false
+        default: "3"
+        type: string
+      tanita_sync_days:
+        description: "Tanita: 同期日数"
+        required: false
+        default: "3"
+        type: string
+      zaim_sync_days:
+        description: "Zaim: 同期日数"
+        required: false
+        default: "3"
+        type: string
+      gcal_sync_days:
+        description: "Google Calendar: 同期日数"
+        required: false
+        default: "3"
+        type: string
+      fitbit_sync_days:
+        description: "Fitbit: 同期日数"
+        required: false
+        default: "3"
+        type: string
+
+jobs:
+  sync-all:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Run parallel sync for all services
+        env:
+          # Supabase
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+          # Toggl
+          TOGGL_API_TOKEN: ${{ secrets.TOGGL_API_TOKEN }}
+          TOGGL_WORKSPACE_ID: ${{ secrets.TOGGL_WORKSPACE_ID }}
+          TOGGL_SYNC_DAYS: ${{ inputs.toggl_sync_days || '3' }}
+
+          # Tanita
+          TANITA_CLIENT_ID: ${{ secrets.TANITA_CLIENT_ID }}
+          TANITA_CLIENT_SECRET: ${{ secrets.TANITA_CLIENT_SECRET }}
+          TANITA_SYNC_DAYS: ${{ inputs.tanita_sync_days || '3' }}
+
+          # Zaim
+          ZAIM_CONSUMER_KEY: ${{ secrets.ZAIM_CONSUMER_KEY }}
+          ZAIM_CONSUMER_SECRET: ${{ secrets.ZAIM_CONSUMER_SECRET }}
+          ZAIM_ACCESS_TOKEN: ${{ secrets.ZAIM_ACCESS_TOKEN }}
+          ZAIM_ACCESS_TOKEN_SECRET: ${{ secrets.ZAIM_ACCESS_TOKEN_SECRET }}
+          ZAIM_SYNC_DAYS: ${{ inputs.zaim_sync_days || '3' }}
+
+          # Google Calendar
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GCAL_SYNC_DAYS: ${{ inputs.gcal_sync_days || '3' }}
+
+          # Fitbit
+          FITBIT_CLIENT_ID: ${{ secrets.FITBIT_CLIENT_ID }}
+          FITBIT_CLIENT_SECRET: ${{ secrets.FITBIT_CLIENT_SECRET }}
+          FITBIT_SYNC_DAYS: ${{ inputs.fitbit_sync_days || '3' }}
+        run: |
+          deno run --allow-net --allow-env --allow-read \
+            src/sync_all.ts
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ 同期が失敗しました"
+          echo "詳細は上記ログを確認してください"

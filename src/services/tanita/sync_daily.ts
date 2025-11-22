@@ -18,11 +18,11 @@ import type { SyncResult } from "./types.ts";
 
 // ========== 定数 ==========
 
-const DEFAULT_SYNC_DAYS = 7;
+const DEFAULT_SYNC_DAYS = 3;
 
 // ========== メイン関数 ==========
 
-export async function syncTanitaDaily(syncDays?: number): Promise<SyncResult> {
+export async function syncTanitaByDays(syncDays?: number): Promise<SyncResult> {
   const startTime = Date.now();
   const days = syncDays ??
     parseInt(Deno.env.get("TANITA_SYNC_DAYS") || String(DEFAULT_SYNC_DAYS));
@@ -48,9 +48,14 @@ export async function syncTanitaDaily(syncDays?: number): Promise<SyncResult> {
   }
 
   // 2. データ取得
-  // endDateを現在時刻+24時間に設定し、今日のデータも確実に取得
-  const endDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  // 日付範囲: days日前から今日までを取得
+  // endDate = 明日（APIは排他的終点のため、今日を含めるには明日を指定）
+  // startDate = endDate - (days + 1)
+  const endDate = new Date();
+  endDate.setDate(endDate.getDate() + 1);
+
+  const startDate = new Date(endDate);
+  startDate.setDate(startDate.getDate() - days - 1);
 
   console.log("");
   const data = await fetchTanitaData(accessToken, { startDate, endDate });
@@ -100,6 +105,6 @@ export async function syncTanitaDaily(syncDays?: number): Promise<SyncResult> {
 // ========== CLI実行 ==========
 
 if (import.meta.main) {
-  const result = await syncTanitaDaily();
+  const result = await syncTanitaByDays();
   Deno.exit(result.success ? 0 : 1);
 }

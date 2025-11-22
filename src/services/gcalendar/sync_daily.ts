@@ -96,9 +96,10 @@ export async function syncGCalToSupabase(options?: SyncOptions): Promise<SyncRes
 }
 
 /**
- * 日数指定で同期を実行
+ * 日数指定で同期を実行（他サービスとの統一インターフェース）
+ * @param days 同期する日数（デフォルト: 3）
  */
-export async function syncByDays(days: number): Promise<SyncResult> {
+export async function syncGCalByDays(days: number = 3): Promise<SyncResult> {
   const startTime = Date.now();
   const timestamp = new Date().toISOString();
   
@@ -164,7 +165,7 @@ if (import.meta.main) {
     Deno.exit(1);
   }
   
-  const result = await syncByDays(syncDays);
+  const result = await syncGCalByDays(syncDays);
   
   // 結果出力
   console.log("\n" + JSON.stringify(result, null, 2));

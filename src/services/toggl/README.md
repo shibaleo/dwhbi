@@ -305,7 +305,25 @@ export async function syncTogglToSupabase(days?: number): Promise<SyncResult>
 | `TOGGL_WORKSPACE_ID` | Yes | Toggl Workspace ID |
 | `SUPABASE_URL` | Yes | Supabase プロジェクトURL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes | Supabase Service Role Key |
-| `TOGGL_SYNC_DAYS` | No | 同期日数（デフォルト: 1） |
+| `TOGGL_SYNC_DAYS` | No | 同期日数（デフォルト: 3） |
+
+---
+
+## 日付範囲の計算パターン
+
+全サービス共通の日付範囲計算パターン (`api.ts` の `getDateRange` 関数):
+
+```typescript
+// endDate = 明日（APIは排他的終点のため、今日を含めるには明日を指定）
+const end = new Date();
+end.setDate(end.getDate() + 1);
+
+// startDate = endDate - (days + 1)
+const start = new Date(end);
+start.setDate(start.getDate() - days - 1);
+```
+
+このパターンにより `days日前から今日まで` のデータを確実に取得できます。
 
 ---
 

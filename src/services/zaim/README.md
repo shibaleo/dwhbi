@@ -362,3 +362,21 @@ deno run --allow-env --allow-net --allow-read test/zaim/manual/check_sync.ts
 | `SUPABASE_URL` | Yes | Supabase プロジェクトURL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes | Supabase Service Role Key |
 | `ZAIM_SYNC_DAYS` | No | 同期日数（sync_daily.ts用、デフォルト: 3）|
+
+---
+
+## 日付範囲の計算パターン
+
+全サービス共通の日付範囲計算パターン:
+
+```typescript
+// endDate = 明日（APIは排他的終点のため、今日を含めるには明日を指定）
+const endDate = new Date();
+endDate.setDate(endDate.getDate() + 1);
+
+// startDate = endDate - (days + 1)
+const startDate = new Date(endDate);
+startDate.setDate(startDate.getDate() - days - 1);
+```
+
+このパターンにより `days日前から今日まで` のデータを確実に取得できます。

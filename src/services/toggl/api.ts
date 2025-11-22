@@ -18,18 +18,18 @@ function formatDate(date: Date): string {
 }
 
 /**
- * N日前からの日付範囲を取得
- * @param days 遡る日数
- * @returns start: N日前, end: 明日（今日のデータを確実に取得するため）
+ * 日付範囲を計算: days日前から今日までを取得
+ * @param days 取得する日数
+ * @returns start: days日前, end: 明日（APIは排他的終点のため、今日を含めるには明日を指定）
  */
 function getDateRange(days: number): { start: string; end: string } {
-  const now = new Date();
+  // endDate = 明日
+  const end = new Date();
+  end.setDate(end.getDate() + 1);
 
-  const end = new Date(now);
-  end.setDate(end.getDate() + 1); // 明日
-
-  const start = new Date(now);
-  start.setDate(start.getDate() - days);
+  // startDate = endDate - (days + 1)
+  const start = new Date(end);
+  start.setDate(start.getDate() - days - 1);
 
   return {
     start: formatDate(start),
@@ -82,9 +82,9 @@ export async function fetchEntriesByRange(
 
 /**
  * 直近N日間の時間エントリーを取得
- * @param days 遡る日数（デフォルト: 1）
+ * @param days 取得する日数（デフォルト: 3）
  */
-export async function fetchEntries(days: number = 1): Promise<TogglApiV9TimeEntry[]> {
+export async function fetchEntries(days: number = 3): Promise<TogglApiV9TimeEntry[]> {
   const { start, end } = getDateRange(days);
   return await fetchEntriesByRange(start, end);
 }
@@ -103,9 +103,9 @@ export interface TogglData {
 
 /**
  * 全データを並列取得（staggered delay でAPIバーストを回避）
- * @param days エントリーを遡る日数
+ * @param days エントリーを取得する日数
  */
-export async function fetchAllData(days: number = 1): Promise<TogglData> {
+export async function fetchAllData(days: number = 3): Promise<TogglData> {
   const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
   const [clients, projects, tags, entries] = await Promise.all([

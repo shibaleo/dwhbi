@@ -111,19 +111,19 @@ export async function fetchAllEvents(options?: SyncOptions): Promise<{
 
 /**
  * 日数指定でイベントを取得
- * 終了時刻は現在時刻の24時間後（未来の予定も含む）
+ * 日付範囲: days日前から今日までを取得
  */
 export async function fetchEventsByDays(days: number, options?: Omit<SyncOptions, "timeMin" | "timeMax">): Promise<{
   events: DbEvent[];
   raw: GCalApiEvent[];
 }> {
-  const now = new Date();
-  const startDate = new Date(now);
-  startDate.setDate(startDate.getDate() - days);
-  
-  // 終了時刻は現在の24時間後
-  const endDate = new Date(now);
+  // endDate = 明日（APIは排他的終点のため、今日を含めるには明日を指定）
+  const endDate = new Date();
   endDate.setDate(endDate.getDate() + 1);
+
+  // startDate = endDate - (days + 1)
+  const startDate = new Date(endDate);
+  startDate.setDate(startDate.getDate() - days - 1);
   
   return fetchAllEvents({
     ...options,

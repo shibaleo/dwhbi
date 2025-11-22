@@ -11,6 +11,7 @@
 | `sync-tanita.yml` | 毎日 JST 00:00 | Tanita 体組成データ同期 |
 | `sync-zaim.yml` | 毎日 JST 00:00 | Zaim 収支データ同期 |
 | `sync-gcalendar.yml` | 毎日 JST 00:00 | Google Calendar イベント同期 |
+| `sync-fitbit.yml` | 毎日 JST 00:00 | Fitbit 健康データ同期 |
 
 > **Note**: `sync-all.yml` を使用する場合、個別のワークフローのスケジュール実行を無効化することを推奨します。
 
@@ -60,6 +61,13 @@ GitHubリポジトリで以下のSecretsを設定する必要があります：
 | `GOOGLE_CALENDAR_ID` | Google Calendar ID |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | サービスアカウントJSON |
 
+### Fitbit
+
+| Secret名 | 説明 |
+|----------|------|
+| `FITBIT_CLIENT_ID` | Fitbit OAuth Client ID |
+| `FITBIT_CLIENT_SECRET` | Fitbit OAuth Client Secret |
+
 ---
 
 ## 手動実行
@@ -77,6 +85,7 @@ GitHubリポジトリで以下のSecretsを設定する必要があります：
 - `tanita_sync_days`: Tanita同期日数（デフォルト: 7）
 - `zaim_sync_days`: Zaim同期日数（デフォルト: 3）
 - `gcal_sync_days`: Google Calendar同期日数（デフォルト: 3）
+- `fitbit_sync_days`: Fitbit同期日数（デフォルト: 3）
 
 > **Note**: `sync-all.yml` は単一ジョブで全サービスを**並列実行**します。
 > TypeScriptレベルで `Promise.allSettled` を使用し、
@@ -92,6 +101,9 @@ GitHubリポジトリで以下のSecretsを設定する必要があります：
 - `sync_days`: 同期する日数（デフォルト: 3）
 
 #### Google Calendar Daily Sync
+- `sync_days`: 同期する日数（デフォルト: 3）
+
+#### Fitbit Daily Sync
 - `sync_days`: 同期する日数（デフォルト: 3）
 
 ---
@@ -118,6 +130,7 @@ GitHubリポジトリで以下のSecretsを設定する必要があります：
 | sync-tanita | `0 15 * * *` | 15:00 | 00:00 |
 | sync-zaim | `0 15 * * *` | 15:00 | 00:00 |
 | sync-gcalendar | `0 15 * * *` | 15:00 | 00:00 |
+| sync-fitbit | `0 15 * * *` | 15:00 | 00:00 |
 
 ### その他のスケジュール例
 - `0 * * * *` - 毎時0分（1時間ごと）

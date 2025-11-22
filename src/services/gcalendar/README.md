@@ -137,6 +137,25 @@ function transformEvent(event: calendar_v3.Schema$Event, calendarId: string): Db
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase Service Role Key |
 | `GOOGLE_CALENDAR_ID` | 対象カレンダーID |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | サービスアカウントJSON（または Notion から取得） |
+| `GCAL_SYNC_DAYS` | 同期日数（sync_daily.ts用、デフォルト: 3） |
+
+---
+
+## 日付範囲の計算パターン
+
+全サービス共通の日付範囲計算パターン (`fetch_events.ts` の `fetchEventsByDays` 関数):
+
+```typescript
+// endDate = 明日（APIは排他的終点のため、今日を含めるには明日を指定）
+const endDate = new Date();
+endDate.setDate(endDate.getDate() + 1);
+
+// startDate = endDate - (days + 1)
+const startDate = new Date(endDate);
+startDate.setDate(startDate.getDate() - days - 1);
+```
+
+このパターンにより `days日前から今日まで` のデータを確実に取得できます。
 
 ## 同期仕様
 

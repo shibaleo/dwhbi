@@ -11,7 +11,7 @@ on:
       sync_days:
         description: "同期する日数"
         required: false
-        default: "2"
+        default: "3"
         type: string
 
 jobs:
@@ -37,8 +37,8 @@ jobs:
           TOGGL_API_TOKEN: ${{ secrets.TOGGL_API_TOKEN }}
           TOGGL_WORKSPACE_ID: ${{ secrets.TOGGL_WORKSPACE_ID }}
 
-          # オプション: 同期日数（デフォルト1日）
-          TOGGL_SYNC_DAYS: ${{ inputs.sync_days || '1' }}
+          # オプション: 同期日数（デフォルト3日）
+          TOGGL_SYNC_DAYS: ${{ inputs.sync_days || '3' }}
         run: |
           deno run \
             --allow-net \

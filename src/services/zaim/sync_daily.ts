@@ -38,9 +38,41 @@ interface SyncResult {
 }
 
 // ============================================================
+// 定数
+// ============================================================
+
+const DEFAULT_SYNC_DAYS = 3;
+
+// ============================================================
 // メイン同期処理
 // ============================================================
 
+/**
+ * 日数指定でZaimデータを同期（他サービスとの統一インターフェース）
+ * @param syncDays 同期する日数（デフォルト: 3）
+ */
+export async function syncZaimByDays(syncDays?: number): Promise<SyncResult> {
+  const days = syncDays ??
+    parseInt(Deno.env.get('ZAIM_SYNC_DAYS') || String(DEFAULT_SYNC_DAYS), 10);
+
+  // 日付範囲: days日前から今日までを取得
+  // endDate = 明日（APIは排他的終点のため、今日を含めるには明日を指定）
+  // startDate = endDate - (days + 1)
+  const endDate = new Date();
+  endDate.setDate(endDate.getDate() + 1);
+
+  const startDate = new Date(endDate);
+  startDate.setDate(startDate.getDate() - days - 1);
+
+  return syncZaimData({
+    startDate: startDate.toISOString().split('T')[0],
+    endDate: endDate.toISOString().split('T')[0],
+  });
+}
+
+/**
+ * Zaimデータを同期（内部実装）
+ */
 export async function syncZaimData(options: FetchOptions = {}): Promise<SyncResult> {
   const startTime = Date.now();
   const result: SyncResult = {
@@ -196,30 +228,12 @@ function displaySummary(result: SyncResult): void {
 // ============================================================
 
 if (import.meta.main) {
-  const syncDays = parseInt(Deno.env.get('ZAIM_SYNC_DAYS') || '3', 10);
-
-  const endDate = new Date();
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - syncDays);
-
-  console.log(`対象期間: 直近${syncDays}日間`);
   console.log(`開始時刻: ${new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}`);
 
   try {
-    const result = await syncZaimData({
-      startDate: startDate.toISOString().split('T')[0],
-      endDate: endDate.toISOString().split('T')[0],
-    });
-
+    const result = await syncZaimByDays();
     displaySummary(result);
-
-    if (result.success) {
-      console.log('\n✅ 日次同期が正常に完了しました');
-      Deno.exit(0);
-    } else {
-      console.error('\n⚠️ 同期は完了しましたが、一部エラーがありました');
-      Deno.exit(1);
-    }
+    Deno.exit(result.success ? 0 : 1);
   } catch (error) {
     console.error('\n❌ 日次同期が失敗しました');
     console.error(error);

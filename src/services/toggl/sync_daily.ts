@@ -47,9 +47,9 @@ function logError(message: string, error?: unknown) {
 
 /**
  * TogglデータをSupabaseに同期
- * @param days 同期する日数（デフォルト: 1）
+ * @param days 同期する日数（デフォルト: 3）
  */
-export async function syncTogglToSupabase(days: number = 1): Promise<SyncResult> {
+export async function syncTogglByDays(days: number = 3): Promise<SyncResult> {
   const startTime = Date.now();
   const timestamp = new Date().toISOString();
 
@@ -132,7 +132,7 @@ if (import.meta.main) {
   const syncDays = parseInt(Deno.env.get("TOGGL_SYNC_DAYS") || "1", 10);
 
   try {
-    const result = await syncTogglToSupabase(syncDays);
+    const result = await syncTogglByDays(syncDays);
     Deno.exit(result.success ? 0 : 1);
   } catch (error) {
     logError("Fatal error", error);
