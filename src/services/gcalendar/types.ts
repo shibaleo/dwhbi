@@ -1,0 +1,152 @@
+/**
+ * Google Calendar 同期モジュール 型定義
+ */
+
+// =============================================================================
+// Google Calendar API レスポンス型
+// =============================================================================
+
+/**
+ * Google Calendar API v3 Event レスポンス型
+ * @see https://developers.google.com/calendar/api/v3/reference/events
+ */
+export interface GCalApiEvent {
+  id: string;
+  etag?: string;
+  status?: "confirmed" | "tentative" | "cancelled";
+  htmlLink?: string;
+  created?: string;
+  updated?: string;
+  summary?: string;
+  description?: string;
+  colorId?: string;
+  recurringEventId?: string;
+  start: GCalDateTime;
+  end: GCalDateTime;
+}
+
+/**
+ * Google Calendar API DateTime 型
+ * 通常イベント: dateTime が設定される
+ * 終日イベント: date が設定される
+ */
+export interface GCalDateTime {
+  date?: string;        // YYYY-MM-DD（終日イベント）
+  dateTime?: string;    // ISO 8601（通常イベント）
+  timeZone?: string;
+}
+
+/**
+ * Google Calendar API Events.list レスポンス型
+ */
+export interface GCalEventsListResponse {
+  kind: "calendar#events";
+  etag: string;
+  summary?: string;
+  updated?: string;
+  timeZone?: string;
+  accessRole?: string;
+  nextPageToken?: string;
+  nextSyncToken?: string;
+  items: GCalApiEvent[];
+}
+
+// =============================================================================
+// DB テーブル型
+// =============================================================================
+
+/**
+ * gcalendar.events テーブル型
+ */
+export interface DbEvent {
+  id: string;
+  calendar_id: string;
+  summary: string | null;
+  description: string | null;
+  start_time: string;         // ISO 8601 TIMESTAMPTZ
+  end_time: string;           // ISO 8601 TIMESTAMPTZ
+  // duration_ms は GENERATED ALWAYS なので書き込み時は不要
+  is_all_day: boolean;
+  color_id: string | null;
+  status: string | null;
+  recurring_event_id: string | null;
+  etag: string | null;
+  updated: string | null;
+  // synced_at はトリガーで自動設定
+}
+
+/**
+ * gcalendar.events テーブル読み取り型（duration_ms含む）
+ */
+export interface DbEventRead extends DbEvent {
+  duration_ms: number;
+  synced_at: string;
+}
+
+// =============================================================================
+// 同期オプション・結果型
+// =============================================================================
+
+/**
+ * 同期オプション
+ */
+export interface SyncOptions {
+  /** 開始日時（ISO 8601） */
+  timeMin?: string;
+  /** 終了日時（ISO 8601） */
+  timeMax?: string;
+  /** カレンダーID（デフォルト: 環境変数から取得） */
+  calendarId?: string;
+}
+
+/**
+ * 同期統計
+ */
+export interface SyncStats {
+  /** 取得したイベント数 */
+  fetched: number;
+  /** upsertしたイベント数 */
+  upserted: number;
+  /** スキップしたイベント数（キャンセル済み等） */
+  skipped: number;
+}
+
+/**
+ * 同期結果
+ */
+export interface SyncResult {
+  success: boolean;
+  timestamp: string;
+  stats: SyncStats;
+  elapsedSeconds: number;
+  error?: string;
+}
+
+// =============================================================================
+// 認証関連型
+// =============================================================================
+
+/**
+ * Google Service Account Credentials
+ */
+export interface ServiceAccountCredentials {
+  type: "service_account";
+  project_id: string;
+  private_key_id: string;
+  private_key: string;
+  client_email: string;
+  client_id: string;
+  auth_uri: string;
+  token_uri: string;
+  auth_provider_x509_cert_url: string;
+  client_x509_cert_url: string;
+}
+
+/**
+ * JWT Token レスポンス
+ */
+export interface TokenResponse {
+  access_token: string;
+  expires_in: number;
+  token_type: "Bearer";
+}
