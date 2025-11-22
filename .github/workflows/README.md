@@ -7,9 +7,8 @@
 | ワークフロー | スケジュール | 説明 |
 |--------------|--------------|------|
 | `sync-toggl.yml` | 毎日 JST 00:00 | Toggl タイムエントリ同期 |
-| `sync-tanita.yml` | 毎日 JST 09:00 | Tanita 体組成データ同期 |
+| `sync-tanita.yml` | 毎日 JST 00:00 | Tanita 体組成データ同期 |
 | `sync-zaim.yml` | 毎日 JST 00:00 | Zaim 収支データ同期 |
-| `refresh-tanita-token.yml` | 毎週日曜 JST 03:00 | Tanita トークンリフレッシュ |
 
 ---
 
@@ -40,7 +39,6 @@ GitHubリポジトリで以下のSecretsを設定する必要があります：
 |----------|------|
 | `TANITA_CLIENT_ID` | Tanita OAuth Client ID |
 | `TANITA_CLIENT_SECRET` | Tanita OAuth Client Secret |
-| `HEIGHT_CM` | 身長（cm） |
 
 ### Zaim
 
@@ -66,6 +64,9 @@ GitHubリポジトリで以下のSecretsを設定する必要があります：
 #### Toggl Daily Sync
 - `sync_days`: 同期する日数（デフォルト: 1）
 
+#### Tanita Daily Sync
+- `sync_days`: 同期する日数（デフォルト: 30）
+
 #### Zaim Daily Sync
 - `sync_days`: 同期する日数（デフォルト: 3）
 
@@ -89,9 +90,8 @@ GitHubリポジトリで以下のSecretsを設定する必要があります：
 | ワークフロー | cron | UTC | JST |
 |--------------|------|-----|-----|
 | sync-toggl | `0 15 * * *` | 15:00 | 00:00 |
-| sync-tanita | `0 0 * * *` | 00:00 | 09:00 |
+| sync-tanita | `0 15 * * *` | 15:00 | 00:00 |
 | sync-zaim | `0 15 * * *` | 15:00 | 00:00 |
-| refresh-tanita-token | `0 18 * * 0` | 日曜 18:00 | 月曜 03:00 |
 
 ### その他のスケジュール例
 - `0 * * * *` - 毎時0分（1時間ごと）
@@ -108,3 +108,4 @@ GitHubリポジトリで以下のSecretsを設定する必要があります：
 - cronジョブはUTC時間で実行されます
 - 実行タイミングは数分ずれる可能性があります
 - 失敗時はActionsタブでログを確認してください
+- Tanitaトークンは同期時に自動でリフレッシュされます（有効期限7日以内の場合）

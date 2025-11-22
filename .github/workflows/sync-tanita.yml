@@ -2,14 +2,25 @@ name: Tanita Health Planet Daily Sync
 
 on:
   schedule:
-    # 毎日 JST 09:00 (UTC 00:00) に実行
-    - cron: '0 0 * * *'
-  workflow_dispatch: # 手動実行も可能
+    # 毎日 JST 00:00 (UTC 15:00) に実行
+    - cron: "0 15 * * *"
+  workflow_dispatch:
+    inputs:
+      sync_days:
+        description: "同期日数（デフォルト: 30）"
+        required: false
+        default: "30"
+        type: choice
+        options:
+          - "7"
+          - "14"
+          - "30"
+          - "90"
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -23,6 +34,8 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          HEIGHT_CM: ${{ secrets.HEIGHT_CM }}
+          TANITA_CLIENT_ID: ${{ secrets.TANITA_CLIENT_ID }}
+          TANITA_CLIENT_SECRET: ${{ secrets.TANITA_CLIENT_SECRET }}
+          TANITA_SYNC_DAYS: ${{ github.event.inputs.sync_days || '30' }}
         run: |
-          deno run --allow-net --allow-env --allow-read src/services/tanita/tanita_daily_sync.ts
+          deno run --allow-net --allow-env --allow-read src/services/tanita/sync_daily.ts
