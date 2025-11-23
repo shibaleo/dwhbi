@@ -12,6 +12,7 @@
 | `sync-zaim.yml` | 手動のみ | Zaim 収支データ同期 |
 | `sync-gcalendar.yml` | 手動のみ | Google Calendar イベント同期 |
 | `sync-fitbit.yml` | 手動のみ | Fitbit 健康データ同期 |
+| `sync-notion.yml` | 手動のみ | Notion データベース同期 |
 
 > **Note**: 定期実行は `sync-all.yml` に統合されています。個別ワークフローは手動実行用です。
 
@@ -68,6 +69,13 @@ GitHubリポジトリで以下のSecretsを設定する必要があります：
 | `FITBIT_CLIENT_ID` | Fitbit OAuth Client ID |
 | `FITBIT_CLIENT_SECRET` | Fitbit OAuth Client Secret |
 
+### Notion
+
+| Secret名 | 説明 |
+|----------|------|
+| `NOTION_INTEGRATION_SECRET` | Notion Internal Integration Token |
+| `NOTION_METADATA_TABLE_ID` | メタテーブル（TB__METADATA）のID |
+
 ---
 
 ## 手動実行
@@ -86,6 +94,7 @@ GitHubリポジトリで以下のSecretsを設定する必要があります：
 - `zaim_sync_days`: Zaim同期日数（デフォルト: 3）
 - `gcal_sync_days`: Google Calendar同期日数（デフォルト: 3）
 - `fitbit_sync_days`: Fitbit同期日数（デフォルト: 3）
+- `notion_sync_days`: Notion同期日数（デフォルト: 3）
 
 > **Note**: `sync-all.yml` は単一ジョブで全サービスを**並列実行**します。
 > TypeScriptレベルで `Promise.allSettled` を使用し、
@@ -105,6 +114,11 @@ GitHubリポジトリで以下のSecretsを設定する必要があります：
 
 #### Fitbit Daily Sync
 - `sync_days`: 同期する日数（デフォルト: 3）
+
+#### Notion Daily Sync
+- `sync_days`: 同期する日数（デフォルト: 3）
+- `skip_schema_sync`: スキーマ同期をスキップ（デフォルト: true）
+- `discover_databases`: 新規データベースを自動検出（デフォルト: false）
 
 ---
 

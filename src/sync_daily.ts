@@ -16,6 +16,7 @@ import { syncTanitaByDays } from "./services/tanita/sync_daily.ts";
 import { syncZaimByDays } from "./services/zaim/sync_daily.ts";
 import { syncGCalByDays } from "./services/gcalendar/sync_daily.ts";
 import { syncFitbitByDays } from "./services/fitbit/sync_daily.ts";
+import { syncNotionByDays } from "./services/notion/sync_daily.ts";
 
 // =============================================================================
 // Types
@@ -89,6 +90,12 @@ const SERVICES: ServiceConfig[] = [
     runner: syncFitbitByDays,
     countFn: (s) => (s.sleep ?? 0) + (s.activity ?? 0) + (s.heartRate ?? 0) + (s.hrv ?? 0),
   },
+  {
+    name: "notion",
+    envKey: "NOTION_SYNC_DAYS",
+    runner: syncNotionByDays,
+    countFn: (s) => s.totalSaved ?? 0,
+  },
 ];
 
 // =============================================================================
@@ -144,6 +151,7 @@ export async function syncAllServices(options?: {
   zaimDays?: number;
   gcalDays?: number;
   fitbitDays?: number;
+  notionDays?: number;
 }): Promise<SyncAllResult> {
   const totalStart = Date.now();
   const timestamp = new Date().toISOString();
@@ -155,6 +163,7 @@ export async function syncAllServices(options?: {
     zaim: options?.zaimDays ?? parseInt(Deno.env.get("ZAIM_SYNC_DAYS") || String(DEFAULT_SYNC_DAYS)),
     gcalendar: options?.gcalDays ?? parseInt(Deno.env.get("GCAL_SYNC_DAYS") || String(DEFAULT_SYNC_DAYS)),
     fitbit: options?.fitbitDays ?? parseInt(Deno.env.get("FITBIT_SYNC_DAYS") || String(DEFAULT_SYNC_DAYS)),
+    notion: options?.notionDays ?? parseInt(Deno.env.get("NOTION_SYNC_DAYS") || String(DEFAULT_SYNC_DAYS)),
   };
 
   // ヘッダー表示
