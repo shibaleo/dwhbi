@@ -7,6 +7,7 @@
     "test:toggl": "deno test test/toggl/ --allow-env --allow-read",
     "test:zaim": "deno test test/zaim/ --allow-env --allow-read",
     "test:gcalendar": "deno test test/gcalendar/ --allow-env --allow-read",
+    "test:notion": "deno test test/notion/ --allow-env --allow-read",
     "test:watch": "deno test test/ --allow-env --allow-read --watch",
     "test:coverage": "deno test test/ --allow-env --allow-read --coverage=coverage",
     "check:fitbit": "deno run --allow-env --allow-net --allow-read test/fitbit/check_all.ts",
@@ -19,13 +20,18 @@
     "check:toggl:sync": "deno run --allow-env --allow-net --allow-read test/toggl/check_all.ts --sync",
     "check:zaim": "deno run --allow-env --allow-net --allow-read test/zaim/check_all.ts",
     "check:zaim:sync": "deno run --allow-env --allow-net --allow-read test/zaim/check_all.ts --sync",
-    "check": "deno task check:fitbit && deno task check:gcalendar && deno task check:tanita && deno task check:toggl && deno task check:zaim",
-    "check:sync": "deno task check:fitbit:sync && deno task check:gcalendar:sync && deno task check:tanita:sync && deno task check:toggl:sync && deno task check:zaim:sync",
+    "check:notion": "deno run --allow-env --allow-net --allow-read test/notion/check_all.ts",
+    "check:notion:sync": "deno run --allow-env --allow-net --allow-read test/notion/check_all.ts --sync",
+    "check": "deno task check:fitbit && deno task check:gcalendar && deno task check:tanita && deno task check:toggl && deno task check:zaim && deno task check:notion",
+    "check:sync": "deno task check:fitbit:sync && deno task check:gcalendar:sync && deno task check:tanita:sync && deno task check:toggl:sync && deno task check:zaim:sync && deno task check:notion:sync",
     "sync:fitbit": "deno run --allow-env --allow-net --allow-read src/services/fitbit/sync_daily.ts",
     "sync:tanita": "deno run --allow-env --allow-net --allow-read src/services/tanita/sync_daily.ts",
     "sync:toggl": "deno run --allow-env --allow-net --allow-read src/services/toggl/sync_daily.ts",
     "sync:zaim": "deno run --allow-env --allow-net --allow-read src/services/zaim/sync_daily.ts",
-    "sync:gcalendar": "deno run --allow-env --allow-net --allow-read src/services/gcalendar/sync_daily.ts"
+    "sync:gcalendar": "deno run --allow-env --allow-net --allow-read src/services/gcalendar/sync_daily.ts",
+    "sync:notion": "deno run --allow-env --allow-net --allow-read src/services/notion/sync_daily.ts",
+    "sync:notion:fast": "NOTION_SKIP_SCHEMA_SYNC=true deno run --allow-env --allow-net --allow-read src/services/notion/sync_daily.ts",
+    "notion:discover": "deno run --allow-env --allow-net --allow-read src/services/notion/discover_databases.ts"
   },
   "compilerOptions": {
     "strict": true

@@ -2,6 +2,8 @@
 
 LIFETRACER の中核となるデータ同期基盤。複数の外部サービスから個人データを取得し、Supabase（PostgreSQL）に統合保存する。
 
+![system config](./docs/img/system_config.png)
+
 ## 概要
 
 60年以上の長期データ保持と自己理解を目的とした個人データエコシステム。各サービスの専用ツールを活用しつつ、データは Supabase に集約し、ベンダー非依存の分析基盤を構築する。
