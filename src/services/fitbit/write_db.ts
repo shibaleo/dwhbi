@@ -71,13 +71,30 @@ export function createFitbitDbClient(): FitbitSchema {
 // =============================================================================
 
 /**
+ * Fitbit APIのタイムゾーン情報なしISO8601文字列（JST想定）をUTCに変換
+ * 
+ * Fitbit APIは "2025-11-22T02:04:30.000" のようにタイムゾーン情報なしで返すが、
+ * これはJSTの時刻を表している。PostgreSQLのtimestamptzに保存する際は
+ * UTCに変換する必要がある。
+ * 
+ * @param jstTimeString タイムゾーン情報なしのISO8601文字列（JST想定）
+ * @returns UTC ISO8601文字列
+ */
+function convertJSTtoUTC(jstTimeString: string): string {
+  // JSTタイムゾーン情報を付加してDateオブジェクト作成
+  const jstDate = new Date(jstTimeString + '+09:00');
+  // UTCのISO8601文字列に変換
+  return jstDate.toISOString();
+}
+
+/**
  * 睡眠データを DB レコードに変換
  */
 export function toDbSleep(items: FitbitApiSleepLog[]): DbSleep[] {
   return items.map((item) => ({
     date: item.dateOfSleep,
-    start_time: item.startTime,
-    end_time: item.endTime,
+    start_time: convertJSTtoUTC(item.startTime),
+    end_time: convertJSTtoUTC(item.endTime),
     duration_ms: item.duration,
     efficiency: item.efficiency,
     is_main_sleep: item.isMainSleep,
