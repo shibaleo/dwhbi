@@ -176,8 +176,10 @@ export interface DbEntry {
   user_id: number | null;
   description: string | null;
   start: string;
-  end: string;
-  duration_ms: number;
+  /** 実行中エントリーの場合はnull */
+  end: string | null;
+  /** 実行中エントリーの場合はnull */
+  duration_ms: number | null;
   is_billable: boolean;
   billable_amount: number | null;
   currency: string | null;

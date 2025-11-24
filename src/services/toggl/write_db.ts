@@ -119,12 +119,13 @@ export function toDbTag(tag: TogglApiV9Tag): DbTag {
 
 /**
  * API Time Entry → DB Entry
- * @returns null if entry is still running (negative duration)
+ * 
+ * 実行中エントリー（duration < 0）も保存する。
+ * 実行中の場合: end = null, duration_ms = null
+ * stagingビューで動的にCURRENT_TIMESTAMPを補完する。
  */
-export function toDbEntry(entry: TogglApiV9TimeEntry): DbEntry | null {
-  if (entry.duration < 0) {
-    return null;
-  }
+export function toDbEntry(entry: TogglApiV9TimeEntry): DbEntry {
+  const isRunning = entry.duration < 0;
 
   return {
     id: entry.id,
@@ -134,8 +135,8 @@ export function toDbEntry(entry: TogglApiV9TimeEntry): DbEntry | null {
     user_id: entry.user_id,
     description: entry.description ?? null,
     start: entry.start,
-    end: entry.stop ?? entry.start,
-    duration_ms: entry.duration * 1000,
+    end: isRunning ? null : (entry.stop ?? entry.start),
+    duration_ms: isRunning ? null : entry.duration * 1000,
     is_billable: entry.billable,
     billable_amount: null,
     currency: null,
@@ -284,14 +285,13 @@ export async function upsertTags(
 
 /**
  * エントリーを upsert
+ * 実行中エントリーも含めて保存する
  */
 export async function upsertEntries(
   raw: RawSchema,
   entries: TogglApiV9TimeEntry[],
 ): Promise<UpsertResult> {
-  const records = entries
-    .map(toDbEntry)
-    .filter((entry): entry is DbEntry => entry !== null);
+  const records = entries.map(toDbEntry);
 
   log.info(`Saving entries... (${records.length} records)`);
 
