@@ -2,8 +2,8 @@ name: All Services Daily Sync
 
 on:
   # 毎日 JST 00:00 に実行（UTC 15:00）
-  schedule:
-    - cron: "0 15 * * *"
+  #schedule:
+  #  - cron: "0 15 * * *"
 
   # 手動実行を許可
   workflow_dispatch:
