@@ -2,10 +2,14 @@
  * Notion API 認証クライアント
  *
  * Internal Integration Token による Bearer 認証を提供。
- * トークンは環境変数から取得（リフレッシュ不要）。
+ * トークンは credentials.services テーブルから取得（リフレッシュ不要）。
  */
 
-import "https://deno.land/std@0.203.0/dotenv/load.ts";
+import "jsr:@std/dotenv/load";
+import {
+  getCredentials,
+  type ApiKeyCredentials,
+} from "../../utils/credentials.ts";
 import {
   NOTION_API_VERSION,
   NOTION_API_BASE_URL,
@@ -14,25 +18,37 @@ import {
 } from "./types.ts";
 
 // =============================================================================
-// Configuration
+// Configuration Cache
 // =============================================================================
 
-function loadConfig() {
-  const integrationSecret = Deno.env.get("NOTION_INTEGRATION_SECRET")?.trim();
-  const metadataTableId = Deno.env.get("NOTION_METADATA_TABLE_ID")?.trim();
+let _config: { integrationSecret: string; metadataTableId: string } | null = null;
 
-  if (!integrationSecret) {
-    throw new Error("NOTION_INTEGRATION_SECRET is not set in environment");
+/**
+ * 認証情報を credentials.services から取得（キャッシュ付き）
+ */
+async function loadConfig(): Promise<{ integrationSecret: string; metadataTableId: string }> {
+  if (_config) return _config;
+
+  const result = await getCredentials<ApiKeyCredentials>("notion");
+  if (!result) {
+    throw new Error("Notion credentials not found in credentials.services");
   }
 
-  if (!metadataTableId) {
-    throw new Error("NOTION_METADATA_TABLE_ID is not set in environment");
+  const { credentials } = result;
+  if (!credentials.api_key) {
+    throw new Error("Notion credentials missing api_key");
+  }
+  if (!credentials.metadata_table_id) {
+    throw new Error("Notion credentials missing metadata_table_id");
   }
 
-  return { integrationSecret, metadataTableId };
+  _config = {
+    integrationSecret: credentials.api_key,
+    metadataTableId: credentials.metadata_table_id,
+  };
+
+  return _config;
 }
-
-const config = loadConfig();
 
 // =============================================================================
 // Authentication Headers
@@ -41,7 +57,8 @@ const config = loadConfig();
 /**
  * Notion API 認証ヘッダーを生成
  */
-function getAuthHeaders(): Record<string, string> {
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const config = await loadConfig();
   return {
     "Authorization": `Bearer ${config.integrationSecret}`,
     "Content-Type": "application/json",
@@ -96,7 +113,7 @@ export async function notionFetch<T>(
     ? endpoint
     : `${NOTION_API_BASE_URL}${endpoint}`;
 
-  const authHeaders = getAuthHeaders();
+  const authHeaders = await getAuthHeaders();
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= retryConfig.maxRetries; attempt++) {
@@ -157,7 +174,7 @@ export async function notionPost<T>(
     ? endpoint
     : `${NOTION_API_BASE_URL}${endpoint}`;
 
-  const authHeaders = getAuthHeaders();
+  const authHeaders = await getAuthHeaders();
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= retryConfig.maxRetries; attempt++) {
@@ -219,7 +236,7 @@ export async function notionPatch<T>(
     ? endpoint
     : `${NOTION_API_BASE_URL}${endpoint}`;
 
-  const authHeaders = getAuthHeaders();
+  const authHeaders = await getAuthHeaders();
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= retryConfig.maxRetries; attempt++) {
@@ -270,6 +287,9 @@ export async function notionPatch<T>(
 // =============================================================================
 
 /**
- * メタテーブルID
+ * メタテーブルIDを取得
  */
-export const metadataTableId = config.metadataTableId;
+export async function getMetadataTableId(): Promise<string> {
+  const config = await loadConfig();
+  return config.metadataTableId;
+}

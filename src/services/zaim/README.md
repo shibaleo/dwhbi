@@ -347,3 +347,77 @@ deno run --allow-env --allow-net --allow-read test/zaim/manual/check_sync.ts
    deno run --allow-env --allow-net --allow-read sync_all_transactions.ts \
      --start=2020 --start-month=1
    ```
+
+---
+
+## DWH移行計画
+
+### 概要
+
+現在の `zaim` スキーマを `raw` スキーマに移行し、DWH 3層アーキテクチャを採用する。
+
+```
+現在:  zaim.transactions, zaim.categories, zaim.genres, zaim.accounts
+    ↓
+移行後:
+  raw.zaim_transactions     ← 生データ（テーブル）
+  raw.zaim_categories
+  raw.zaim_genres
+  raw.zaim_accounts
+      ↓
+  staging.stg_zaim__transactions   ← クリーニング済み（ビュー）
+  staging.stg_zaim__categories
+      ↓
+  marts.fct_expenses               ← ビジネスエンティティ（ビュー）
+  marts.dim_categories
+```
+
+### 変更点
+
+| 項目 | 現在 | 移行後 |
+|------|------|--------|
+| スキーマ | `zaim` | `raw` |
+| テーブル名 | `transactions` | `zaim_transactions` |
+| DBクライアント | supabase-js (REST API) | postgres.js (直接接続) |
+| API公開 | Exposed | Not Exposed |
+
+### write_db.ts 変更内容
+
+```typescript
+// 現在
+import { createClient } from "npm:@supabase/supabase-js@2";
+const supabase = createClient(url, key);
+const zaim = supabase.schema("zaim");
+await zaim.from("transactions").upsert(data, { onConflict: "zaim_user_id,zaim_id" });
+
+// 移行後
+import postgres from "npm:postgres";
+const sql = postgres(DATABASE_URL);
+await sql`
+  INSERT INTO raw.zaim_transactions ${sql(records)}
+  ON CONFLICT (zaim_user_id, zaim_id) DO UPDATE SET
+    amount = EXCLUDED.amount,
+    category_id = EXCLUDED.category_id,
+    genre_id = EXCLUDED.genre_id,
+    comment = EXCLUDED.comment,
+    synced_at = now()
+`;
+```
+
+### 環境変数追加
+
+| 変数名 | 説明 |
+|--------|------|
+| `DATABASE_URL` | PostgreSQL 直接接続文字列 |
+
+### マイグレーション手順
+
+1. `raw.zaim_*` テーブルを作成
+2. `zaim.*` から `raw.zaim_*` にデータ移行
+3. `write_db.ts` を postgres.js に書き換え
+4. `staging.stg_zaim__*` ビューを作成
+5. 旧 `zaim` スキーマを削除（データ確認後）
+
+### sync_log の扱い
+
+`zaim.sync_log` は同期メタデータのため、`raw` 層ではなく `ops` スキーマまたは別途管理を検討。

@@ -4,7 +4,8 @@
  * 長期間同期対応（チャンク処理、レート制限管理）
  */
 
-import { fetchEvents, getCalendarId, FetchEventsOptions } from "./api.ts";
+import { fetchEvents, FetchEventsOptions } from "./api.ts";
+import { getCalendarId } from "./auth.ts";
 import { transformEvents } from "./write_db.ts";
 import * as log from "../../utils/log.ts";
 import type {
@@ -231,4 +232,76 @@ export async function fetchEventsByDays(
     },
     false, // sync_daily: レート制限時はスキップ
   );
+}
+
+// =============================================================================
+// Incremental Fetch (差分同期)
+// =============================================================================
+
+/**
+ * 差分同期用イベント取得
+ * 
+ * - updatedMin が指定された場合: その時刻以降に更新されたイベントのみ取得
+ * - 指定されていない場合: 日付範囲で取得（初回同期・フルリフレッシュ用）
+ * 
+ * @param options 取得オプション
+ * @returns イベントと同期モード
+ */
+export async function fetchEventsIncremental(options: {
+  /** 最終更新日時（ISO 8601）- この時刻以降の更新を取得 */
+  updatedMin?: string;
+  /** フルリフレッシュ時の日数（デフォルト: 3） */
+  fallbackDays?: number;
+  /** カレンダーID */
+  calendarId?: string;
+}): Promise<{
+  events: DbEvent[];
+  raw: GCalApiEvent[];
+  mode: 'incremental' | 'full';
+  apiCalls: number;
+}> {
+  const calendarId = options.calendarId ?? await getCalendarId();
+  const fallbackDays = options.fallbackDays ?? 3;
+  let apiCalls = 0;
+
+  // 終了日時: 明日
+  const endDate = new Date();
+  endDate.setDate(endDate.getDate() + 1);
+
+  // 開始日時: 差分同期の場合は古い日付、フルの場合はfallbackDays日前
+  const startDate = new Date(endDate);
+  startDate.setDate(startDate.getDate() - fallbackDays - 1);
+
+  const fetchOptions: FetchEventsOptions = {
+    calendarId,
+    timeMin: startDate.toISOString(),
+    timeMax: endDate.toISOString(),
+  };
+
+  let mode: 'incremental' | 'full' = 'full';
+
+  if (options.updatedMin) {
+    // 差分同期: updatedMin パラメータを使用
+    fetchOptions.updatedMin = options.updatedMin;
+    // 差分同期時はより広い範囲を対象に（過去のイベントが更新される可能性があるため）
+    const wideStartDate = new Date();
+    wideStartDate.setMonth(wideStartDate.getMonth() - 6); // 過去6ヶ月
+    fetchOptions.timeMin = wideStartDate.toISOString();
+    mode = 'incremental';
+    log.info(`Fetching events updated since ${options.updatedMin}`);
+  } else {
+    log.info(`Fetching events from ${startDate.toISOString()} (${fallbackDays} days)`);
+  }
+
+  const rawEvents = await fetchEvents(fetchOptions);
+  apiCalls = 1; // ページネーションは内部で処理される
+
+  const dbEvents = transformEvents(rawEvents, calendarId);
+
+  return {
+    events: dbEvents,
+    raw: rawEvents,
+    mode,
+    apiCalls,
+  };
 }

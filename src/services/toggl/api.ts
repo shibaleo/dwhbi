@@ -2,7 +2,7 @@
  * Toggl Track API クライアント
  */
 
-import { togglFetch, workspaceId } from "./auth.ts";
+import { togglFetch, getWorkspaceId } from "./auth.ts";
 import {
   type TogglApiV9Client,
   type TogglApiV9Project,
@@ -31,6 +31,7 @@ export function formatTogglDate(date: Date): string {
  * クライアント一覧を取得
  */
 export async function fetchClients(): Promise<TogglApiV9Client[]> {
+  const workspaceId = await getWorkspaceId();
   return await togglFetch<TogglApiV9Client[]>(
     `/workspaces/${workspaceId}/clients`
   );
@@ -40,6 +41,7 @@ export async function fetchClients(): Promise<TogglApiV9Client[]> {
  * プロジェクト一覧を取得（アーカイブ済み含む）
  */
 export async function fetchProjects(): Promise<TogglApiV9Project[]> {
+  const workspaceId = await getWorkspaceId();
   return await togglFetch<TogglApiV9Project[]>(
     `/workspaces/${workspaceId}/projects`
   );
@@ -49,6 +51,7 @@ export async function fetchProjects(): Promise<TogglApiV9Project[]> {
  * タグ一覧を取得
  */
 export async function fetchTags(): Promise<TogglApiV9Tag[]> {
+  const workspaceId = await getWorkspaceId();
   return await togglFetch<TogglApiV9Tag[]>(
     `/workspaces/${workspaceId}/tags`
   );
@@ -66,6 +69,51 @@ export async function fetchEntriesByRange(
   return await togglFetch<TogglApiV9TimeEntry[]>(
     `/me/time_entries?start_date=${startDate}&end_date=${endDate}`
   );
+}
+
+/**
+ * 指定時刻以降に更新されたエントリーを取得（差分同期用）
+ * 
+ * Toggl API v9 の `since` パラメータを使用して、
+ * 指定したUNIXタイムスタンプ以降に更新されたエントリーのみを取得する。
+ * 
+ * @param sinceTimestamp UNIXタイムスタンプ（秒）
+ * @returns 更新されたエントリーの配列
+ */
+export async function fetchEntriesSince(
+  sinceTimestamp: number
+): Promise<TogglApiV9TimeEntry[]> {
+  return await togglFetch<TogglApiV9TimeEntry[]>(
+    `/me/time_entries?since=${sinceTimestamp}`
+  );
+}
+
+/**
+ * 差分同期用のエントリー取得
+ * 
+ * - sinceTimestamp が指定された場合: `since` パラメータで差分取得
+ * - 指定されていない場合: 日付範囲で取得（初回同期・フルリフレッシュ用）
+ * 
+ * @param options 取得オプション
+ * @returns エントリーの配列
+ */
+export async function fetchEntriesIncremental(options: {
+  sinceTimestamp?: number;
+  startDate?: string;
+  endDate?: string;
+}): Promise<{ entries: TogglApiV9TimeEntry[]; mode: 'incremental' | 'full' }> {
+  if (options.sinceTimestamp) {
+    // 差分同期: since パラメータを使用
+    const entries = await fetchEntriesSince(options.sinceTimestamp);
+    return { entries, mode: 'incremental' };
+  }
+  
+  // フルリフレッシュ: 日付範囲を使用
+  if (!options.startDate || !options.endDate) {
+    throw new Error('startDate and endDate are required for full sync');
+  }
+  const entries = await fetchEntriesByRange(options.startDate, options.endDate);
+  return { entries, mode: 'full' };
 }
 
 // =============================================================================
@@ -93,6 +141,11 @@ export interface ReportsApiQuota {
   resetsInSeconds: number | null;
 }
 
+import {
+  getCredentials,
+  type BasicCredentials,
+} from "../../utils/credentials.ts";
+
 /**
  * Reports API v3 への認証付きPOSTリクエスト
  */
@@ -100,10 +153,11 @@ async function reportsFetch<T>(
   endpoint: string,
   body: object
 ): Promise<{ data: T; headers: Headers; quota: ReportsApiQuota }> {
-  const apiToken = Deno.env.get("TOGGL_API_TOKEN")?.trim();
-  if (!apiToken) {
-    throw new Error("TOGGL_API_TOKEN is not set");
+  const result = await getCredentials<BasicCredentials>("toggl");
+  if (!result) {
+    throw new Error("Toggl credentials not found in credentials.services");
   }
+  const apiToken = result.credentials.api_token;
 
   const url = `${REPORTS_API_BASE_URL}${endpoint}`;
   const res = await fetch(url, {
@@ -177,7 +231,7 @@ export async function fetchEntriesByReportsApi(
     }
 
     const { data, headers, quota } = await reportsFetch<ReportsApiTimeEntry[]>(
-      `/workspace/${workspaceId}/search/time_entries`,
+      `/workspace/${await getWorkspaceId()}/search/time_entries`,
       requestBody
     );
     requestCount++;

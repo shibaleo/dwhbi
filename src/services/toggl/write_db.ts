@@ -1,7 +1,7 @@
 /**
  * Toggl Track Supabase DB 書き込み
  *
- * toggl スキーマへのデータ変換と upsert 処理
+ * raw スキーマへのデータ変換と upsert 処理
  */
 
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
@@ -17,14 +17,14 @@ import type {
   DbTag,
   DbEntry,
 } from "./types.ts";
-import { workspaceId } from "./auth.ts";
+import { getWorkspaceId } from "./auth.ts";
 
 // =============================================================================
 // Types
 // =============================================================================
 
-/** toggl スキーマ用クライアント型 */
-export type TogglSchema = ReturnType<SupabaseClient["schema"]>;
+/** raw スキーマ用クライアント型 */
+export type RawSchema = ReturnType<SupabaseClient["schema"]>;
 
 /** upsert 結果 */
 export interface UpsertResult {
@@ -43,9 +43,9 @@ const BATCH_SIZE = 1000;
 // =============================================================================
 
 /**
- * toggl スキーマ専用の Supabase クライアントを作成
+ * raw スキーマ専用の Supabase クライアントを作成
  */
-export function createTogglDbClient(): TogglSchema {
+export function createTogglDbClient(): RawSchema {
   const url = Deno.env.get("SUPABASE_URL")?.trim();
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim();
 
@@ -54,7 +54,7 @@ export function createTogglDbClient(): TogglSchema {
   }
 
   const supabase = createClient(url, key);
-  return supabase.schema("toggl");
+  return supabase.schema("raw");
 }
 
 // =============================================================================
@@ -151,8 +151,11 @@ export function toDbEntry(entry: TogglApiV9TimeEntry): DbEntry | null {
  * Note: Reports APIは time_entries 配列内に実際のデータがある
  * - id, start, stop, seconds は time_entries[0] から取得
  * - project_id, description などはトップレベルから取得
+ *
+ * @param entry Reports APIのエントリー
+ * @param workspaceId ワークスペースID
  */
-export function reportsEntryToDbEntry(entry: ReportsApiTimeEntry): DbEntry | null {
+export function reportsEntryToDbEntry(entry: ReportsApiTimeEntry, workspaceId: number): DbEntry | null {
   // time_entries 配列が空の場合はスキップ
   if (!entry.time_entries || entry.time_entries.length === 0) {
     return null;
@@ -167,7 +170,7 @@ export function reportsEntryToDbEntry(entry: ReportsApiTimeEntry): DbEntry | nul
 
   return {
     id: timeEntry.id,
-    workspace_id: parseInt(workspaceId, 10),
+    workspace_id: workspaceId,
     project_id: entry.project_id ?? null,
     task_id: entry.task_id ?? null,
     user_id: entry.user_id,
@@ -191,7 +194,7 @@ export function reportsEntryToDbEntry(entry: ReportsApiTimeEntry): DbEntry | nul
  * バッチ upsert
  */
 async function upsertBatch<T extends object>(
-  toggl: TogglSchema,
+  raw: RawSchema,
   table: string,
   records: T[],
   onConflict: string,
@@ -206,7 +209,7 @@ async function upsertBatch<T extends object>(
   for (let i = 0; i < records.length; i += BATCH_SIZE) {
     const batch = records.slice(i, i + BATCH_SIZE);
 
-    const { error } = await toggl
+    const { error } = await raw
       .from(table)
       .upsert(batch, { onConflict });
 
@@ -229,13 +232,13 @@ async function upsertBatch<T extends object>(
  * クライアントを upsert
  */
 export async function upsertClients(
-  toggl: TogglSchema,
+  raw: RawSchema,
   clients: TogglApiV9Client[],
 ): Promise<UpsertResult> {
   const records = clients.map(toDbClient);
   log.info(`Saving clients... (${records.length} records)`);
 
-  const result = await upsertBatch(toggl, "clients", records, "id");
+  const result = await upsertBatch(raw, "toggl_clients", records, "id");
 
   if (result.success > 0) log.success(`${result.success} records saved`);
   if (result.failed > 0) log.error(`${result.failed} records failed`);
@@ -247,13 +250,13 @@ export async function upsertClients(
  * プロジェクトを upsert
  */
 export async function upsertProjects(
-  toggl: TogglSchema,
+  raw: RawSchema,
   projects: TogglApiV9Project[],
 ): Promise<UpsertResult> {
   const records = projects.map(toDbProject);
   log.info(`Saving projects... (${records.length} records)`);
 
-  const result = await upsertBatch(toggl, "projects", records, "id");
+  const result = await upsertBatch(raw, "toggl_projects", records, "id");
 
   if (result.success > 0) log.success(`${result.success} records saved`);
   if (result.failed > 0) log.error(`${result.failed} records failed`);
@@ -265,13 +268,13 @@ export async function upsertProjects(
  * タグを upsert
  */
 export async function upsertTags(
-  toggl: TogglSchema,
+  raw: RawSchema,
   tags: TogglApiV9Tag[],
 ): Promise<UpsertResult> {
   const records = tags.map(toDbTag);
   log.info(`Saving tags... (${records.length} records)`);
 
-  const result = await upsertBatch(toggl, "tags", records, "id");
+  const result = await upsertBatch(raw, "toggl_tags", records, "id");
 
   if (result.success > 0) log.success(`${result.success} records saved`);
   if (result.failed > 0) log.error(`${result.failed} records failed`);
@@ -283,7 +286,7 @@ export async function upsertTags(
  * エントリーを upsert
  */
 export async function upsertEntries(
-  toggl: TogglSchema,
+  raw: RawSchema,
   entries: TogglApiV9TimeEntry[],
 ): Promise<UpsertResult> {
   const records = entries
@@ -292,7 +295,7 @@ export async function upsertEntries(
 
   log.info(`Saving entries... (${records.length} records)`);
 
-  const result = await upsertBatch(toggl, "entries", records, "id");
+  const result = await upsertBatch(raw, "toggl_entries", records, "id");
 
   if (result.success > 0) log.success(`${result.success} records saved`);
   if (result.failed > 0) log.error(`${result.failed} records failed`);
@@ -304,16 +307,20 @@ export async function upsertEntries(
  * Reports API からのエントリーを upsert
  */
 export async function upsertEntriesFromReports(
-  toggl: TogglSchema,
+  raw: RawSchema,
   entries: ReportsApiTimeEntry[],
 ): Promise<UpsertResult> {
+  // workspaceIdを取得
+  const workspaceIdStr = await getWorkspaceId();
+  const workspaceId = parseInt(workspaceIdStr, 10);
+
   const records = entries
-    .map(reportsEntryToDbEntry)
+    .map((entry) => reportsEntryToDbEntry(entry, workspaceId))
     .filter((entry): entry is DbEntry => entry !== null);
 
   log.info(`Saving entries from Reports API... (${records.length} records)`);
 
-  const result = await upsertBatch(toggl, "entries", records, "id");
+  const result = await upsertBatch(raw, "toggl_entries", records, "id");
 
   if (result.success > 0) log.success(`${result.success} records saved`);
   if (result.failed > 0) log.error(`${result.failed} records failed`);
@@ -329,15 +336,15 @@ export async function upsertEntriesFromReports(
  * メタデータ（clients, projects, tags）を並列 upsert
  */
 export async function upsertMetadata(
-  toggl: TogglSchema,
+  raw: RawSchema,
   clients: TogglApiV9Client[],
   projects: TogglApiV9Project[],
   tags: TogglApiV9Tag[],
 ): Promise<{ clients: UpsertResult; projects: UpsertResult; tags: UpsertResult }> {
   const [clientsResult, projectsResult, tagsResult] = await Promise.all([
-    upsertClients(toggl, clients),
-    upsertProjects(toggl, projects),
-    upsertTags(toggl, tags),
+    upsertClients(raw, clients),
+    upsertProjects(raw, projects),
+    upsertTags(raw, tags),
   ]);
 
   return {

@@ -345,3 +345,79 @@ FITBIT_SYNC_DAYS=3 deno run --allow-env --allow-net --allow-read sync_daily.ts
 | 皮膚温度 | △ | 相対値のみ |
 | ECG | ✗ | センサーなし |
 | GPS | ✗ | Connected GPSのみ |
+
+---
+
+## DWH移行計画
+
+### 概要
+
+現在の `fitbit` スキーマを `raw` スキーマに移行し、DWH 3層アーキテクチャを採用する。
+
+```
+現在:  fitbit.sleep, fitbit.activity_daily, fitbit.heart_rate_daily, ...
+    ↓
+移行後:
+  raw.fitbit_sleep              ← 生データ（テーブル）
+  raw.fitbit_activity_daily
+  raw.fitbit_heart_rate_daily
+  raw.fitbit_hrv_daily
+  raw.fitbit_spo2_daily
+  raw.fitbit_breathing_rate_daily
+  raw.fitbit_cardio_score_daily
+  raw.fitbit_temperature_skin_daily
+      ↓
+  staging.stg_fitbit__sleep     ← クリーニング済み（ビュー）
+  staging.stg_fitbit__activity_daily
+      ↓
+  marts.fct_daily_health        ← ビジネスエンティティ（ビュー）
+```
+
+### 変更点
+
+| 項目 | 現在 | 移行後 |
+|------|------|--------|
+| スキーマ | `fitbit` | `raw` |
+| テーブル名 | `sleep` | `fitbit_sleep` |
+| DBクライアント | supabase-js (REST API) | postgres.js (直接接続) |
+| API公開 | Exposed | Not Exposed |
+
+### write_db.ts 変更内容
+
+```typescript
+// 現在
+import { createClient } from "npm:@supabase/supabase-js@2";
+const supabase = createClient(url, key);
+const fitbit = supabase.schema("fitbit");
+await fitbit.from("sleep").upsert(data, { onConflict: "log_id" });
+
+// 移行後
+import postgres from "npm:postgres";
+const sql = postgres(DATABASE_URL);
+await sql`
+  INSERT INTO raw.fitbit_sleep ${sql(records)}
+  ON CONFLICT (log_id) DO UPDATE SET
+    duration_ms = EXCLUDED.duration_ms,
+    efficiency = EXCLUDED.efficiency,
+    levels = EXCLUDED.levels,
+    synced_at = now()
+`;
+```
+
+### 環境変数追加
+
+| 変数名 | 説明 |
+|--------|------|
+| `DATABASE_URL` | PostgreSQL 直接接続文字列 |
+
+### マイグレーション手順
+
+1. `raw.fitbit_*` テーブルを作成
+2. `fitbit.*` から `raw.fitbit_*` にデータ移行
+3. `write_db.ts` を postgres.js に書き換え
+4. `staging.stg_fitbit__*` ビューを作成
+5. 旧 `fitbit` スキーマを削除（データ確認後）
+
+### OAuthトークンの保存場所
+
+`fitbit.tokens` テーブルは raw 層ではなく、別途 `auth` スキーマまたは環境変数での管理を検討。

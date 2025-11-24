@@ -13,7 +13,7 @@
 import "jsr:@std/dotenv/load";
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import * as log from "../../utils/log.ts";
-import { formatDate } from "./api.ts";
+import { formatTogglDate } from "./api.ts";
 import {
   fetchTogglMetadata,
   fetchTogglDataWithChunks,
@@ -76,8 +76,8 @@ export async function syncAllTogglData(options: {
   const startTime = Date.now();
   const errors: string[] = [];
 
-  const startStr = formatDate(options.startDate);
-  const endStr = formatDate(options.endDate);
+  const startStr = formatTogglDate(options.startDate);
+  const endStr = formatTogglDate(options.endDate);
 
   log.syncStart("Toggl (Full)", 0);
   console.log(`   期間: ${startStr} 〜 ${endStr}`);

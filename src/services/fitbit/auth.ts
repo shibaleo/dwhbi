@@ -1,17 +1,25 @@
 /**
  * Fitbit OAuth2.0 認証管理
  *
+ * 認証情報は credentials.services テーブルから取得・保存。
+ * トークンリフレッシュ時は自動的に credentials.services を更新。
+ *
  * 使用例:
  *   deno run --allow-env --allow-net --allow-read auth.ts              # 有効性確認（必要ならリフレッシュ）
  *   deno run --allow-env --allow-net --allow-read auth.ts --refresh    # 強制リフレッシュ
  */
 
 import "jsr:@std/dotenv/load";
-import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import { encodeBase64 } from "jsr:@std/encoding/base64";
 import * as log from "../../utils/log.ts";
-import type { AuthOptions, DbToken, TokenResponse } from "./types.ts";
+import {
+  getCredentials,
+  updateCredentials,
+  updateExpiresAt,
+  type OAuth2Credentials,
+} from "../../utils/credentials.ts";
+import type { AuthOptions, TokenResponse } from "./types.ts";
 
 // =============================================================================
 // Constants
@@ -19,23 +27,6 @@ import type { AuthOptions, DbToken, TokenResponse } from "./types.ts";
 
 const OAUTH_TOKEN_URL = "https://api.fitbit.com/oauth2/token";
 const DEFAULT_THRESHOLD_MINUTES = 60; // 1時間前にリフレッシュ
-const SCHEMA = "fitbit";
-const TABLE = "tokens";
-
-// =============================================================================
-// Supabase Client
-// =============================================================================
-
-function createSupabaseClient(): SupabaseClient {
-  const url = Deno.env.get("SUPABASE_URL");
-  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
-  if (!url || !key) {
-    throw new Error("SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY are required");
-  }
-
-  return createClient(url, key);
-}
 
 // =============================================================================
 // Token Validation
@@ -56,74 +47,32 @@ export function isTokenExpiringSoon(
 }
 
 // =============================================================================
-// Database Operations
+// Credential Operations
 // =============================================================================
 
 /**
- * DBからトークンを取得
+ * 認証情報を credentials.services から取得
  */
-export async function getTokenFromDb(
-  supabase: SupabaseClient,
-): Promise<DbToken | null> {
-  const { data, error } = await supabase
-    .schema(SCHEMA)
-    .from(TABLE)
-    .select("*")
-    .limit(1)
-    .single();
-
-  if (error) {
-    if (error.code === "PGRST116") {
-      // レコードなし
-      return null;
-    }
-    throw new Error(`Token fetch error: ${error.message}`);
+async function loadCredentials(): Promise<{
+  credentials: OAuth2Credentials;
+  expiresAt: Date | null;
+}> {
+  const result = await getCredentials<OAuth2Credentials>("fitbit");
+  if (!result) {
+    throw new Error("Fitbit credentials not found in credentials.services");
   }
 
-  return data as DbToken;
-}
+  const { credentials, expiresAt } = result;
 
-/**
- * トークンをDBに保存（upsert）
- */
-export async function saveTokenToDb(
-  supabase: SupabaseClient,
-  token: Partial<DbToken>,
-  existingId?: string,
-): Promise<void> {
-  const now = new Date().toISOString();
-
-  if (existingId) {
-    // 既存レコード更新
-    const { error } = await supabase
-      .schema(SCHEMA)
-      .from(TABLE)
-      .update({
-        ...token,
-        updated_at: now,
-        last_refreshed_at: now,
-      })
-      .eq("id", existingId);
-
-    if (error) {
-      throw new Error(`Token update error: ${error.message}`);
-    }
-  } else {
-    // 新規作成
-    const { error } = await supabase
-      .schema(SCHEMA)
-      .from(TABLE)
-      .insert({
-        ...token,
-        created_at: now,
-        updated_at: now,
-        last_refreshed_at: now,
-      });
-
-    if (error) {
-      throw new Error(`Token create error: ${error.message}`);
-    }
+  // 必須フィールドの検証
+  if (!credentials.client_id || !credentials.client_secret) {
+    throw new Error("Fitbit credentials missing client_id or client_secret");
   }
+  if (!credentials.access_token || !credentials.refresh_token) {
+    throw new Error("Fitbit credentials missing access_token or refresh_token");
+  }
+
+  return { credentials, expiresAt };
 }
 
 // =============================================================================
@@ -133,14 +82,7 @@ export async function saveTokenToDb(
 /**
  * Basic認証ヘッダーを生成
  */
-function getBasicAuthHeader(): string {
-  const clientId = Deno.env.get("FITBIT_CLIENT_ID");
-  const clientSecret = Deno.env.get("FITBIT_CLIENT_SECRET");
-
-  if (!clientId || !clientSecret) {
-    throw new Error("FITBIT_CLIENT_ID, FITBIT_CLIENT_SECRET are required");
-  }
-
+function getBasicAuthHeader(clientId: string, clientSecret: string): string {
   const credentials = `${clientId}:${clientSecret}`;
   return `Basic ${encodeBase64(new TextEncoder().encode(credentials))}`;
 }
@@ -149,6 +91,8 @@ function getBasicAuthHeader(): string {
  * リフレッシュトークンでアクセストークンを更新
  */
 export async function refreshTokenFromApi(
+  clientId: string,
+  clientSecret: string,
   refreshToken: string,
 ): Promise<TokenResponse> {
   const params = new URLSearchParams({
@@ -159,7 +103,7 @@ export async function refreshTokenFromApi(
   const response = await fetch(OAUTH_TOKEN_URL, {
     method: "POST",
     headers: {
-      "Authorization": getBasicAuthHeader(),
+      "Authorization": getBasicAuthHeader(clientId, clientSecret),
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body: params.toString(),
@@ -179,7 +123,7 @@ export async function refreshTokenFromApi(
 
 /**
  * 有効なアクセストークンを保証して返す
- * - DBの expires_at をチェック（APIを叩かない）
+ * - credentials.services の expires_at をチェック
  * - 閾値内 or forceRefresh なら API でリフレッシュ
  */
 export async function ensureValidToken(
@@ -188,41 +132,39 @@ export async function ensureValidToken(
   const { forceRefresh = false, thresholdMinutes = DEFAULT_THRESHOLD_MINUTES } =
     options;
 
-  const supabase = createSupabaseClient();
-  const token = await getTokenFromDb(supabase);
+  const { credentials, expiresAt } = await loadCredentials();
 
-  if (!token) {
-    throw new Error(
-      "Token not found in DB. Please register token manually.",
-    );
-  }
-
-  const expiresAt = new Date(token.expires_at);
+  // expires_at が null の場合はリフレッシュ必要
   const needsRefresh = forceRefresh ||
+    !expiresAt ||
     isTokenExpiringSoon(expiresAt, thresholdMinutes);
 
-  if (!needsRefresh) {
+  if (!needsRefresh && expiresAt) {
     const minutesUntilExpiry = (expiresAt.getTime() - Date.now()) / (1000 * 60);
     log.success(`Token valid (${minutesUntilExpiry.toFixed(0)} min remaining)`);
-    return token.access_token;
+    return credentials.access_token;
   }
 
   log.info("Refreshing token...");
-  const newToken = await refreshTokenFromApi(token.refresh_token);
+  const newToken = await refreshTokenFromApi(
+    credentials.client_id,
+    credentials.client_secret,
+    credentials.refresh_token,
+  );
 
-  // 新しいトークンをDBに保存
+  // 新しい有効期限を計算
   const newExpiresAt = new Date(Date.now() + newToken.expires_in * 1000);
-  await saveTokenToDb(
-    supabase,
+
+  // credentials.services を更新
+  await updateCredentials(
+    "fitbit",
     {
       access_token: newToken.access_token,
       refresh_token: newToken.refresh_token,
-      token_type: newToken.token_type || "Bearer",
-      expires_at: newExpiresAt.toISOString(),
       scope: newToken.scope,
       user_id: newToken.user_id,
     },
-    token.id,
+    newExpiresAt,
   );
 
   log.success(`Token refreshed (expires: ${newExpiresAt.toISOString()})`);
@@ -260,8 +202,7 @@ Examples:
 Environment Variables:
   SUPABASE_URL              Supabase URL
   SUPABASE_SERVICE_ROLE_KEY Supabase Service Role Key
-  FITBIT_CLIENT_ID          Fitbit Client ID
-  FITBIT_CLIENT_SECRET      Fitbit Client Secret
+  TOKEN_ENCRYPTION_KEY      Encryption key for credentials
 `);
     Deno.exit(0);
   }

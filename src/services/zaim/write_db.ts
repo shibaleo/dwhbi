@@ -1,7 +1,8 @@
 /**
  * Zaim データの Supabase 書き込み
  *
- * zaim スキーマへのデータ変換と upsert 処理
+ * raw スキーマへのデータ変換と upsert 処理
+ * sync_log は zaim スキーマに残す
  */
 
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
@@ -23,7 +24,10 @@ import type {
 // Types
 // =============================================================================
 
-/** zaim スキーマ用クライアント型 */
+/** raw スキーマ用クライアント型 */
+export type RawSchema = ReturnType<SupabaseClient["schema"]>;
+
+/** zaim スキーマ用クライアント型（sync_log用） */
 export type ZaimSchema = ReturnType<SupabaseClient["schema"]>;
 
 // =============================================================================
@@ -33,13 +37,53 @@ export type ZaimSchema = ReturnType<SupabaseClient["schema"]>;
 const BATCH_SIZE = 1000;
 
 // =============================================================================
+// Helper Functions
+// =============================================================================
+
+/**
+ * Zaim APIのタイムスタンプをUTCにTIMESTAMPTZに変換
+ * 
+ * Zaim APIは "2025-11-24 20:43:44" のようにtz情報なしのJST時刻を返す。
+ * PostgreSQLのtimestamptzに保存するためUTCに変換する。
+ */
+function convertZaimTimestampToUTC(timestamp: string | undefined | null): string | null {
+  if (!timestamp) return null;
+  
+  // 既にタイムゾーン情報がある場合はそのまま
+  if (timestamp.includes('+') || timestamp.includes('Z')) {
+    return timestamp;
+  }
+  
+  // JSTとして解釈してUTCに変換
+  // "2025-11-24 20:43:44" -> "2025-11-24T20:43:44+09:00"
+  const jstTimestamp = timestamp.replace(' ', 'T') + '+09:00';
+  const date = new Date(jstTimestamp);
+  return date.toISOString();
+}
+
+// =============================================================================
 // Client Factory
 // =============================================================================
 
 /**
- * zaim スキーマ専用の Supabase クライアントを作成
+ * raw スキーマ専用の Supabase クライアントを作成（データ用）
  */
-export function createZaimDbClient(): ZaimSchema {
+export function createZaimDbClient(): RawSchema {
+  const url = Deno.env.get("SUPABASE_URL");
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+  if (!url || !key) {
+    throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set");
+  }
+
+  const supabase = createClient(url, key);
+  return supabase.schema("raw");
+}
+
+/**
+ * zaim スキーマ専用の Supabase クライアントを作成（sync_log用）
+ */
+export function createZaimSyncLogClient(): ZaimSchema {
   const url = Deno.env.get("SUPABASE_URL");
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -102,6 +146,7 @@ export function toDbAccount(account: ZaimApiAccount, zaimUserId: number): DbAcco
 /**
  * ZaimApiTransaction → DbTransaction
  * アカウント ID 0 は NULL に変換
+ * created/modified はJST→UTC変換
  */
 export function toDbTransaction(tx: ZaimApiTransaction, zaimUserId: number): DbTransaction {
   const fromAccountId =
@@ -115,8 +160,8 @@ export function toDbTransaction(tx: ZaimApiTransaction, zaimUserId: number): DbT
     transaction_type: tx.mode,
     amount: tx.amount,
     date: tx.date,
-    created_at: tx.created || new Date().toISOString(),
-    modified_at: tx.modified || null,
+    created_at: convertZaimTimestampToUTC(tx.created) || new Date().toISOString(),
+    modified_at: convertZaimTimestampToUTC(tx.modified),
     category_id: tx.category_id || null,
     genre_id: tx.genre_id || null,
     from_account_id: fromAccountId,
@@ -138,7 +183,7 @@ export function toDbTransaction(tx: ZaimApiTransaction, zaimUserId: number): DbT
  * バッチ upsert
  */
 async function upsertBatch<T extends object>(
-  zaim: ZaimSchema,
+  raw: RawSchema,
   table: string,
   records: T[],
   onConflict: string,
@@ -153,7 +198,7 @@ async function upsertBatch<T extends object>(
   for (let i = 0; i < records.length; i += BATCH_SIZE) {
     const batch = records.slice(i, i + BATCH_SIZE);
 
-    const { error } = await zaim
+    const { error } = await raw
       .from(table)
       .upsert(batch, { onConflict });
 
@@ -236,7 +281,7 @@ export async function completeSyncLog(
  * categories → genres → accounts の順序で実行する
  */
 export async function upsertMetadata(
-  zaim: ZaimSchema,
+  raw: RawSchema,
   zaimUserId: number,
   categories: ZaimApiCategory[],
   genres: ZaimApiGenre[],
@@ -245,21 +290,21 @@ export async function upsertMetadata(
   // Categories
   const catRecords = categories.map((c) => toDbCategory(c, zaimUserId));
   log.info(`Saving categories... (${catRecords.length} records)`);
-  const catResult = await upsertBatch(zaim, "categories", catRecords, "zaim_user_id,id");
+  const catResult = await upsertBatch(raw, "zaim_categories", catRecords, "zaim_user_id,id");
   if (catResult.success > 0) log.success(`${catResult.success} records saved`);
   if (catResult.failed > 0) log.error(`${catResult.failed} records failed`);
 
   // Genres（categories の後）
   const genRecords = genres.map((g) => toDbGenre(g, zaimUserId));
   log.info(`Saving genres... (${genRecords.length} records)`);
-  const genResult = await upsertBatch(zaim, "genres", genRecords, "zaim_user_id,id");
+  const genResult = await upsertBatch(raw, "zaim_genres", genRecords, "zaim_user_id,id");
   if (genResult.success > 0) log.success(`${genResult.success} records saved`);
   if (genResult.failed > 0) log.error(`${genResult.failed} records failed`);
 
   // Accounts
   const accRecords = accounts.map((a) => toDbAccount(a, zaimUserId));
   log.info(`Saving accounts... (${accRecords.length} records)`);
-  const accResult = await upsertBatch(zaim, "accounts", accRecords, "zaim_user_id,id");
+  const accResult = await upsertBatch(raw, "zaim_accounts", accRecords, "zaim_user_id,id");
   if (accResult.success > 0) log.success(`${accResult.success} records saved`);
   if (accResult.failed > 0) log.error(`${accResult.failed} records failed`);
 
@@ -274,7 +319,7 @@ export async function upsertMetadata(
  * トランザクションを同期
  */
 export async function syncTransactions(
-  zaim: ZaimSchema,
+  raw: RawSchema,
   zaimUserId: number,
   transactions: ZaimApiTransaction[],
   existingIds: Set<number>,
@@ -310,7 +355,7 @@ export async function syncTransactions(
   }
 
   log.info(`Saving transactions... (${txRecords.length} records)`);
-  const result = await upsertBatch(zaim, "transactions", txRecords, "zaim_user_id,zaim_id");
+  const result = await upsertBatch(raw, "zaim_transactions", txRecords, "zaim_user_id,zaim_id");
 
   if (result.success > 0) log.success(`${result.success} records saved`);
   if (result.failed > 0) log.error(`${result.failed} records failed`);
@@ -329,13 +374,13 @@ export async function syncTransactions(
  * 指定期間の既存トランザクション ID を取得
  */
 export async function getExistingTransactionIds(
-  zaim: ZaimSchema,
+  raw: RawSchema,
   zaimUserId: number,
   startDate: string,
   endDate: string,
 ): Promise<Set<number>> {
-  const { data: existingTx, error } = await zaim
-    .from("transactions")
+  const { data: existingTx, error } = await raw
+    .from("zaim_transactions")
     .select("zaim_id")
     .eq("zaim_user_id", zaimUserId)
     .gte("date", startDate)

@@ -1,7 +1,7 @@
 /**
  * Google Calendar DB 書き込み
  *
- * gcalendar スキーマへのデータ変換と upsert 処理
+ * raw スキーマへのデータ変換と upsert 処理
  */
 
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
@@ -12,8 +12,8 @@ import type { DbEvent, GCalApiEvent } from "./types.ts";
 // Types
 // =============================================================================
 
-/** gcalendar スキーマ用クライアント型 */
-export type GCalendarSchema = ReturnType<SupabaseClient["schema"]>;
+/** raw スキーマ用クライアント型 */
+export type RawSchema = ReturnType<SupabaseClient["schema"]>;
 
 /** upsert 結果 */
 export interface UpsertResult {
@@ -75,9 +75,9 @@ export function transformEvents(events: GCalApiEvent[], calendarId: string): DbE
 // =============================================================================
 
 /**
- * gcalendar スキーマ専用の Supabase クライアントを作成
+ * raw スキーマ専用の Supabase クライアントを作成
  */
-export function createGCalendarDbClient(): GCalendarSchema {
+export function createGCalendarDbClient(): RawSchema {
   const url = Deno.env.get("SUPABASE_URL");
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -86,7 +86,7 @@ export function createGCalendarDbClient(): GCalendarSchema {
   }
 
   const supabase = createClient(url, key);
-  return supabase.schema("gcalendar");
+  return supabase.schema("raw");
 }
 
 // =============================================================================
@@ -97,7 +97,7 @@ export function createGCalendarDbClient(): GCalendarSchema {
  * バッチ upsert
  */
 async function upsertBatch<T extends object>(
-  gcalendar: GCalendarSchema,
+  raw: RawSchema,
   table: string,
   records: T[],
   onConflict: string,
@@ -112,7 +112,7 @@ async function upsertBatch<T extends object>(
   for (let i = 0; i < records.length; i += BATCH_SIZE) {
     const batch = records.slice(i, i + BATCH_SIZE);
 
-    const { error } = await gcalendar
+    const { error } = await raw
       .from(table)
       .upsert(batch, { onConflict });
 
@@ -135,12 +135,12 @@ async function upsertBatch<T extends object>(
  * イベントを一括 upsert
  */
 export async function upsertEvents(
-  gcalendar: GCalendarSchema,
+  raw: RawSchema,
   events: DbEvent[],
 ): Promise<UpsertResult> {
   log.info(`Saving events... (${events.length} records)`);
 
-  const result = await upsertBatch(gcalendar, "events", events, "id");
+  const result = await upsertBatch(raw, "gcalendar_events", events, "id");
 
   if (result.success > 0) log.success(`${result.success} records saved`);
   if (result.failed > 0) log.error(`${result.failed} records failed`);
@@ -152,7 +152,7 @@ export async function upsertEvents(
  * キャンセルされたイベントのステータスを更新
  */
 export async function markCancelledEvents(
-  gcalendar: GCalendarSchema,
+  raw: RawSchema,
   existingIds: string[],
   fetchedIds: Set<string>,
 ): Promise<number> {
@@ -164,8 +164,8 @@ export async function markCancelledEvents(
 
   log.info(`Marking cancelled events... (${missingIds.length} records)`);
 
-  const { error, count } = await gcalendar
-    .from("events")
+  const { error, count } = await raw
+    .from("gcalendar_events")
     .update({ status: "cancelled" })
     .in("id", missingIds)
     .neq("status", "cancelled");
@@ -187,12 +187,12 @@ export async function markCancelledEvents(
  * 指定期間のイベント ID を取得
  */
 export async function getExistingEventIds(
-  gcalendar: GCalendarSchema,
+  raw: RawSchema,
   timeMin: string,
   timeMax: string,
 ): Promise<string[]> {
-  const { data, error } = await gcalendar
-    .from("events")
+  const { data, error } = await raw
+    .from("gcalendar_events")
     .select("id")
     .gte("start_time", timeMin)
     .lte("start_time", timeMax);

@@ -425,3 +425,74 @@ TOGGL_SYNC_DAYS=1 deno run --allow-env --allow-net --allow-read sync_daily.ts
 - API呼び出しのstaggered delay（200ms/400ms/600ms）
 - Supabaseへのupsertの並列化
 - バッチサイズ1000でのupsert
+
+---
+
+## DWH移行計画
+
+### 概要
+
+現在の `toggl` スキーマを `raw` スキーマに移行し、DWH 3層アーキテクチャを採用する。
+
+```
+現在:  toggl.entries, toggl.projects, toggl.clients, toggl.tags
+    ↓
+移行後:
+  raw.toggl_entries      ← 生データ（テーブル）
+  raw.toggl_projects
+  raw.toggl_clients
+  raw.toggl_tags
+      ↓
+  staging.stg_toggl__entries   ← クリーニング済み（ビュー）
+  staging.stg_toggl__projects
+      ↓
+  marts.fct_time_entries       ← ビジネスエンティティ（ビュー）
+  marts.dim_projects
+```
+
+### 変更点
+
+| 項目 | 現在 | 移行後 |
+|------|------|--------|
+| スキーマ | `toggl` | `raw` |
+| テーブル名 | `entries` | `toggl_entries` |
+| DBクライアント | supabase-js (REST API) | postgres.js (直接接続) |
+| API公開 | Exposed | Not Exposed |
+
+### write_db.ts 変更内容
+
+```typescript
+// 現在
+import { createClient } from "npm:@supabase/supabase-js@2";
+const supabase = createClient(url, key);
+const toggl = supabase.schema("toggl");
+await toggl.from("entries").upsert(data);
+
+// 移行後
+import postgres from "npm:postgres";
+const sql = postgres(DATABASE_URL);
+await sql`
+  INSERT INTO raw.toggl_entries ${sql(records)}
+  ON CONFLICT (id) DO UPDATE SET
+    description = EXCLUDED.description,
+    start = EXCLUDED.start,
+    "end" = EXCLUDED."end",
+    duration_ms = EXCLUDED.duration_ms,
+    updated_at = EXCLUDED.updated_at,
+    synced_at = now()
+`;
+```
+
+### 環境変数追加
+
+| 変数名 | 説明 |
+|--------|------|
+| `DATABASE_URL` | PostgreSQL 直接接続文字列 |
+
+### マイグレーション手順
+
+1. `raw.toggl_*` テーブルを作成
+2. `toggl.*` から `raw.toggl_*` にデータ移行
+3. `write_db.ts` を postgres.js に書き換え
+4. `staging.stg_toggl__*` ビューを作成
+5. 旧 `toggl` スキーマを削除（データ確認後）

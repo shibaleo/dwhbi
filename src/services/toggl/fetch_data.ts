@@ -12,6 +12,8 @@ import {
   fetchProjects,
   fetchTags,
   fetchEntriesByRange,
+  fetchEntriesSince,
+  fetchEntriesIncremental,
   fetchEntriesByReportsApi,
   formatTogglDate,
   ReportsApiQuotaError,
@@ -280,3 +282,81 @@ export async function fetchTogglDataWithChunks(
  * @deprecated Use fetchTogglData instead
  */
 export const fetchAllData = fetchTogglData;
+
+// =============================================================================
+// Incremental Sync (差分同期)
+// =============================================================================
+
+/**
+ * 差分同期用データ取得
+ *
+ * - sinceTimestamp が指定された場合: `since` パラメータで差分取得
+ * - 指定されていない場合: 日付範囲で取得（初回同期・フルリフレッシュ用）
+ *
+ * @param options 取得オプション
+ * @returns 取得データと同期モード
+ */
+export async function fetchTogglDataIncremental(options: {
+  /** UNIXタイムスタンプ（秒）- この時刻以降の更新を取得 */
+  sinceTimestamp?: number;
+  /** フルリフレッシュ時の日数（デフォルト: 3） */
+  fallbackDays?: number;
+  /** メタデータも取得するか（デフォルト: true） */
+  includeMetadata?: boolean;
+}): Promise<{
+  clients: TogglApiV9Client[];
+  projects: TogglApiV9Project[];
+  tags: TogglApiV9Tag[];
+  entries: TogglApiV9TimeEntry[];
+  mode: 'incremental' | 'full';
+  apiCalls: number;
+}> {
+  const includeMetadata = options.includeMetadata ?? true;
+  let apiCalls = 0;
+
+  // メタデータ取得（オプション）
+  let clients: TogglApiV9Client[] = [];
+  let projects: TogglApiV9Project[] = [];
+  let tags: TogglApiV9Tag[] = [];
+
+  if (includeMetadata) {
+    const metadata = await fetchTogglMetadata();
+    clients = metadata.clients;
+    projects = metadata.projects;
+    tags = metadata.tags;
+    apiCalls += 3;
+  }
+
+  // エントリー取得
+  if (options.sinceTimestamp) {
+    // 差分同期: since パラメータを使用
+    log.info(`Fetching entries since ${new Date(options.sinceTimestamp * 1000).toISOString()}`);
+    const entries = await fetchEntriesSince(options.sinceTimestamp);
+    apiCalls += 1;
+
+    return {
+      clients,
+      projects,
+      tags,
+      entries,
+      mode: 'incremental',
+      apiCalls,
+    };
+  }
+
+  // フルリフレッシュ: 日付範囲を使用
+  const days = options.fallbackDays ?? 3;
+  const { start, end } = getDateRange(days);
+  log.info(`Fetching entries from ${start} to ${end} (${days} days)`);
+  const entries = await fetchEntriesByRange(start, end);
+  apiCalls += 1;
+
+  return {
+    clients,
+    projects,
+    tags,
+    entries,
+    mode: 'full',
+    apiCalls,
+  };
+}

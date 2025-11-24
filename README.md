@@ -280,3 +280,98 @@ startDate.setDate(startDate.getDate() - days - 1);
 - **データベース**: Supabase (PostgreSQL)
 - **CI/CD**: GitHub Actions
 - **認証**: OAuth 2.0 (Fitbit, Tanita, Google), OAuth 1.0a (Zaim), Basic (Toggl)
+
+## DWH移行プロジェクト（2024-11-24開始）
+
+### 概要
+
+サービス別スキーマ（toggl, fitbit等）から統一`raw`スキーマへの移行と、認証情報の暗号化管理を実施中。
+
+### 完了済み
+
+- [x] **Phase 1**: rawスキーマ作成、データ移行
+- [x] **Phase 2**: write_db.ts書き換え（全サービス）
+- [x] **Phase 3**: 旧データテーブル削除
+- [x] **Phase 4**: credentialsスキーマ作成、認証情報の暗号化保存
+
+### 残作業（TODO）
+
+- [x] **Phase 5**: auth.tsをcredentials.servicesに移行
+  - [x] toggl/auth.ts, toggl/api.ts
+  - [x] zaim/api.ts
+  - [x] gcalendar/auth.ts
+  - [x] fitbit/auth.ts
+  - [x] tanita/auth.ts
+  - [x] notion/auth.ts, notion/fetch_config.ts
+- [ ] **Phase 6**: 同期テスト（sync_daily.ts）
+- [ ] **Phase 7**: .envから認証情報削除（SUPABASE_*とTOKEN_ENCRYPTION_KEY以外）
+- [ ] **Phase 8**: 旧tokensテーブル削除（fitbit.tokens, tanita.tokens）
+- [ ] **Phase 9**: staging/marts層構築（DWH 3層アーキテクチャ）
+
+### 現在のスキーマ構成
+
+```
+raw/                    # データ層（新）
+  toggl_clients
+  toggl_projects
+  toggl_tags
+  toggl_entries
+  fitbit_sleep
+  fitbit_activity_daily
+  fitbit_heart_rate_daily
+  fitbit_hrv_daily
+  fitbit_spo2_daily
+  fitbit_breathing_rate_daily
+  fitbit_cardio_score_daily
+  fitbit_temperature_skin_daily
+  tanita_body_composition
+  tanita_blood_pressure
+  tanita_steps
+  zaim_categories
+  zaim_genres
+  zaim_accounts
+  zaim_transactions
+  gcalendar_events
+
+credentials/            # 認証情報（暗号化）
+  services              # 全サービスの認証情報を統一管理
+
+fitbit/                 # 運用系（旧スキーマ残留）
+  tokens                # → Phase 8で削除予定
+
+tanita/                 # 運用系（旧スキーマ残留）
+  tokens                # → Phase 8で削除予定
+
+zaim/                   # 運用系（旧スキーマ残留）
+  sync_log              # 同期履歴
+```
+
+### 認証情報の暗号化
+
+全サービスの認証情報をAES-256-GCMで暗号化し、`credentials.services`テーブルに統一保存。
+
+```typescript
+// src/utils/credentials.ts
+import { getCredentials, updateCredentials } from "./credentials.ts";
+
+// 取得
+const { credentials } = await getCredentials<OAuth2Credentials>("fitbit");
+console.log(credentials.access_token);
+
+// 更新（トークンリフレッシュ時）
+await updateCredentials("fitbit", { access_token: newToken }, newExpiresAt);
+```
+
+**必要な環境変数:**
+```bash
+TOKEN_ENCRYPTION_KEY="<32バイトBase64>"
+```
+
+**キー生成:**
+```bash
+deno run --allow-env src/utils/credentials.ts
+```
+
+### 関連ドキュメント
+
+- [docs/DWH_MIGRATION_PHASE1.md](docs/DWH_MIGRATION_PHASE1.md) - Phase 1-3の詳細

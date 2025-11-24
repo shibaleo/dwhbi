@@ -1,7 +1,7 @@
 /**
  * Fitbit データの Supabase 書き込み
  *
- * fitbit スキーマへのデータ変換と upsert 処理
+ * raw スキーマへのデータ変換と upsert 処理
  */
 
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
@@ -32,8 +32,8 @@ import type {
 // Types
 // =============================================================================
 
-/** fitbit スキーマ用クライアント型 */
-export type FitbitSchema = ReturnType<SupabaseClient["schema"]>;
+/** raw スキーマ用クライアント型 */
+export type RawSchema = ReturnType<SupabaseClient["schema"]>;
 
 /** upsert 結果 */
 export interface UpsertResult {
@@ -52,9 +52,9 @@ const BATCH_SIZE = 1000;
 // =============================================================================
 
 /**
- * fitbit スキーマ専用の Supabase クライアントを作成
+ * raw スキーマ専用の Supabase クライアントを作成
  */
-export function createFitbitDbClient(): FitbitSchema {
+export function createFitbitDbClient(): RawSchema {
   const url = Deno.env.get("SUPABASE_URL");
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -63,7 +63,7 @@ export function createFitbitDbClient(): FitbitSchema {
   }
 
   const supabase = createClient(url, key);
-  return supabase.schema("fitbit");
+  return supabase.schema("raw");
 }
 
 // =============================================================================
@@ -261,7 +261,7 @@ export function toDbTemperatureSkinDaily(
  * バッチ upsert
  */
 async function upsertBatch<T extends object>(
-  fitbit: FitbitSchema,
+  raw: RawSchema,
   table: string,
   records: T[],
   onConflict: string,
@@ -276,7 +276,7 @@ async function upsertBatch<T extends object>(
   for (let i = 0; i < records.length; i += BATCH_SIZE) {
     const batch = records.slice(i, i + BATCH_SIZE);
 
-    const { error } = await fitbit
+    const { error } = await raw
       .from(table)
       .upsert(batch, { onConflict });
 
@@ -299,13 +299,13 @@ async function upsertBatch<T extends object>(
  * 睡眠データを DB に保存
  */
 export async function saveSleep(
-  fitbit: FitbitSchema,
+  raw: RawSchema,
   items: FitbitApiSleepLog[],
 ): Promise<UpsertResult> {
   const records = toDbSleep(items);
   log.info(`Saving sleep... (${records.length} records)`);
 
-  const result = await upsertBatch(fitbit, "sleep", records, "log_id");
+  const result = await upsertBatch(raw, "fitbit_sleep", records, "log_id");
 
   if (result.success > 0) log.success(`${result.success} records saved`);
   if (result.failed > 0) log.error(`${result.failed} records failed`);
@@ -317,14 +317,14 @@ export async function saveSleep(
  * 活動データを DB に保存
  */
 export async function saveActivityDaily(
-  fitbit: FitbitSchema,
+  raw: RawSchema,
   activityMap: Map<string, FitbitApiActivitySummary>,
   azmData: FitbitApiAzmDay[],
 ): Promise<UpsertResult> {
   const records = toDbActivityDaily(activityMap, azmData);
   log.info(`Saving activity... (${records.length} records)`);
 
-  const result = await upsertBatch(fitbit, "activity_daily", records, "date");
+  const result = await upsertBatch(raw, "fitbit_activity_daily", records, "date");
 
   if (result.success > 0) log.success(`${result.success} records saved`);
   if (result.failed > 0) log.error(`${result.failed} records failed`);
@@ -336,14 +336,14 @@ export async function saveActivityDaily(
  * 心拍数データを DB に保存
  */
 export async function saveHeartRateDaily(
-  fitbit: FitbitSchema,
+  raw: RawSchema,
   items: FitbitApiHeartRateDay[],
   intradayMap?: Map<string, FitbitApiHeartRateIntraday>,
 ): Promise<UpsertResult> {
   const records = toDbHeartRateDaily(items, intradayMap);
   log.info(`Saving heart rate... (${records.length} records)`);
 
-  const result = await upsertBatch(fitbit, "heart_rate_daily", records, "date");
+  const result = await upsertBatch(raw, "fitbit_heart_rate_daily", records, "date");
 
   if (result.success > 0) log.success(`${result.success} records saved`);
   if (result.failed > 0) log.error(`${result.failed} records failed`);
@@ -355,13 +355,13 @@ export async function saveHeartRateDaily(
  * HRV データを DB に保存
  */
 export async function saveHrvDaily(
-  fitbit: FitbitSchema,
+  raw: RawSchema,
   items: FitbitApiHrvDay[],
 ): Promise<UpsertResult> {
   const records = toDbHrvDaily(items);
   log.info(`Saving HRV... (${records.length} records)`);
 
-  const result = await upsertBatch(fitbit, "hrv_daily", records, "date");
+  const result = await upsertBatch(raw, "fitbit_hrv_daily", records, "date");
 
   if (result.success > 0) log.success(`${result.success} records saved`);
   if (result.failed > 0) log.error(`${result.failed} records failed`);
@@ -373,13 +373,13 @@ export async function saveHrvDaily(
  * SpO2 データを DB に保存
  */
 export async function saveSpo2Daily(
-  fitbit: FitbitSchema,
+  raw: RawSchema,
   spo2Map: Map<string, FitbitApiSpo2Response>,
 ): Promise<UpsertResult> {
   const records = toDbSpo2Daily(spo2Map);
   log.info(`Saving SpO2... (${records.length} records)`);
 
-  const result = await upsertBatch(fitbit, "spo2_daily", records, "date");
+  const result = await upsertBatch(raw, "fitbit_spo2_daily", records, "date");
 
   if (result.success > 0) log.success(`${result.success} records saved`);
   if (result.failed > 0) log.error(`${result.failed} records failed`);
@@ -391,13 +391,13 @@ export async function saveSpo2Daily(
  * 呼吸数データを DB に保存
  */
 export async function saveBreathingRateDaily(
-  fitbit: FitbitSchema,
+  raw: RawSchema,
   items: FitbitApiBreathingRateDay[],
 ): Promise<UpsertResult> {
   const records = toDbBreathingRateDaily(items);
   log.info(`Saving breathing rate... (${records.length} records)`);
 
-  const result = await upsertBatch(fitbit, "breathing_rate_daily", records, "date");
+  const result = await upsertBatch(raw, "fitbit_breathing_rate_daily", records, "date");
 
   if (result.success > 0) log.success(`${result.success} records saved`);
   if (result.failed > 0) log.error(`${result.failed} records failed`);
@@ -409,13 +409,13 @@ export async function saveBreathingRateDaily(
  * VO2 Max データを DB に保存
  */
 export async function saveCardioScoreDaily(
-  fitbit: FitbitSchema,
+  raw: RawSchema,
   items: FitbitApiCardioScoreDay[],
 ): Promise<UpsertResult> {
   const records = toDbCardioScoreDaily(items);
   log.info(`Saving VO2 Max... (${records.length} records)`);
 
-  const result = await upsertBatch(fitbit, "cardio_score_daily", records, "date");
+  const result = await upsertBatch(raw, "fitbit_cardio_score_daily", records, "date");
 
   if (result.success > 0) log.success(`${result.success} records saved`);
   if (result.failed > 0) log.error(`${result.failed} records failed`);
@@ -427,13 +427,13 @@ export async function saveCardioScoreDaily(
  * 皮膚温度データを DB に保存
  */
 export async function saveTemperatureSkinDaily(
-  fitbit: FitbitSchema,
+  raw: RawSchema,
   items: FitbitApiTemperatureSkinDay[],
 ): Promise<UpsertResult> {
   const records = toDbTemperatureSkinDaily(items);
   log.info(`Saving skin temperature... (${records.length} records)`);
 
-  const result = await upsertBatch(fitbit, "temperature_skin_daily", records, "date");
+  const result = await upsertBatch(raw, "fitbit_temperature_skin_daily", records, "date");
 
   if (result.success > 0) log.success(`${result.success} records saved`);
   if (result.failed > 0) log.error(`${result.failed} records failed`);
@@ -445,7 +445,7 @@ export async function saveTemperatureSkinDaily(
  * 全データを DB に保存（並列実行で高速化）
  */
 export async function saveAllFitbitData(
-  fitbit: FitbitSchema,
+  raw: RawSchema,
   data: FitbitData,
 ): Promise<{
   sleep: UpsertResult;
@@ -467,14 +467,14 @@ export async function saveAllFitbitData(
     cardioScoreResult,
     temperatureSkinResult,
   ] = await Promise.all([
-    saveSleep(fitbit, data.sleep),
-    saveActivityDaily(fitbit, data.activity, data.azm),
-    saveHeartRateDaily(fitbit, data.heartRate, data.heartRateIntraday),
-    saveHrvDaily(fitbit, data.hrv),
-    saveSpo2Daily(fitbit, data.spo2),
-    saveBreathingRateDaily(fitbit, data.breathingRate),
-    saveCardioScoreDaily(fitbit, data.cardioScore),
-    saveTemperatureSkinDaily(fitbit, data.temperatureSkin),
+    saveSleep(raw, data.sleep),
+    saveActivityDaily(raw, data.activity, data.azm),
+    saveHeartRateDaily(raw, data.heartRate, data.heartRateIntraday),
+    saveHrvDaily(raw, data.hrv),
+    saveSpo2Daily(raw, data.spo2),
+    saveBreathingRateDaily(raw, data.breathingRate),
+    saveCardioScoreDaily(raw, data.cardioScore),
+    saveTemperatureSkinDaily(raw, data.temperatureSkin),
   ]);
 
   return {

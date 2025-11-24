@@ -666,3 +666,73 @@ deno run --allow-env --allow-net --allow-read sync_all.ts
 4. **フォーミュラ/ロールアップ**: 計算結果の型が変わる可能性あり。jsonbで保存が安全。
 
 5. **レート制限**: Notion API は 3 requests/second。大量データ時は自動でスロットリング。
+
+---
+
+## DWH移行計画
+
+### 概要
+
+現在の `notion` スキーマを `raw` スキーマに移行し、DWH 3層アーキテクチャを採用する。
+
+```
+現在:  notion.sauna, notion.gcal_mapping, notion.* (動的テーブル)
+    ↓
+移行後:
+  raw.notion_sauna              ← 生データ（テーブル）
+  raw.notion_gcal_mapping
+  raw.notion_*
+      ↓
+  staging.stg_notion__sauna     ← クリーニング済み（ビュー）
+  staging.stg_notion__gcal_mapping
+      ↓
+  marts.dim_*                   ← ビジネスエンティティ（ビュー）
+```
+
+### 変更点
+
+| 項目 | 現在 | 移行後 |
+|------|------|--------|
+| スキーマ | `notion` | `raw` |
+| テーブル名 | `sauna` | `notion_sauna` |
+| DBクライアント | supabase-js (REST API) | postgres.js (直接接続) |
+| API公開 | Exposed | Not Exposed |
+
+### write_db.ts 変更内容
+
+```typescript
+// 現在
+import { createClient } from "npm:@supabase/supabase-js@2";
+const supabase = createClient(url, key);
+const notion = supabase.schema(config.supabaseSchema);
+await notion.from(config.supabaseTable).upsert(data, { onConflict: "id" });
+
+// 移行後
+import postgres from "npm:postgres";
+const sql = postgres(DATABASE_URL);
+const tableName = `notion_${config.supabaseTable}`;
+await sql`
+  INSERT INTO raw.${sql(tableName)} ${sql(records)}
+  ON CONFLICT (id) DO UPDATE SET
+    updated_at = EXCLUDED.updated_at,
+    synced_at = now()
+`;
+```
+
+### 環境変数追加
+
+| 変数名 | 説明 |
+|--------|------|
+| `DATABASE_URL` | PostgreSQL 直接接続文字列 |
+
+### マイグレーション手順
+
+1. `raw.notion_*` テーブルを作成（動的スキーマ生成を維持）
+2. `notion.*` から `raw.notion_*` にデータ移行
+3. `write_db.ts` を postgres.js に書き換え
+4. `staging.stg_notion__*` ビューを作成
+5. 旧 `notion` スキーマを削除（データ確認後）
+
+### 特記事項
+
+Notion同期は動的テーブル生成（sync_schema.ts）を持つため、DDL生成ロジックも `raw` スキーマ対応に修正が必要。テーブル名は `notion_{original_name}` の命名規則を適用。

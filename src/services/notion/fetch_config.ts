@@ -6,7 +6,7 @@
  * - 最終同期日時の更新
  */
 
-import { metadataTableId } from "./auth.ts";
+import { getMetadataTableId } from "./auth.ts";
 import { queryDatabase, updatePageProperties } from "./api.ts";
 import type {
   SyncConfig,
@@ -100,7 +100,7 @@ function parseSyncConfig(page: NotionApiPage): { config: SyncConfig | null; skip
       name,
       databaseId: normalizeNotionId(databaseId),
       supabaseTable,
-      supabaseSchema: extractTextValue(props["supabase_schema"]) ?? "notion",
+      supabaseSchema: extractTextValue(props["supabase_schema"]) ?? "raw",
       syncType: syncTypeRaw as "master" | "transaction",
       enabled: extractCheckboxValue(props["enabled"]),
       lastSyncedAt: extractTextValue(props["last_synced_at"]),
@@ -127,6 +127,7 @@ function normalizeNotionId(id: string): string {
 export async function fetchSyncConfigs(): Promise<SyncConfig[]> {
   log.section("Fetching sync configs from metadata table");
 
+  const metadataTableId = await getMetadataTableId();
   const pages = await queryDatabase(metadataTableId);
   log.info(`Found ${pages.length} config entries`);
 

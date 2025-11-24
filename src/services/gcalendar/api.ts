@@ -45,6 +45,8 @@ export interface FetchEventsOptions {
   timeMax: string;
   /** 取得するフィールド（デフォルト: 必要最小限） */
   fields?: string;
+  /** 最終更新日時以降のイベントのみ取得（差分同期用、ISO 8601） */
+  updatedMin?: string;
 }
 
 // =============================================================================
@@ -77,6 +79,11 @@ export async function fetchEvents(options: FetchEventsOptions): Promise<GCalApiE
       orderBy: "startTime",
       fields: fieldsParam,
     });
+    
+    // 差分同期: updatedMin パラメータを追加
+    if (options.updatedMin) {
+      params.set("updatedMin", options.updatedMin);
+    }
     
     if (pageToken) {
       params.set("pageToken", pageToken);

@@ -1,0 +1,51 @@
+-- ============================================================================
+-- LIFETRACER Baseline Migration
+-- Created: 2024-11-24
+-- ============================================================================
+-- 
+-- このマイグレーションは既存スキーマのベースラインです。
+-- 2024-11-24時点で以下のスキーマ/テーブルが存在:
+--
+-- toggl:
+--   - entries (12,503 records)
+--   - projects (22 records)
+--   - clients (5 records)
+--   - tags (5 records)
+--
+-- fitbit:
+--   - activity_daily (206 records)
+--   - sleep (27 records)
+--   - heart_rate_daily (6 records)
+--   - cardio_score_daily (6 records)
+--   - hrv_daily (5 records)
+--   - spo2_daily (5 records)
+--   - breathing_rate_daily (5 records)
+--   - temperature_skin_daily (5 records)
+--   - tokens (1 record)
+--
+-- tanita:
+--   - body_composition (241 records)
+--   - blood_pressure (139 records)
+--   - steps (0 records)
+--   - tokens (1 record)
+--
+-- zaim:
+--   - transactions (3,449 records)
+--   - genres (142 records)
+--   - accounts (42 records)
+--   - categories (25 records)
+--   - sync_log (170 records)
+--
+-- gcalendar:
+--   - events (676 records)
+--
+-- notion:
+--   - gcal_mapping (11 records)
+--   - sauna (0 records)
+--   - addiction (0 records)
+--
+-- 実際のDDLはSQLエディタで直接作成済みのため、
+-- このファイルは履歴管理の起点としてのみ機能します。
+-- ============================================================================
+
+-- No DDL statements required (baseline marker only)

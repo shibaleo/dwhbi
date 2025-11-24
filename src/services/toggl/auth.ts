@@ -2,10 +2,14 @@
  * Toggl Track API 認証クライアント
  *
  * API Token による Basic 認証を提供。
- * トークンは環境変数から取得（リフレッシュ不要）。
+ * トークンは credentials.services テーブルから取得（リフレッシュ不要）。
  */
 
-import "https://deno.land/std@0.203.0/dotenv/load.ts";
+import "jsr:@std/dotenv/load";
+import {
+  getCredentials,
+  type BasicCredentials,
+} from "../../utils/credentials.ts";
 
 // =============================================================================
 // Constants
@@ -14,21 +18,34 @@ import "https://deno.land/std@0.203.0/dotenv/load.ts";
 const BASE_URL = "https://api.track.toggl.com/api/v9";
 
 // =============================================================================
-// Configuration
+// Configuration Cache
 // =============================================================================
 
-function loadConfig() {
-  const apiToken = Deno.env.get("TOGGL_API_TOKEN")?.trim();
-  const workspaceId = Deno.env.get("TOGGL_WORKSPACE_ID")?.trim();
+let _config: { apiToken: string; workspaceId: string } | null = null;
 
-  if (!apiToken || !workspaceId) {
-    throw new Error("TOGGL_API_TOKEN or TOGGL_WORKSPACE_ID is not set in environment");
+/**
+ * 認証情報を credentials.services から取得（キャッシュ付き）
+ */
+async function loadConfig(): Promise<{ apiToken: string; workspaceId: string }> {
+  if (_config) return _config;
+
+  const result = await getCredentials<BasicCredentials>("toggl");
+  if (!result) {
+    throw new Error("Toggl credentials not found in credentials.services");
   }
 
-  return { apiToken, workspaceId };
-}
+  const { credentials } = result;
+  if (!credentials.api_token || !credentials.workspace_id) {
+    throw new Error("Toggl credentials missing api_token or workspace_id");
+  }
 
-const config = loadConfig();
+  _config = {
+    apiToken: credentials.api_token,
+    workspaceId: credentials.workspace_id,
+  };
+
+  return _config;
+}
 
 // =============================================================================
 // Authentication
@@ -37,7 +54,8 @@ const config = loadConfig();
 /**
  * Basic認証ヘッダーを生成
  */
-function getAuthHeaders(): Record<string, string> {
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const config = await loadConfig();
   return {
     "Content-Type": "application/json",
     "Authorization": `Basic ${btoa(`${config.apiToken}:api_token`)}`,
@@ -91,7 +109,7 @@ export async function togglFetch<T>(
     ? endpoint
     : `${BASE_URL}${endpoint}`;
 
-  const authHeaders = getAuthHeaders();
+  const authHeaders = await getAuthHeaders();
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= retryConfig.maxRetries; attempt++) {
@@ -127,6 +145,9 @@ export async function togglFetch<T>(
 // =============================================================================
 
 /**
- * ワークスペースID
+ * ワークスペースIDを取得
  */
-export const workspaceId = config.workspaceId;
+export async function getWorkspaceId(): Promise<string> {
+  const config = await loadConfig();
+  return config.workspaceId;
+}

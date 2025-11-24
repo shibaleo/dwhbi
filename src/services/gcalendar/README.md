@@ -330,3 +330,69 @@ GROUP BY DATE(g.start_time), g.description, c.ja_name
 ## 参考リンク
 
 - [Google Calendar API v3](https://developers.google.com/calendar/api/v3/reference)
+
+---
+
+## DWH移行計画
+
+### 概要
+
+現在の `gcalendar` スキーマを `raw` スキーマに移行し、DWH 3層アーキテクチャを採用する。
+
+```
+現在:  gcalendar.events
+    ↓
+移行後:
+  raw.gcalendar_events           ← 生データ（テーブル）
+      ↓
+  staging.stg_gcalendar__events  ← クリーニング済み（ビュー）
+      ↓
+  marts.fct_planned_time         ← ビジネスエンティティ（ビュー）
+```
+
+### 変更点
+
+| 項目 | 現在 | 移行後 |
+|------|------|--------|
+| スキーマ | `gcalendar` | `raw` |
+| テーブル名 | `events` | `gcalendar_events` |
+| DBクライアント | supabase-js (REST API) | postgres.js (直接接続) |
+| API公開 | Exposed | Not Exposed |
+
+### write_db.ts 変更内容
+
+```typescript
+// 現在
+import { createClient } from "npm:@supabase/supabase-js@2";
+const supabase = createClient(url, key);
+const gcalendar = supabase.schema("gcalendar");
+await gcalendar.from("events").upsert(data, { onConflict: "id" });
+
+// 移行後
+import postgres from "npm:postgres";
+const sql = postgres(DATABASE_URL);
+await sql`
+  INSERT INTO raw.gcalendar_events ${sql(records)}
+  ON CONFLICT (id) DO UPDATE SET
+    summary = EXCLUDED.summary,
+    description = EXCLUDED.description,
+    start_time = EXCLUDED.start_time,
+    end_time = EXCLUDED.end_time,
+    status = EXCLUDED.status,
+    synced_at = now()
+`;
+```
+
+### 環境変数追加
+
+| 変数名 | 説明 |
+|--------|------|
+| `DATABASE_URL` | PostgreSQL 直接接続文字列 |
+
+### マイグレーション手順
+
+1. `raw.gcalendar_events` テーブルを作成
+2. `gcalendar.events` から `raw.gcalendar_events` にデータ移行
+3. `write_db.ts` を postgres.js に書き換え
+4. `staging.stg_gcalendar__events` ビューを作成
+5. 旧 `gcalendar` スキーマを削除（データ確認後）

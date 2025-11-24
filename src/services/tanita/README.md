@@ -320,3 +320,74 @@ test/tanita/
    ```bash
    deno run --allow-env --allow-net --allow-read sync_all.ts
    ```
+
+---
+
+## DWH移行計画
+
+### 概要
+
+現在の `tanita` スキーマを `raw` スキーマに移行し、DWH 3層アーキテクチャを採用する。
+
+```
+現在:  tanita.body_composition, tanita.blood_pressure, tanita.steps
+    ↓
+移行後:
+  raw.tanita_body_composition   ← 生データ（テーブル）
+  raw.tanita_blood_pressure
+  raw.tanita_steps
+      ↓
+  staging.stg_tanita__body_composition   ← クリーニング済み（ビュー）
+  staging.stg_tanita__blood_pressure
+      ↓
+  marts.fct_body_metrics                 ← ビジネスエンティティ（ビュー）
+```
+
+### 変更点
+
+| 項目 | 現在 | 移行後 |
+|------|------|--------|
+| スキーマ | `tanita` | `raw` |
+| テーブル名 | `body_composition` | `tanita_body_composition` |
+| DBクライアント | supabase-js (REST API) | postgres.js (直接接続) |
+| API公開 | Exposed | Not Exposed |
+
+### write_db.ts 変更内容
+
+```typescript
+// 現在
+import { createClient } from "npm:@supabase/supabase-js@2";
+const supabase = createClient(url, key);
+const tanita = supabase.schema("tanita");
+await tanita.from("body_composition").upsert(data, { onConflict: "measured_at" });
+
+// 移行後
+import postgres from "npm:postgres";
+const sql = postgres(DATABASE_URL);
+await sql`
+  INSERT INTO raw.tanita_body_composition ${sql(records)}
+  ON CONFLICT (measured_at) DO UPDATE SET
+    weight = EXCLUDED.weight,
+    body_fat_percent = EXCLUDED.body_fat_percent,
+    model = EXCLUDED.model,
+    synced_at = now()
+`;
+```
+
+### 環境変数追加
+
+| 変数名 | 説明 |
+|--------|------|
+| `DATABASE_URL` | PostgreSQL 直接接続文字列 |
+
+### マイグレーション手順
+
+1. `raw.tanita_*` テーブルを作成
+2. `tanita.*` から `raw.tanita_*` にデータ移行
+3. `write_db.ts` を postgres.js に書き換え
+4. `staging.stg_tanita__*` ビューを作成
+5. 旧 `tanita` スキーマを削除（データ確認後）
+
+### OAuthトークンの保存場所
+
+`tanita.tokens` テーブルは raw 層ではなく、別途 `auth` スキーマまたは環境変数での管理を検討。

@@ -1,7 +1,7 @@
 /**
  * Tanita データの Supabase 書き込み
  *
- * tanita スキーマへのデータ変換と upsert 処理
+ * raw スキーマへのデータ変換と upsert 処理
  */
 
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
@@ -19,8 +19,8 @@ import { TAGS } from "./types.ts";
 // Types
 // =============================================================================
 
-/** tanita スキーマ用クライアント型 */
-export type TanitaSchema = ReturnType<SupabaseClient["schema"]>;
+/** raw スキーマ用クライアント型 */
+export type RawSchema = ReturnType<SupabaseClient["schema"]>;
 
 /** upsert 結果 */
 export interface UpsertResult {
@@ -39,9 +39,9 @@ const BATCH_SIZE = 1000;
 // =============================================================================
 
 /**
- * tanita スキーマ専用の Supabase クライアントを作成
+ * raw スキーマ専用の Supabase クライアントを作成
  */
-export function createTanitaDbClient(): TanitaSchema {
+export function createTanitaDbClient(): RawSchema {
   const url = Deno.env.get("SUPABASE_URL");
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -50,7 +50,7 @@ export function createTanitaDbClient(): TanitaSchema {
   }
 
   const supabase = createClient(url, key);
-  return supabase.schema("tanita");
+  return supabase.schema("raw");
 }
 
 // =============================================================================
@@ -166,7 +166,7 @@ export function toDbSteps(items: TanitaDataItem[]): DbSteps[] {
  * バッチ upsert
  */
 async function upsertBatch<T extends object>(
-  tanita: TanitaSchema,
+  raw: RawSchema,
   table: string,
   records: T[],
   onConflict: string,
@@ -181,7 +181,7 @@ async function upsertBatch<T extends object>(
   for (let i = 0; i < records.length; i += BATCH_SIZE) {
     const batch = records.slice(i, i + BATCH_SIZE);
 
-    const { error } = await tanita
+    const { error } = await raw
       .from(table)
       .upsert(batch, { onConflict });
 
@@ -204,13 +204,13 @@ async function upsertBatch<T extends object>(
  * 体組成データを DB に保存
  */
 export async function saveBodyComposition(
-  tanita: TanitaSchema,
+  raw: RawSchema,
   items: TanitaDataItem[],
 ): Promise<UpsertResult> {
   const records = toDbBodyComposition(items);
   log.info(`Saving body composition data... (${records.length} records)`);
 
-  const result = await upsertBatch(tanita, "body_composition", records, "measured_at");
+  const result = await upsertBatch(raw, "tanita_body_composition", records, "measured_at");
 
   if (result.success > 0) log.success(`${result.success} records saved`);
   if (result.failed > 0) log.error(`${result.failed} records failed`);
@@ -222,13 +222,13 @@ export async function saveBodyComposition(
  * 血圧データを DB に保存
  */
 export async function saveBloodPressure(
-  tanita: TanitaSchema,
+  raw: RawSchema,
   items: TanitaDataItem[],
 ): Promise<UpsertResult> {
   const records = toDbBloodPressure(items);
   log.info(`Saving blood pressure data... (${records.length} records)`);
 
-  const result = await upsertBatch(tanita, "blood_pressure", records, "measured_at");
+  const result = await upsertBatch(raw, "tanita_blood_pressure", records, "measured_at");
 
   if (result.success > 0) log.success(`${result.success} records saved`);
   if (result.failed > 0) log.error(`${result.failed} records failed`);
@@ -240,13 +240,13 @@ export async function saveBloodPressure(
  * 歩数データを DB に保存
  */
 export async function saveSteps(
-  tanita: TanitaSchema,
+  raw: RawSchema,
   items: TanitaDataItem[],
 ): Promise<UpsertResult> {
   const records = toDbSteps(items);
   log.info(`Saving steps data... (${records.length} records)`);
 
-  const result = await upsertBatch(tanita, "steps", records, "measured_at");
+  const result = await upsertBatch(raw, "tanita_steps", records, "measured_at");
 
   if (result.success > 0) log.success(`${result.success} records saved`);
   if (result.failed > 0) log.error(`${result.failed} records failed`);

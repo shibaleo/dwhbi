@@ -1,7 +1,8 @@
 /**
  * Notion データの Supabase 書き込み
  *
- * 動的テーブルへのデータ変換と upsert/truncate+insert 処理
+ * raw スキーマへのデータ変換と upsert/truncate+insert 処理
+ * スキーマは SyncConfig.supabaseSchema で動的に指定可能
  */
 
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
@@ -23,8 +24,8 @@ import {
 // Types
 // =============================================================================
 
-/** Notion スキーマ用クライアント型 */
-export type NotionSchema = ReturnType<SupabaseClient["schema"]>;
+/** スキーマ用クライアント型 */
+export type SchemaClient = ReturnType<SupabaseClient["schema"]>;
 
 /** upsert 結果 */
 export interface UpsertResult {
@@ -44,8 +45,9 @@ const BATCH_SIZE = 1000;
 
 /**
  * 指定スキーマの Supabase クライアントを作成
+ * @param schema スキーマ名（デフォルト: raw）
  */
-export function createNotionDbClient(schema: string = "notion"): NotionSchema {
+export function createNotionDbClient(schema: string = "raw"): SchemaClient {
   const url = Deno.env.get("SUPABASE_URL")?.trim();
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim();
 
@@ -109,7 +111,7 @@ export function transformPagesToRecords(
  * バッチ upsert
  */
 async function upsertBatch(
-  client: NotionSchema,
+  client: SchemaClient,
   table: string,
   records: DbRecord[],
 ): Promise<UpsertResult> {
@@ -144,7 +146,7 @@ async function upsertBatch(
  * Supabase JS SDK にはTRUNCATEがないため、DELETE + INSERT で代用
  */
 async function truncateAndInsert(
-  client: NotionSchema,
+  client: SchemaClient,
   table: string,
   records: DbRecord[],
 ): Promise<UpsertResult> {

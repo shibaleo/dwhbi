@@ -1,6 +1,9 @@
 /**
  * Tanita Health Planet OAuth2.0 認証管理
  *
+ * 認証情報は credentials.services テーブルから取得・保存。
+ * トークンリフレッシュ時は自動的に credentials.services を更新。
+ *
  * 使用例:
  *   deno run --allow-env --allow-net --allow-read auth.ts              # 有効性確認（必要ならリフレッシュ）
  *   deno run --allow-env --allow-net --allow-read auth.ts --refresh    # 強制リフレッシュ
@@ -8,10 +11,15 @@
  */
 
 import "jsr:@std/dotenv/load";
-import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import * as log from "../../utils/log.ts";
-import type { AuthOptions, DbToken, TokenResponse } from "./types.ts";
+import {
+  getCredentials,
+  updateCredentials,
+  saveCredentials,
+  type OAuth2Credentials,
+} from "../../utils/credentials.ts";
+import type { AuthOptions, TokenResponse } from "./types.ts";
 
 // =============================================================================
 // Constants
@@ -20,23 +28,6 @@ import type { AuthOptions, DbToken, TokenResponse } from "./types.ts";
 const OAUTH_TOKEN_URL = "https://www.healthplanet.jp/oauth/token";
 const REDIRECT_URI = "https://www.healthplanet.jp/success.html";
 const DEFAULT_THRESHOLD_DAYS = 7;
-const SCHEMA = "tanita";
-const TABLE = "tokens";
-
-// =============================================================================
-// Supabase Client
-// =============================================================================
-
-function createSupabaseClient(): SupabaseClient {
-  const url = Deno.env.get("SUPABASE_URL");
-  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
-  if (!url || !key) {
-    throw new Error("SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY are required");
-  }
-
-  return createClient(url, key);
-}
 
 // =============================================================================
 // Token Validation
@@ -58,74 +49,32 @@ export function isTokenExpiringSoon(
 }
 
 // =============================================================================
-// Database Operations
+// Credential Operations
 // =============================================================================
 
 /**
- * DBからトークンを取得
+ * 認証情報を credentials.services から取得
  */
-export async function getTokenFromDb(
-  supabase: SupabaseClient,
-): Promise<DbToken | null> {
-  const { data, error } = await supabase
-    .schema(SCHEMA)
-    .from(TABLE)
-    .select("*")
-    .limit(1)
-    .single();
-
-  if (error) {
-    if (error.code === "PGRST116") {
-      // レコードなし
-      return null;
-    }
-    throw new Error(`Token fetch error: ${error.message}`);
+async function loadCredentials(): Promise<{
+  credentials: OAuth2Credentials;
+  expiresAt: Date | null;
+}> {
+  const result = await getCredentials<OAuth2Credentials>("tanita");
+  if (!result) {
+    throw new Error("Tanita credentials not found in credentials.services");
   }
 
-  return data as DbToken;
-}
+  const { credentials, expiresAt } = result;
 
-/**
- * トークンをDBに保存（upsert）
- */
-export async function saveTokenToDb(
-  supabase: SupabaseClient,
-  token: Partial<DbToken>,
-  existingId?: string,
-): Promise<void> {
-  const now = new Date().toISOString();
-
-  if (existingId) {
-    // 既存レコード更新
-    const { error } = await supabase
-      .schema(SCHEMA)
-      .from(TABLE)
-      .update({
-        ...token,
-        updated_at: now,
-        last_refreshed_at: now,
-      })
-      .eq("id", existingId);
-
-    if (error) {
-      throw new Error(`Token update error: ${error.message}`);
-    }
-  } else {
-    // 新規作成
-    const { error } = await supabase
-      .schema(SCHEMA)
-      .from(TABLE)
-      .insert({
-        ...token,
-        created_at: now,
-        updated_at: now,
-        last_refreshed_at: now,
-      });
-
-    if (error) {
-      throw new Error(`Token create error: ${error.message}`);
-    }
+  // 必須フィールドの検証
+  if (!credentials.client_id || !credentials.client_secret) {
+    throw new Error("Tanita credentials missing client_id or client_secret");
   }
+  if (!credentials.access_token || !credentials.refresh_token) {
+    throw new Error("Tanita credentials missing access_token or refresh_token. Use --init to get initial token.");
+  }
+
+  return { credentials, expiresAt };
 }
 
 // =============================================================================
@@ -135,14 +84,11 @@ export async function saveTokenToDb(
 /**
  * 認可コードからトークンを取得（初回のみ）
  */
-export async function getInitialToken(code: string): Promise<TokenResponse> {
-  const clientId = Deno.env.get("TANITA_CLIENT_ID");
-  const clientSecret = Deno.env.get("TANITA_CLIENT_SECRET");
-
-  if (!clientId || !clientSecret) {
-    throw new Error("TANITA_CLIENT_ID, TANITA_CLIENT_SECRET are required");
-  }
-
+export async function getInitialToken(
+  clientId: string,
+  clientSecret: string,
+  code: string,
+): Promise<TokenResponse> {
   const params = new URLSearchParams({
     client_id: clientId,
     client_secret: clientSecret,
@@ -173,15 +119,10 @@ export async function getInitialToken(code: string): Promise<TokenResponse> {
  * @returns TokenResponse（更新された場合）または null（SUCCESSの場合）
  */
 export async function refreshTokenFromApi(
+  clientId: string,
+  clientSecret: string,
   refreshToken: string,
 ): Promise<TokenResponse | null> {
-  const clientId = Deno.env.get("TANITA_CLIENT_ID");
-  const clientSecret = Deno.env.get("TANITA_CLIENT_SECRET");
-
-  if (!clientId || !clientSecret) {
-    throw new Error("TANITA_CLIENT_ID, TANITA_CLIENT_SECRET are required");
-  }
-
   const params = new URLSearchParams({
     client_id: clientId,
     client_secret: clientSecret,
@@ -222,7 +163,7 @@ export async function refreshTokenFromApi(
 
 /**
  * 有効なアクセストークンを保証して返す
- * - DBの expires_at をチェック（APIを叩かない）
+ * - credentials.services の expires_at をチェック
  * - 閾値内 or forceRefresh なら API でリフレッシュ
  */
 export async function ensureValidToken(
@@ -231,46 +172,44 @@ export async function ensureValidToken(
   const { forceRefresh = false, thresholdDays = DEFAULT_THRESHOLD_DAYS } =
     options;
 
-  const supabase = createSupabaseClient();
-  const token = await getTokenFromDb(supabase);
+  const { credentials, expiresAt } = await loadCredentials();
 
-  if (!token) {
-    throw new Error(
-      "Token not found in DB. Use --init to get initial token.",
-    );
-  }
-
-  const expiresAt = new Date(token.expires_at);
+  // expires_at が null の場合はリフレッシュ必要
   const needsRefresh = forceRefresh ||
+    !expiresAt ||
     isTokenExpiringSoon(expiresAt, thresholdDays);
 
-  if (!needsRefresh) {
+  if (!needsRefresh && expiresAt) {
     const daysUntilExpiry = (expiresAt.getTime() - Date.now()) /
       (1000 * 60 * 60 * 24);
     log.success(`Token valid (${daysUntilExpiry.toFixed(1)} days remaining)`);
-    return token.access_token;
+    return credentials.access_token;
   }
 
   log.info("Refreshing token...");
-  const newToken = await refreshTokenFromApi(token.refresh_token);
+  const newToken = await refreshTokenFromApi(
+    credentials.client_id,
+    credentials.client_secret,
+    credentials.refresh_token,
+  );
 
   if (newToken === null) {
     // SUCCESS: トークンは既に有効
     log.success("Token already valid (API returned SUCCESS)");
-    return token.access_token;
+    return credentials.access_token;
   }
 
-  // 新しいトークンをDBに保存
+  // 新しい有効期限を計算
   const newExpiresAt = new Date(Date.now() + newToken.expires_in * 1000);
-  await saveTokenToDb(
-    supabase,
+
+  // credentials.services を更新
+  await updateCredentials(
+    "tanita",
     {
       access_token: newToken.access_token,
       refresh_token: newToken.refresh_token,
-      token_type: newToken.token_type || "Bearer",
-      expires_at: newExpiresAt.toISOString(),
     },
-    token.id,
+    newExpiresAt,
   );
 
   log.success(`Token refreshed (expires: ${newExpiresAt.toISOString()})`);
@@ -314,9 +253,8 @@ Examples:
 Environment Variables:
   SUPABASE_URL              Supabase URL
   SUPABASE_SERVICE_ROLE_KEY Supabase Service Role Key
-  TANITA_CLIENT_ID          Tanita Client ID
-  TANITA_CLIENT_SECRET      Tanita Client Secret
-  TANITA_AUTH_CODE          Authorization code (alternative to --code)
+  TOKEN_ENCRYPTION_KEY      Encryption key for credentials
+  TANITA_AUTH_CODE          Authorization code (alternative to --code, for --init)
 `);
     Deno.exit(0);
   }
@@ -329,23 +267,38 @@ Environment Variables:
       Deno.exit(1);
     }
 
+    // 既存の credentials を取得（client_id/client_secret のみ必要）
+    const result = await getCredentials<OAuth2Credentials>("tanita");
+    if (!result) {
+      log.error("Tanita credentials not found. Please save client_id and client_secret first.");
+      Deno.exit(1);
+    }
+
+    const { credentials } = result;
+    if (!credentials.client_id || !credentials.client_secret) {
+      log.error("Tanita credentials missing client_id or client_secret");
+      Deno.exit(1);
+    }
+
     log.info("Exchanging authorization code for token...");
-    const tokenResponse = await getInitialToken(code);
+    const tokenResponse = await getInitialToken(
+      credentials.client_id,
+      credentials.client_secret,
+      code,
+    );
     const expiresAt = new Date(Date.now() + tokenResponse.expires_in * 1000);
 
-    const supabase = createSupabaseClient();
-    const existing = await getTokenFromDb(supabase);
-
-    await saveTokenToDb(
-      supabase,
+    // credentials.services を更新
+    await saveCredentials(
+      "tanita",
+      "oauth2",
       {
+        ...credentials,
         access_token: tokenResponse.access_token,
         refresh_token: tokenResponse.refresh_token,
-        token_type: tokenResponse.token_type || "Bearer",
-        expires_at: expiresAt.toISOString(),
         scope: "innerscan,sphygmomanometer,pedometer",
       },
-      existing?.id,
+      expiresAt,
     );
 
     log.success("Initial token saved");

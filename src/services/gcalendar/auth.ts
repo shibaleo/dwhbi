@@ -2,13 +2,19 @@
  * Google Calendar サービスアカウント認証
  * 
  * サービスアカウントのJWTを使用してアクセストークンを取得する。
- * トークンは1時間有効で、都度取得する設計（キャッシュなし）。
+ * 認証情報は credentials.services テーブルから取得。
+ * トークンは1時間有効で、メモリキャッシュ付き。
  */
 
+import "jsr:@std/dotenv/load";
 import {
   ServiceAccountCredentials,
   TokenResponse,
 } from "./types.ts";
+import {
+  getCredentials,
+  type ServiceAccountCredentials as CredServiceAccountCredentials,
+} from "../../utils/credentials.ts";
 
 // =============================================================================
 // Constants
@@ -22,45 +28,64 @@ const TOKEN_EXPIRY_SECONDS = 3600; // 1 hour
 // Credential Loading
 // =============================================================================
 
+let _credentials: ServiceAccountCredentials | null = null;
+let _calendarId: string | null = null;
+
 /**
- * 環境変数からサービスアカウントのcredentialを取得
- * Base64エンコードまたは生JSONに対応
+ * credentials.services からサービスアカウントのcredentialを取得（キャッシュ付き）
  */
-export function loadCredentials(): ServiceAccountCredentials {
-  const credentialEnv = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_JSON");
-  if (!credentialEnv) {
-    throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON environment variable is not set");
+export async function loadCredentials(): Promise<ServiceAccountCredentials> {
+  if (_credentials) return _credentials;
+
+  const result = await getCredentials<CredServiceAccountCredentials>("gcalendar");
+  if (!result) {
+    throw new Error("GCalendar credentials not found in credentials.services");
   }
 
+  const { credentials } = result;
+  if (!credentials.service_account_json) {
+    throw new Error("GCalendar credentials missing service_account_json");
+  }
+
+  // calendar_idをキャッシュ
+  _calendarId = credentials.calendar_id || null;
+
+  // Base64デコードまたは生JSONをパース
   let jsonStr: string;
-  
-  // Base64かどうかを判定（{で始まらない場合はBase64とみなす）
-  if (credentialEnv.trim().startsWith("{")) {
-    jsonStr = credentialEnv;
+  const jsonData = credentials.service_account_json;
+
+  if (jsonData.trim().startsWith("{")) {
+    jsonStr = jsonData;
   } else {
-    // Base64デコード
     try {
-      jsonStr = atob(credentialEnv);
+      jsonStr = atob(jsonData);
     } catch {
-      throw new Error("Failed to decode GOOGLE_SERVICE_ACCOUNT_JSON as Base64");
+      throw new Error("Failed to decode service_account_json as Base64");
     }
   }
 
   try {
-    const credentials = JSON.parse(jsonStr) as ServiceAccountCredentials;
+    _credentials = JSON.parse(jsonStr) as ServiceAccountCredentials;
     
-    // 必須フィールドの検証
-    if (!credentials.client_email || !credentials.private_key) {
+    if (!_credentials.client_email || !_credentials.private_key) {
       throw new Error("Invalid credentials: missing client_email or private_key");
     }
     
-    return credentials;
+    return _credentials;
   } catch (e) {
     if (e instanceof SyntaxError) {
-      throw new Error("Failed to parse GOOGLE_SERVICE_ACCOUNT_JSON as JSON");
+      throw new Error("Failed to parse service_account_json as JSON");
     }
     throw e;
   }
+}
+
+/**
+ * カレンダーIDを取得
+ */
+export async function getCalendarId(): Promise<string | null> {
+  await loadCredentials(); // キャッシュをロード
+  return _calendarId;
 }
 
 // =============================================================================
@@ -186,7 +211,7 @@ export async function getAccessToken(): Promise<string> {
     return cachedToken.token;
   }
   
-  const credentials = loadCredentials();
+  const credentials = await loadCredentials();
   const jwt = await createJwt(credentials);
   const tokenResponse = await exchangeJwtForToken(jwt);
   
