@@ -6,15 +6,14 @@
 
 | ワークフロー | スケジュール | 説明 |
 |--------------|--------------|------|
-| `sync-all.yml` | 毎日 JST 00:00 | 全サービス並列同期（推奨） |
-| `sync-toggl.yml` | 手動のみ | Toggl タイムエントリ同期 |
-| `sync-tanita.yml` | 手動のみ | Tanita 体組成データ同期 |
-| `sync-zaim.yml` | 手動のみ | Zaim 収支データ同期 |
-| `sync-gcalendar.yml` | 手動のみ | Google Calendar イベント同期 |
+| `sync-daily.yml` | 毎日 JST 00:00 | 全サービス並列同期（推奨） |
 | `sync-fitbit.yml` | 手動のみ | Fitbit 健康データ同期 |
-| `sync-notion.yml` | 手動のみ | Notion データベース同期 |
+| `sync-gcalendar.yml` | 手動のみ | Google Calendar イベント同期 |
+| `sync-tanita.yml` | 手動のみ | Tanita 体組成データ同期 |
+| `sync-toggl.yml` | 手動のみ | Toggl タイムエントリ同期 |
+| `sync-zaim.yml` | 手動のみ | Zaim 収支データ同期 |
 
-> **Note**: 定期実行は `sync-all.yml` に統合されています。個別ワークフローは手動実行用です。
+> **Note**: 定期実行は `sync-daily.yml` に統合されています。個別ワークフローは手動実行用です。
 
 ---
 
@@ -25,56 +24,17 @@ GitHubリポジトリで以下のSecretsを設定する必要があります：
 1. GitHubリポジトリの **Settings** > **Secrets and variables** > **Actions** に移動
 2. 以下のSecretsを追加（**New repository secret** をクリック）
 
-### 共通（必須）
+### 必須Secrets（3つのみ）
 
 | Secret名 | 説明 |
 |----------|------|
 | `SUPABASE_URL` | Supabaseプロジェクトの URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabaseサービスロールキー |
+| `TOKEN_ENCRYPTION_KEY` | トークン暗号化キー（32バイト以上） |
 
-### Toggl
-
-| Secret名 | 説明 |
-|----------|------|
-| `TOGGL_API_TOKEN` | Toggl APIトークン |
-| `TOGGL_WORKSPACE_ID` | TogglワークスペースID |
-
-### Tanita
-
-| Secret名 | 説明 |
-|----------|------|
-| `TANITA_CLIENT_ID` | Tanita OAuth Client ID |
-| `TANITA_CLIENT_SECRET` | Tanita OAuth Client Secret |
-
-### Zaim
-
-| Secret名 | 説明 |
-|----------|------|
-| `ZAIM_CONSUMER_KEY` | Zaim OAuth Consumer Key |
-| `ZAIM_CONSUMER_SECRET` | Zaim OAuth Consumer Secret |
-| `ZAIM_ACCESS_TOKEN` | Zaim OAuth Access Token |
-| `ZAIM_ACCESS_TOKEN_SECRET` | Zaim OAuth Access Token Secret |
-
-### Google Calendar
-
-| Secret名 | 説明 |
-|----------|------|
-| `GOOGLE_CALENDAR_ID` | Google Calendar ID |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | サービスアカウントJSON |
-
-### Fitbit
-
-| Secret名 | 説明 |
-|----------|------|
-| `FITBIT_CLIENT_ID` | Fitbit OAuth Client ID |
-| `FITBIT_CLIENT_SECRET` | Fitbit OAuth Client Secret |
-
-### Notion
-
-| Secret名 | 説明 |
-|----------|------|
-| `NOTION_INTEGRATION_SECRET` | Notion Internal Integration Token |
-| `NOTION_METADATA_TABLE_ID` | メタテーブル（TB__METADATA）のID |
+> **Note**: 各サービスの認証情報（APIトークン、OAuth credentials等）は
+> `credentials.services` テーブルに暗号化して保存されています。
+> 環境変数での設定は不要です。
 
 ---
 
@@ -89,36 +49,18 @@ GitHubリポジトリで以下のSecretsを設定する必要があります：
 ### パラメータ付き手動実行
 
 #### All Services Daily Sync（推奨）
-- `toggl_sync_days`: Toggl同期日数（デフォルト: 1）
-- `tanita_sync_days`: Tanita同期日数（デフォルト: 7）
+- `toggl_sync_days`: Toggl同期日数（デフォルト: 3）
+- `tanita_sync_days`: Tanita同期日数（デフォルト: 3）
 - `zaim_sync_days`: Zaim同期日数（デフォルト: 3）
 - `gcal_sync_days`: Google Calendar同期日数（デフォルト: 3）
 - `fitbit_sync_days`: Fitbit同期日数（デフォルト: 3）
-- `notion_sync_days`: Notion同期日数（デフォルト: 3）
 
-> **Note**: `sync-all.yml` は単一ジョブで全サービスを**並列実行**します。
+> **Note**: `sync-daily.yml` は単一ジョブで全サービスを**並列実行**します。
 > TypeScriptレベルで `Promise.allSettled` を使用し、
 > 1つのサービスが失敗しても他は継続します。
 
-#### Toggl Daily Sync
-- `sync_days`: 同期する日数（デフォルト: 1）
-
-#### Tanita Daily Sync
-- `sync_days`: 同期する日数（デフォルト: 7）
-
-#### Zaim Daily Sync
-- `sync_days`: 同期する日数（デフォルト: 3）
-
-#### Google Calendar Daily Sync
-- `sync_days`: 同期する日数（デフォルト: 3）
-
-#### Fitbit Daily Sync
-- `sync_days`: 同期する日数（デフォルト: 3）
-
-#### Notion Daily Sync
-- `sync_days`: 同期する日数（デフォルト: 3）
-- `skip_schema_sync`: スキーマ同期をスキップ（デフォルト: true）
-- `discover_databases`: 新規データベースを自動検出（デフォルト: false）
+#### 個別サービス同期
+各サービスのワークフローは `sync_days` パラメータで同期日数を指定できます（デフォルト: 3）。
 
 ---
 
@@ -139,9 +81,7 @@ GitHubリポジトリで以下のSecretsを設定する必要があります：
 
 | ワークフロー | cron | UTC | JST |
 |--------------|------|-----|-----|
-| sync-all | `0 15 * * *` | 15:00 | 00:00 |
-
-> **Note**: 個別ワークフローの定期実行は `sync-all.yml` に統合されました。
+| sync-daily | `0 15 * * *` | 15:00 | 00:00 |
 
 ### その他のスケジュール例
 - `0 * * * *` - 毎時0分（1時間ごと）
@@ -158,4 +98,4 @@ GitHubリポジトリで以下のSecretsを設定する必要があります：
 - cronジョブはUTC時間で実行されます
 - 実行タイミングは数分ずれる可能性があります
 - 失敗時はActionsタブでログを確認してください
-- Tanitaトークンは同期時に自動でリフレッシュされます（有効期限7日以内の場合）
+- OAuth 2.0トークン（Fitbit, Tanita）は同期時に自動でリフレッシュされます

@@ -1,7 +1,7 @@
 name: Fitbit Daily Sync
 
 on:
-  # 手動実行のみ（定期実行は sync-all.yml に統合）
+  # 手動実行のみ（定期実行は sync-daily.yml に統合）
   workflow_dispatch:
     inputs:
       sync_days:
@@ -25,21 +25,12 @@ jobs:
 
       - name: Run daily sync
         env:
-          # Supabase
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-
-          # Fitbit OAuth
-          FITBIT_CLIENT_ID: ${{ secrets.FITBIT_CLIENT_ID }}
-          FITBIT_CLIENT_SECRET: ${{ secrets.FITBIT_CLIENT_SECRET }}
-
-          # オプション: 同期日数（デフォルト3日）
+          TOKEN_ENCRYPTION_KEY: ${{ secrets.TOKEN_ENCRYPTION_KEY }}
           FITBIT_SYNC_DAYS: ${{ inputs.sync_days || '3' }}
         run: |
-          deno run \
-            --allow-net \
-            --allow-env \
-            --allow-read \
+          deno run --allow-net --allow-env --allow-read \
             src/services/fitbit/sync_daily.ts
 
       - name: Notify on failure

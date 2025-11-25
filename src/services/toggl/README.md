@@ -10,9 +10,10 @@ Toggl Track API から時間記録データを取得し、Supabase `toggl` ス�
 |--------|------|------|
 | `SUPABASE_URL` | Yes | Supabase プロジェクトURL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes | Supabase Service Role Key |
-| `TOGGL_API_TOKEN` | Yes | Toggl API Token |
-| `TOGGL_WORKSPACE_ID` | Yes | Toggl Workspace ID |
+| `TOKEN_ENCRYPTION_KEY` | Yes | トークン暗号化キー（32バイト以上） |
 | `TOGGL_SYNC_DAYS` | No | 同期日数（デフォルト: 3） |
+
+> **Note**: Toggl認証情報（API Token、Workspace ID）は `credentials.services` テーブルに暗号化して保存されています。
 
 ### 実行コマンド
 

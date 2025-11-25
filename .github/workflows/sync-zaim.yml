@@ -1,7 +1,7 @@
 name: Zaim Daily Sync
 
 on:
-  # 手動実行のみ（定期実行は sync-all.yml に統合）
+  # 手動実行のみ（定期実行は sync-daily.yml に統合）
   workflow_dispatch:
     inputs:
       sync_days:
@@ -25,23 +25,12 @@ jobs:
 
       - name: Run daily sync
         env:
-          # Supabase
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-
-          # Zaim OAuth
-          ZAIM_CONSUMER_KEY: ${{ secrets.ZAIM_CONSUMER_KEY }}
-          ZAIM_CONSUMER_SECRET: ${{ secrets.ZAIM_CONSUMER_SECRET }}
-          ZAIM_ACCESS_TOKEN: ${{ secrets.ZAIM_ACCESS_TOKEN }}
-          ZAIM_ACCESS_TOKEN_SECRET: ${{ secrets.ZAIM_ACCESS_TOKEN_SECRET }}
-
-          # オプション: 同期日数（デフォルト3日）
+          TOKEN_ENCRYPTION_KEY: ${{ secrets.TOKEN_ENCRYPTION_KEY }}
           ZAIM_SYNC_DAYS: ${{ inputs.sync_days || '3' }}
         run: |
-          deno run \
-            --allow-net \
-            --allow-env \
-            --allow-read \
+          deno run --allow-net --allow-env --allow-read \
             src/services/zaim/sync_daily.ts
 
       - name: Notify on failure

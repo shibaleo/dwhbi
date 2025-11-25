@@ -33,11 +33,6 @@ on:
         required: false
         default: "3"
         type: string
-      notion_sync_days:
-        description: "Notion: 同期日数"
-        required: false
-        default: "3"
-        type: string
 
 jobs:
   sync-all:
@@ -57,39 +52,15 @@ jobs:
           # Supabase
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TOKEN_ENCRYPTION_KEY: ${{ secrets.TOKEN_ENCRYPTION_KEY }}
 
-          # Toggl
-          TOGGL_API_TOKEN: ${{ secrets.TOGGL_API_TOKEN }}
-          TOGGL_WORKSPACE_ID: ${{ secrets.TOGGL_WORKSPACE_ID }}
+          # Sync days (認証情報はcredentials.servicesテーブルから取得)
           TOGGL_SYNC_DAYS: ${{ inputs.toggl_sync_days || '3' }}
-
-          # Tanita
-          TANITA_CLIENT_ID: ${{ secrets.TANITA_CLIENT_ID }}
-          TANITA_CLIENT_SECRET: ${{ secrets.TANITA_CLIENT_SECRET }}
           TANITA_SYNC_DAYS: ${{ inputs.tanita_sync_days || '3' }}
-
-          # Zaim
-          ZAIM_CONSUMER_KEY: ${{ secrets.ZAIM_CONSUMER_KEY }}
-          ZAIM_CONSUMER_SECRET: ${{ secrets.ZAIM_CONSUMER_SECRET }}
-          ZAIM_ACCESS_TOKEN: ${{ secrets.ZAIM_ACCESS_TOKEN }}
-          ZAIM_ACCESS_TOKEN_SECRET: ${{ secrets.ZAIM_ACCESS_TOKEN_SECRET }}
           ZAIM_SYNC_DAYS: ${{ inputs.zaim_sync_days || '3' }}
-
-          # Google Calendar
-          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
-          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           GCAL_SYNC_DAYS: ${{ inputs.gcal_sync_days || '3' }}
-
-          # Fitbit
-          FITBIT_CLIENT_ID: ${{ secrets.FITBIT_CLIENT_ID }}
-          FITBIT_CLIENT_SECRET: ${{ secrets.FITBIT_CLIENT_SECRET }}
           FITBIT_SYNC_DAYS: ${{ inputs.fitbit_sync_days || '3' }}
 
-          # Notion
-          NOTION_INTEGRATION_SECRET: ${{ secrets.NOTION_INTEGRATION_SECRET }}
-          NOTION_METADATA_TABLE_ID: ${{ secrets.NOTION_METADATA_TABLE_ID }}
-          NOTION_SYNC_DAYS: ${{ inputs.notion_sync_days || '3' }}
-          NOTION_SKIP_SCHEMA_SYNC: 'true'
         run: |
           deno run --allow-net --allow-env --allow-read \
             src/sync_daily.ts

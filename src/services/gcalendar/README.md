@@ -10,9 +10,10 @@ Google Calendar API から予定イベントを取得し、Supabase `gcalendar` 
 |--------|------|------|
 | `SUPABASE_URL` | Yes | Supabase プロジェクトURL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes | Supabase Service Role Key |
-| `GOOGLE_CALENDAR_ID` | Yes | 対象カレンダーID |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | Yes | サービスアカウントJSON（Base64または生JSON） |
+| `TOKEN_ENCRYPTION_KEY` | Yes | トークン暗号化キー（32バイト以上） |
 | `GCAL_SYNC_DAYS` | No | 同期日数（デフォルト: 3） |
+
+> **Note**: Google Calendar認証情報（Calendar ID、Service Account JSON）は `credentials.services` テーブルに暗号化して保存されています。
 
 ### 実行コマンド
 

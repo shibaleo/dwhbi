@@ -10,10 +10,10 @@ Tanita Health Planet API から体組成・血圧・歩数データを取得し�
 |--------|------|------|
 | `SUPABASE_URL` | Yes | Supabase プロジェクトURL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes | Supabase Service Role Key |
-| `TANITA_CLIENT_ID` | Yes | Tanita OAuth Client ID |
-| `TANITA_CLIENT_SECRET` | Yes | Tanita OAuth Client Secret |
-| `TANITA_AUTH_CODE` | No | 認可コード（--init 時に使用） |
+| `TOKEN_ENCRYPTION_KEY` | Yes | トークン暗号化キー（32バイト以上） |
 | `TANITA_SYNC_DAYS` | No | 同期日数（デフォルト: 3） |
+
+> **Note**: Tanita OAuth認証情報（Client ID/Secret）は `credentials.services` テーブルに暗号化して保存されています。
 
 ### 実行コマンド
 

@@ -10,11 +10,10 @@ Zaim API から家計簿データを取得し、Supabase `zaim` スキーマに�
 |--------|------|------|
 | `SUPABASE_URL` | Yes | Supabase プロジェクトURL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes | Supabase Service Role Key |
-| `ZAIM_CONSUMER_KEY` | Yes | Zaim OAuth Consumer Key |
-| `ZAIM_CONSUMER_SECRET` | Yes | Zaim OAuth Consumer Secret |
-| `ZAIM_ACCESS_TOKEN` | Yes | Zaim OAuth Access Token |
-| `ZAIM_ACCESS_TOKEN_SECRET` | Yes | Zaim OAuth Access Token Secret |
+| `TOKEN_ENCRYPTION_KEY` | Yes | トークン暗号化キー（32バイト以上） |
 | `ZAIM_SYNC_DAYS` | No | 同期日数（デフォルト: 3） |
+
+> **Note**: Zaim OAuth認証情報（Consumer Key/Secret、Access Token/Secret）は `credentials.services` テーブルに暗号化して保存されています。
 
 ### 実行コマンド
 

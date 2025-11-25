@@ -73,6 +73,9 @@
 |--------|------|------|
 | `SUPABASE_URL` | Supabase プロジェクトURL | ✅ |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase Service Role Key | ✅ |
+| `TOKEN_ENCRYPTION_KEY` | トークン暗号化キー（32バイト以上） | ✅ |
+
+> **Note**: 各サービスの認証情報は `credentials.services` テーブルに暗号化して保存されています。
 
 ---
 
@@ -233,13 +236,16 @@ export class ZaimOAuth {
 
 #### 環境変数
 
-| サービス | 環境変数 |
-|----------|----------|
-| fitbit | `FITBIT_CLIENT_ID`, `FITBIT_CLIENT_SECRET` |
-| gcalendar | `GOOGLE_SERVICE_ACCOUNT_JSON`, `GOOGLE_CALENDAR_ID` |
-| tanita | `TANITA_CLIENT_ID`, `TANITA_CLIENT_SECRET` |
-| toggl | `TOGGL_API_TOKEN`, `TOGGL_WORKSPACE_ID` |
-| zaim | `ZAIM_CONSUMER_KEY`, `ZAIM_CONSUMER_SECRET`, `ZAIM_ACCESS_TOKEN`, `ZAIM_ACCESS_TOKEN_SECRET` |
+全サービス共通で以下の環境変数のみ必要:
+
+| 変数名 | 説明 |
+|--------|------|
+| `SUPABASE_URL` | Supabase プロジェクトURL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase Service Role Key |
+| `TOKEN_ENCRYPTION_KEY` | トークン暗号化キー（32バイト以上） |
+
+> **Note**: 各サービスの認証情報（APIトークン、OAuth credentials等）は
+> `credentials.services` テーブルに暗号化して保存されています。
 
 ---
 

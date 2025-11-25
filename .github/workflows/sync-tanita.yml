@@ -1,11 +1,11 @@
 name: Tanita Daily Sync
 
 on:
-  # 手動実行のみ（定期実行は sync-all.yml に統合）
+  # 手動実行のみ（定期実行は sync-daily.yml に統合）
   workflow_dispatch:
     inputs:
       sync_days:
-        description: "同期日数（デフォルト: 3）"
+        description: "同期日数"
         required: false
         default: "3"
         type: choice
@@ -17,7 +17,7 @@ on:
           - "90"
 
 jobs:
-  sync:
+  sync-tanita:
     runs-on: ubuntu-latest
 
     steps:
@@ -29,12 +29,18 @@ jobs:
         with:
           deno-version: v2.x
 
-      - name: Sync Tanita data to Supabase
+      - name: Run daily sync
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          TANITA_CLIENT_ID: ${{ secrets.TANITA_CLIENT_ID }}
-          TANITA_CLIENT_SECRET: ${{ secrets.TANITA_CLIENT_SECRET }}
-          TANITA_SYNC_DAYS: ${{ github.event.inputs.sync_days || '3' }}
+          TOKEN_ENCRYPTION_KEY: ${{ secrets.TOKEN_ENCRYPTION_KEY }}
+          TANITA_SYNC_DAYS: ${{ inputs.sync_days || '3' }}
         run: |
-          deno run --allow-net --allow-env --allow-read src/services/tanita/sync_daily.ts
+          deno run --allow-net --allow-env --allow-read \
+            src/services/tanita/sync_daily.ts
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ Tanita日次同期が失敗しました"
+          echo "詳細は Actions ログを確認してください"
