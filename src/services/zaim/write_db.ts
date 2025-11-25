@@ -372,6 +372,9 @@ export async function syncTransactions(
 
 /**
  * 指定期間の既存トランザクション ID を取得
+ * 
+ * 注意: Supabaseのデフォルトリミットは1000件なので、
+ * 大量のデータがある場合はページネーションが必要
  */
 export async function getExistingTransactionIds(
   raw: RawSchema,
@@ -379,17 +382,36 @@ export async function getExistingTransactionIds(
   startDate: string,
   endDate: string,
 ): Promise<Set<number>> {
-  const { data: existingTx, error } = await raw
-    .from("zaim_transactions")
-    .select("zaim_id")
-    .eq("zaim_user_id", zaimUserId)
-    .gte("date", startDate)
-    .lte("date", endDate);
+  const allIds: number[] = [];
+  let from = 0;
+  const limit = 1000;
 
-  if (error) {
-    log.error(`Failed to get existing transaction IDs: ${error.message}`);
-    return new Set();
+  while (true) {
+    const { data, error } = await raw
+      .from("zaim_transactions")
+      .select("zaim_id")
+      .eq("zaim_user_id", zaimUserId)
+      .gte("date", startDate)
+      .lte("date", endDate)
+      .range(from, from + limit - 1);
+
+    if (error) {
+      log.error(`Failed to get existing transaction IDs: ${error.message}`);
+      return new Set(allIds);
+    }
+
+    if (!data || data.length === 0) {
+      break;
+    }
+
+    allIds.push(...data.map((t) => t.zaim_id));
+
+    if (data.length < limit) {
+      break;
+    }
+
+    from += limit;
   }
 
-  return new Set(existingTx?.map((t) => t.zaim_id) || []);
+  return new Set(allIds);
 }

@@ -18,10 +18,21 @@ import {
   getExistingTransactionIds,
 } from "./write_db.ts";
 import type { SyncResult, SyncStats } from "./types.ts";
+import {
+  updateSyncState,
+  logSync,
+  extractLatestDate,
+} from "../../utils/sync_state.ts";
 
 // =============================================================================
 // Constants
 // =============================================================================
+
+const SERVICE_NAME = "zaim";
+const ENDPOINT_CATEGORIES = "categories";
+const ENDPOINT_GENRES = "genres";
+const ENDPOINT_ACCOUNTS = "accounts";
+const ENDPOINT_TRANSACTIONS = "transactions";
 
 /** デフォルト開始日（環境変数 ZAIM_SYNC_START_DATE から取得、必須） */
 function getDefaultStartDate(): string {
@@ -47,12 +58,14 @@ function formatDate(date: Date): string {
 /**
  * メタデータのみ同期
  */
-async function syncMetadataOnly(): Promise<{
+async function syncMetadataOnly(runId: string): Promise<{
   zaimUserId: number;
   categories: number;
   genres: number;
   accounts: number;
 }> {
+  const startTime = Date.now();
+  
   // メタデータ取得
   const metadata = await fetchZaimMetadata();
 
@@ -66,6 +79,74 @@ async function syncMetadataOnly(): Promise<{
     metadata.genres,
     metadata.accounts
   );
+
+  const completedAt = new Date();
+  const elapsedMs = Date.now() - startTime;
+
+  // sync_state更新（マスタデータなのでlast_record_atはnull）
+  await updateSyncState(SERVICE_NAME, ENDPOINT_CATEGORIES, {
+    last_synced_at: completedAt,
+    last_record_at: null,
+  });
+
+  await updateSyncState(SERVICE_NAME, ENDPOINT_GENRES, {
+    last_synced_at: completedAt,
+    last_record_at: null,
+  });
+
+  await updateSyncState(SERVICE_NAME, ENDPOINT_ACCOUNTS, {
+    last_synced_at: completedAt,
+    last_record_at: null,
+  });
+
+  // sync_logs記録
+  await logSync({
+    service_name: SERVICE_NAME,
+    endpoint_name: ENDPOINT_CATEGORIES,
+    run_id: runId,
+    sync_mode: "full",
+    status: "success",
+    records_fetched: metadata.categories.length,
+    records_inserted: masterResult.categories.success,
+    records_updated: 0,
+    records_skipped: 0,
+    started_at: new Date(startTime).toISOString(),
+    completed_at: completedAt.toISOString(),
+    elapsed_ms: elapsedMs,
+    api_calls: 1,
+  });
+
+  await logSync({
+    service_name: SERVICE_NAME,
+    endpoint_name: ENDPOINT_GENRES,
+    run_id: runId,
+    sync_mode: "full",
+    status: "success",
+    records_fetched: metadata.genres.length,
+    records_inserted: masterResult.genres.success,
+    records_updated: 0,
+    records_skipped: 0,
+    started_at: new Date(startTime).toISOString(),
+    completed_at: completedAt.toISOString(),
+    elapsed_ms: elapsedMs,
+    api_calls: 1,
+  });
+
+  await logSync({
+    service_name: SERVICE_NAME,
+    endpoint_name: ENDPOINT_ACCOUNTS,
+    run_id: runId,
+    sync_mode: "full",
+    status: "success",
+    records_fetched: metadata.accounts.length,
+    records_inserted: masterResult.accounts.success,
+    records_updated: 0,
+    records_skipped: 0,
+    started_at: new Date(startTime).toISOString(),
+    completed_at: completedAt.toISOString(),
+    elapsed_ms: elapsedMs,
+    api_calls: 1,
+  });
 
   return {
     zaimUserId: metadata.zaimUserId,
@@ -84,6 +165,7 @@ export async function syncAllZaimData(options: {
   metadataOnly?: boolean;
 }): Promise<SyncResult> {
   const startTime = Date.now();
+  const runId = crypto.randomUUID();
   const errors: string[] = [];
 
   const startStr = formatDate(options.startDate);
@@ -97,11 +179,12 @@ export async function syncAllZaimData(options: {
   let masterStats = { categories: 0, genres: 0, accounts: 0 };
   let transactionStats = { fetched: 0, inserted: 0, updated: 0, skipped: 0 };
   let zaimUserId: number | null = null;
+  let data: any = null;
 
   try {
     if (options.metadataOnly) {
       // メタデータのみ同期
-      const result = await syncMetadataOnly();
+      const result = await syncMetadataOnly(runId);
       zaimUserId = result.zaimUserId;
       masterStats = {
         categories: result.categories,
@@ -111,7 +194,7 @@ export async function syncAllZaimData(options: {
     } else {
       // 全データ取得（fetch_data.tsがチャンク処理を担当）
       log.section("Step 1: Fetching all data");
-      const data = await fetchZaimDataWithChunks(
+      data = await fetchZaimDataWithChunks(
         options.startDate,
         options.endDate,
         (progress) => {
@@ -122,6 +205,7 @@ export async function syncAllZaimData(options: {
 
       // Step 2: メタデータ upsert
       log.section("Step 2: Saving metadata");
+      const metadataStartTime = Date.now();
       const masterResult = await upsertMetadata(
         zaim,
         zaimUserId,
@@ -138,8 +222,77 @@ export async function syncAllZaimData(options: {
         `Masters: categories=${masterStats.categories}, genres=${masterStats.genres}, accounts=${masterStats.accounts}`
       );
 
+      const metadataCompletedAt = new Date();
+      const metadataElapsedMs = Date.now() - metadataStartTime;
+
+      // メタデータのsync_state更新
+      await updateSyncState(SERVICE_NAME, ENDPOINT_CATEGORIES, {
+        last_synced_at: metadataCompletedAt,
+        last_record_at: null,
+      });
+
+      await updateSyncState(SERVICE_NAME, ENDPOINT_GENRES, {
+        last_synced_at: metadataCompletedAt,
+        last_record_at: null,
+      });
+
+      await updateSyncState(SERVICE_NAME, ENDPOINT_ACCOUNTS, {
+        last_synced_at: metadataCompletedAt,
+        last_record_at: null,
+      });
+
+      // メタデータのsync_logs記録
+      await logSync({
+        service_name: SERVICE_NAME,
+        endpoint_name: ENDPOINT_CATEGORIES,
+        run_id: runId,
+        sync_mode: "full",
+        status: masterResult.categories.failed === 0 ? "success" : "partial",
+        records_fetched: data.categories.length,
+        records_inserted: masterResult.categories.success,
+        records_updated: 0,
+        records_skipped: 0,
+        started_at: new Date(metadataStartTime).toISOString(),
+        completed_at: metadataCompletedAt.toISOString(),
+        elapsed_ms: metadataElapsedMs,
+        api_calls: 1,
+      });
+
+      await logSync({
+        service_name: SERVICE_NAME,
+        endpoint_name: ENDPOINT_GENRES,
+        run_id: runId,
+        sync_mode: "full",
+        status: masterResult.genres.failed === 0 ? "success" : "partial",
+        records_fetched: data.genres.length,
+        records_inserted: masterResult.genres.success,
+        records_updated: 0,
+        records_skipped: 0,
+        started_at: new Date(metadataStartTime).toISOString(),
+        completed_at: metadataCompletedAt.toISOString(),
+        elapsed_ms: metadataElapsedMs,
+        api_calls: 1,
+      });
+
+      await logSync({
+        service_name: SERVICE_NAME,
+        endpoint_name: ENDPOINT_ACCOUNTS,
+        run_id: runId,
+        sync_mode: "full",
+        status: masterResult.accounts.failed === 0 ? "success" : "partial",
+        records_fetched: data.accounts.length,
+        records_inserted: masterResult.accounts.success,
+        records_updated: 0,
+        records_skipped: 0,
+        started_at: new Date(metadataStartTime).toISOString(),
+        completed_at: metadataCompletedAt.toISOString(),
+        elapsed_ms: metadataElapsedMs,
+        api_calls: 1,
+      });
+
       // Step 3: トランザクション保存
       log.section("Step 3: Saving transactions");
+      const transactionStartTime = Date.now();
       const existingIds = await getExistingTransactionIds(
         zaim,
         zaimUserId,
@@ -163,9 +316,41 @@ export async function syncAllZaimData(options: {
       log.success(
         `Transactions: inserted=${txResult.inserted}, updated=${txResult.updated}, skipped=${txResult.skipped}`
       );
+
+      // Step 4: トランザクションのsync_state更新
+      log.section("Step 4: Updating sync state");
+      const transactionCompletedAt = new Date();
+      const transactionElapsedMs = Date.now() - transactionStartTime;
+      const lastRecordAt = extractLatestDate(data.transactions, "date");
+      
+      await updateSyncState(SERVICE_NAME, ENDPOINT_TRANSACTIONS, {
+        last_synced_at: transactionCompletedAt,
+        last_record_at: lastRecordAt,
+      });
+      log.success(`Sync state updated: last_record_at=${lastRecordAt}`);
+
+      // Step 5: トランザクションのsync_logs記録
+      await logSync({
+        service_name: SERVICE_NAME,
+        endpoint_name: ENDPOINT_TRANSACTIONS,
+        run_id: runId,
+        sync_mode: "full",
+        query_from: startStr,
+        query_to: endStr,
+        status: txResult.failed === 0 ? "success" : "partial",
+        records_fetched: txResult.fetched,
+        records_inserted: txResult.inserted,
+        records_updated: txResult.updated,
+        records_skipped: txResult.skipped,
+        started_at: new Date(transactionStartTime).toISOString(),
+        completed_at: transactionCompletedAt.toISOString(),
+        elapsed_ms: transactionElapsedMs,
+      });
     }
 
-    const elapsedSeconds = (Date.now() - startTime) / 1000;
+    const completedAt = new Date();
+    const elapsedMs = Date.now() - startTime;
+    const elapsedSeconds = elapsedMs / 1000;
 
     const stats: SyncStats = {
       categories: masterStats.categories,
@@ -176,7 +361,7 @@ export async function syncAllZaimData(options: {
 
     const result: SyncResult = {
       success: true,
-      timestamp: new Date().toISOString(),
+      timestamp: completedAt.toISOString(),
       stats,
       errors: [],
       elapsedSeconds,
@@ -199,10 +384,26 @@ export async function syncAllZaimData(options: {
     return result;
 
   } catch (err) {
-    const elapsedSeconds = (Date.now() - startTime) / 1000;
+    const elapsedMs = Date.now() - startTime;
+    const elapsedSeconds = elapsedMs / 1000;
     const message = err instanceof Error ? err.message : String(err);
     errors.push(message);
     log.error(message);
+
+    // エラー時のログ記録（トランザクションのみ）
+    await logSync({
+      service_name: SERVICE_NAME,
+      endpoint_name: ENDPOINT_TRANSACTIONS,
+      run_id: runId,
+      sync_mode: "full",
+      query_from: startStr,
+      query_to: endStr,
+      status: "failed",
+      started_at: new Date(startTime).toISOString(),
+      completed_at: new Date().toISOString(),
+      elapsed_ms: elapsedMs,
+      error_message: message,
+    });
 
     log.syncEnd(false, elapsedSeconds);
 
@@ -267,6 +468,7 @@ Zaim 全件同期（初回移行・リカバリ用）
 注意:
   - 12ヶ月単位でチャンク分割して取得します
   - レート制限エラー時は自動で待機・リトライします
+  - categories/genres/accounts/transactionsそれぞれのsync_stateとsync_logsを記録します
 `);
     Deno.exit(0);
   }
