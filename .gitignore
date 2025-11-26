@@ -1,5 +1,6 @@
 #Runtime files
 bin
+.secrets
 
 # Logs
 logs
