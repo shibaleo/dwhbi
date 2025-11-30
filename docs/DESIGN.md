@@ -416,3 +416,15 @@ Supabase AuthとRLS（Row Level Security）を最大限活用することで、�
 | タスク | 内容 | ステータス |
 |--------|------|------------|
 | Supabase終了時の移行計画 | PostgreSQLエクスポート... | 未着手 |
+
+### デプロイ設計
+
+管理画面はgithub pagesではなく、vercelを利用。
+管理画面初回ログイン時にはsupabase authを利用して認証を行う。
+個人データ配信のためにauth 不要なlanding pageを作成するか否かのトグルボタンを実装する。
+一般ユーザ向けのログインもsupabase authを利用する。
+トークンの入力は管理画面で行い、vercel functions経由でsupabaseに保存する。
+ただし、使い捨ての暗号化キーをその場で作成し、vercelの環境変数へ設定させる。
+supabaseへは暗号化して保存。
+暗号化キーを紛失した場合は、再登録が必要。
+supabase functionsでoauthのcallbackを受け取り、トークン交換とsupabaseへの保存を行う。
