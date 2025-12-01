@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |------|------|
-| ドキュメントバージョン | 1.0.0 |
+| ドキュメントバージョン | 2.0.0 |
 | 最終更新日 | 2025-12-01 |
 | 対象ファイル | `pipelines/services/trello.py` |
 | ステータス | 実装完了 |
@@ -11,12 +11,15 @@
 
 ### 1.1 目的
 
-Trello API からボード、リスト、ラベル、カードのデータを取得し、Supabase の `raw` スキーマに保存する Python モジュール。
+Trello API からボード、リスト、ラベル、カード、アクション、チェックリスト、カスタムフィールドのデータを取得し、Supabase の `raw` スキーマに保存する Python モジュール。
 
 ### 1.2 スコープ
 
 - ボード、リスト、ラベル、カードの同期
-- 日次バッチ処理（GitHub Actions から実行予定）
+- アクション履歴の差分同期（前回同期以降のみ取得）
+- チェックリスト・チェックアイテムの同期
+- カスタムフィールド定義・値の同期
+- 日次バッチ処理（GitHub Actions から実行）
 - raw 層への生データ保存（staging 以降の変換は別モジュール）
 
 ### 1.3 用語定義
@@ -27,7 +30,12 @@ Trello API からボード、リスト、ラベル、カードのデータを取
 | リスト | カンバンの列。カードを含む |
 | ラベル | カードの分類用タグ（色付き） |
 | カード | タスク1件。リストに所属する |
+| アクション | カードやボードへの操作履歴（移動、更新等） |
+| チェックリスト | カード内のサブタスクリスト |
+| チェックアイテム | チェックリスト内の個別項目 |
+| カスタムフィールド | ボードごとに定義できるカスタム属性 |
 | upsert | INSERT or UPDATE（重複時は更新） |
+| 差分同期 | 前回同期以降の変更のみを取得 |
 
 ## 2. 前提条件・制約
 
@@ -57,9 +65,8 @@ Trello API からボード、リスト、ラベル、カードのデータを取
 
 | 制限 | 説明 | 回避策 |
 |------|------|--------|
-| アクション未対応 | カードへのアクション履歴は取得不可 | 将来対応予定 |
+| アクション上限 | 1回の取得で最大1000件 | 差分同期で対応 |
 | メンバー詳細未対応 | メンバーIDのみ保存（名前は未取得） | 必要時に拡張 |
-| チェックリスト | JSONBとして保存 | staging層で展開 |
 
 ## 3. アーキテクチャ
 
@@ -71,18 +78,18 @@ Trello API からボード、リスト、ラベル、カードのデータを取
 │                    メインエントリーポイント                   │
 └─────────────────────────────────────────────────────────────┘
                               │
-              ┌───────────────┴───────────────┐
-              ▼                               ▼
-┌─────────────────────────┐     ┌─────────────────────────┐
-│ fetch_all_data()        │     │     upsert_*()          │
-│ ボード→各種データ取得     │     │   DB書き込み関数群       │
-└─────────────────────────┘     └─────────────────────────┘
-              │                               │
-              ▼                               ▼
-┌─────────────────────────┐     ┌─────────────────────────┐
-│   Trello API            │     │   Supabase raw.*        │
-│   (外部API)              │     │   (PostgreSQL)          │
-└─────────────────────────┘     └─────────────────────────┘
+         ┌────────────────────┼────────────────────┐
+         ▼                    ▼                    ▼
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│ get_last_action │  │ fetch_all_data()│  │   upsert_*()    │
+│    _date()      │  │ データ取得       │  │  DB書き込み群   │
+└─────────────────┘  └─────────────────┘  └─────────────────┘
+         │                    │                    │
+         ▼                    ▼                    ▼
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│   Supabase      │  │   Trello API    │  │   Supabase      │
+│  (差分判定用)    │  │   (外部API)      │  │   raw.*         │
+└─────────────────┘  └─────────────────┘  └─────────────────┘
 ```
 
 ### 3.2 レイヤ構成
@@ -90,7 +97,7 @@ Trello API からボード、リスト、ラベル、カードのデータを取
 ```
 pipelines/
 ├── services/
-│   └── trello.py         # 本モジュール（Trello専用ロジック、約500行）
+│   └── trello.py         # 本モジュール（Trello専用ロジック、約980行）
 └── lib/
     ├── credentials.py    # 認証情報の取得・復号
     ├── db.py             # Supabaseクライアント
@@ -103,46 +110,99 @@ pipelines/
 ### 4.1 処理シーケンス
 
 ```
-1. sync_trello() 呼び出し
+1. sync_trello(full_sync) 呼び出し
    │
-   ├─ 2. 認証情報取得（キャッシュ優先）
-   │   ├─ get_auth_params() → API Key + Token
-   │   └─ get_member_id() → メンバーID（デフォルト: "me"）
+   ├─ 2. 差分同期判定
+   │   ├─ full_sync=True → 全アクション取得
+   │   └─ full_sync=False → get_last_action_date() で最終日時取得
    │
-   ├─ 3. fetch_all_data() でデータ取得
+   ├─ 3. fetch_all_data(actions_since) でデータ取得
+   │   ├─ 認証情報取得（キャッシュ優先）
    │   ├─ GET /members/{id}/boards（ボード一覧）
-   │   │   └─ 各ボードに対して並列取得:
+   │   │   └─ 各ボードに対して並列取得（6リクエスト/ボード）:
    │   │       ├─ GET /boards/{id}/lists
    │   │       ├─ GET /boards/{id}/labels
-   │   │       └─ GET /boards/{id}/cards
+   │   │       ├─ GET /boards/{id}/cards
+   │   │       ├─ GET /boards/{id}/actions?since={date}
+   │   │       ├─ GET /boards/{id}/checklists
+   │   │       └─ GET /boards/{id}/customFields
+   │   └─ カスタムフィールド値取得（カードごと）
+   │       └─ GET /cards/{id}/customFieldItems
    │
    ├─ 4. 型変換（API型 → DB型）
    │   ├─ to_db_board()
    │   ├─ to_db_list()
    │   ├─ to_db_label()
-   │   └─ to_db_card()
+   │   ├─ to_db_card()
+   │   ├─ to_db_action()
+   │   ├─ to_db_checklist() / to_db_checkitem()
+   │   └─ to_db_custom_field() / to_db_custom_field_item()
    │
    └─ 5. DB保存（外部キー順序を考慮）
-       ├─ upsert_boards()  → raw.trello_boards
-       ├─ upsert_lists()   → raw.trello_lists
-       ├─ upsert_labels()  → raw.trello_labels
-       └─ upsert_cards()   → raw.trello_cards
+       ├─ upsert_boards()         → raw.trello_boards
+       ├─ upsert_lists()          → raw.trello_lists
+       ├─ upsert_labels()         → raw.trello_labels
+       ├─ upsert_cards()          → raw.trello_cards
+       ├─ upsert_actions()        → raw.trello_actions
+       ├─ upsert_checklists()     → raw.trello_checklists / raw.trello_checkitems
+       ├─ upsert_custom_fields()  → raw.trello_custom_fields
+       └─ upsert_custom_field_items() → raw.trello_custom_field_items
 ```
 
-### 4.2 保存順序の理由
+### 4.2 差分同期の仕組み
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    差分同期フロー                            │
+└─────────────────────────────────────────────────────────────┘
+
+1. 同期開始時
+   └─ SELECT date FROM raw.trello_actions ORDER BY date DESC LIMIT 1
+      → 最新のアクション日時を取得
+
+2. API呼び出し
+   └─ GET /boards/{id}/actions?since={last_action_date}
+      → 指定日時以降のアクションのみ取得
+
+3. 初回同期時（アクションが空の場合）
+   └─ since パラメータなしで全アクション取得
+
+4. full_sync=True の場合
+   └─ 常に全アクション取得（since パラメータなし）
+```
+
+### 4.3 保存順序の理由
 
 外部キー制約を満たすため、以下の順序で保存：
 
 1. `trello_boards` - 最上位エンティティ
 2. `trello_lists` - `board_id` → `trello_boards.id`
 3. `trello_labels` - `board_id` → `trello_boards.id`
-4. `trello_cards` - `board_id` → `trello_boards.id`, `list_id` → `trello_lists.id`
+4. `trello_cards` - `board_id`, `list_id` → 参照
+5. `trello_actions` - `board_id`, `card_id`, `list_id` → 参照
+6. `trello_checklists` - `board_id`, `card_id` → 参照
+7. `trello_checkitems` - `checklist_id` → `trello_checklists.id`
+8. `trello_custom_fields` - `board_id` → `trello_boards.id`
+9. `trello_custom_field_items` - `card_id`, `custom_field_id` → 参照
 
 ## 5. 設計判断（ADR）
 
-### ADR-001: ボードごとの並列取得
+### ADR-001: HTTPクライアント共有による高速化
 
-**決定**: 各ボードのリスト/ラベル/カードを `asyncio.gather()` で並列実行
+**決定**: `httpx.AsyncClient` をコンテキストマネージャで共有し、コネクションプーリングを活用
+
+**理由**:
+- 各リクエストでコネクションを再確立するオーバーヘッドを削減
+- 同一ホストへの複数リクエストでコネクションを再利用
+- 処理時間の大幅短縮
+
+**トレードオフ**:
+- OK: 処理時間の短縮
+- 注意: クライアントのライフサイクル管理が必要
+
+### ADR-002: ボードごとの6並列取得
+
+**決定**: 各ボードのリスト/ラベル/カード/アクション/チェックリスト/カスタムフィールドを `asyncio.gather()` で並列実行
 
 **理由**:
 - ボードが複数ある場合、順次実行では時間がかかる
@@ -150,46 +210,46 @@ pipelines/
 - Trello APIのレート制限（100 req/10秒）に対して十分余裕がある
 
 **トレードオフ**:
-- OK: 処理時間の短縮（ボード数 × 3リクエストが並列化）
+- OK: 処理時間の短縮（ボード数 × 6リクエストが並列化）
 - 注意: ボード数が多い場合はレート制限に注意
 
-### ADR-002: 認証情報のキャッシュ
+### ADR-003: アクションの差分同期
 
-**決定**: モジュールレベル変数でキャッシュ
+**決定**: `since` パラメータを使用して前回同期以降のアクションのみ取得
 
 **理由**:
-- `get_credentials()` は毎回 DB アクセスを伴う
-- 1回の同期中に認証情報は変わらない
-- 複数回の DB アクセスを1回に削減
+- アクション履歴は蓄積されるため、全取得するとデータ量が増大
+- 差分取得でAPIリクエスト数とデータ転送量を削減
+- 1000件上限への対応
 
 **トレードオフ**:
-- OK: DBアクセス削減
-- 注意: テスト時は `reset_cache()` で明示的にリセットが必要
+- OK: 効率的なデータ取得
+- 注意: 初回は全取得が必要
 
-### ADR-003: オープンボードのみ取得
+### ADR-004: チェックリストの正規化
 
-**決定**: `filter=open` でオープン状態のボードのみ取得
+**決定**: チェックリストとチェックアイテムを別テーブルで管理
 
 **理由**:
-- アーカイブ済みボードは通常参照されない
-- データ量削減
-- 必要であれば filter パラメータを変更可能
+- チェックアイテムごとの状態管理が可能
+- SQLでの集計が容易
+- staging層での変換が不要
 
 **代替案**:
-- `filter=all` で全ボード取得 → データ量増大
+- カードのJSONBカラムに埋め込み → クエリが困難
 
-### ADR-004: チェックリストのJSONB保存
+### ADR-005: カスタムフィールドの分離取得
 
-**決定**: カードのチェックリストは `checklists` カラムにJSONBとして保存
+**決定**: カスタムフィールド定義とカスタムフィールド値を別々に取得
 
 **理由**:
-- チェックリストの構造は複雑（items, state など）
-- raw層では加工せずそのまま保存
-- staging層で必要に応じて展開
+- 定義はボード単位、値はカード単位
+- カスタムフィールドを持つボードのカードのみ値を取得
+- 不要なAPIリクエストを削減
 
 **トレードオフ**:
-- OK: スキーマの簡素化
-- 注意: 直接クエリでの集計が困難
+- OK: 効率的な取得
+- 注意: カード数が多いとリクエスト数増加
 
 ## 6. データ型定義
 
@@ -243,6 +303,38 @@ class TrelloCard(TypedDict):
     labels: list[dict[str, Any]]
     badges: dict[str, Any]
     cover: dict[str, Any]
+
+class TrelloAction(TypedDict):
+    id: str
+    idMemberCreator: str | None
+    type: str
+    date: str
+    data: dict[str, Any]
+    memberCreator: dict[str, Any] | None
+
+class TrelloChecklist(TypedDict):
+    id: str
+    idBoard: str
+    idCard: str
+    name: str
+    pos: float
+    checkItems: list[dict[str, Any]]
+
+class TrelloCustomField(TypedDict):
+    id: str
+    idModel: str  # board_id
+    name: str
+    type: str
+    pos: float
+    display: dict[str, Any] | None
+    options: list[dict[str, Any]] | None
+
+class TrelloCustomFieldItem(TypedDict):
+    id: str
+    idCustomField: str
+    idModel: str  # card_id
+    value: dict[str, Any] | None
+    idValue: str | None
 ```
 
 ### 6.2 DB型
@@ -296,6 +388,49 @@ class DbCard(TypedDict):
     badges: dict[str, Any] | None
     cover: dict[str, Any] | None
     checklists: list[dict[str, Any]] | None
+
+class DbAction(TypedDict):
+    id: str
+    board_id: str | None
+    card_id: str | None
+    list_id: str | None
+    member_creator_id: str | None
+    type: str
+    date: str
+    data: dict[str, Any] | None
+    member_creator: dict[str, Any] | None
+
+class DbChecklist(TypedDict):
+    id: str
+    board_id: str
+    card_id: str
+    name: str
+    pos: float
+
+class DbCheckitem(TypedDict):
+    id: str
+    checklist_id: str
+    name: str
+    state: str
+    pos: float
+    due: str | None
+    id_member: str | None
+
+class DbCustomField(TypedDict):
+    id: str
+    board_id: str
+    name: str
+    type: str
+    pos: float
+    display: dict[str, Any] | None
+    options: list[dict[str, Any]] | None
+
+class DbCustomFieldItem(TypedDict):
+    id: str
+    card_id: str
+    custom_field_id: str
+    value: dict[str, Any] | None
+    id_value: str | None
 ```
 
 ### 6.3 結果型
@@ -306,6 +441,11 @@ class SyncStats(TypedDict):
     lists: int
     labels: int
     cards: int
+    actions: int
+    checklists: int
+    checkitems: int
+    custom_fields: int
+    custom_field_items: int
 
 class SyncResult(TypedDict):
     success: bool
@@ -316,6 +456,10 @@ class FetchResult(TypedDict):
     lists: list[TrelloList]
     labels: list[TrelloLabel]
     cards: list[TrelloCard]
+    actions: list[TrelloAction]
+    checklists: list[TrelloChecklist]
+    custom_fields: list[TrelloCustomField]
+    custom_field_items: list[TrelloCustomFieldItem]
     http_requests: int
     elapsed_seconds: float
 ```
@@ -324,12 +468,16 @@ class FetchResult(TypedDict):
 
 ### 7.1 エンドポイント
 
-| データ型 | エンドポイント | メソッド | レスポンス |
+| データ型 | エンドポイント | メソッド | パラメータ |
 |---------|-------------|---------|-----------|
-| Boards | `/1/members/{id}/boards` | GET | `[{board}, ...]` |
-| Lists | `/1/boards/{id}/lists` | GET | `[{list}, ...]` |
-| Labels | `/1/boards/{id}/labels` | GET | `[{label}, ...]` |
-| Cards | `/1/boards/{id}/cards` | GET | `[{card}, ...]` |
+| Boards | `/1/members/{id}/boards` | GET | filter=open |
+| Lists | `/1/boards/{id}/lists` | GET | filter=all |
+| Labels | `/1/boards/{id}/labels` | GET | - |
+| Cards | `/1/boards/{id}/cards` | GET | filter=all |
+| Actions | `/1/boards/{id}/actions` | GET | since, limit=1000 |
+| Checklists | `/1/boards/{id}/checklists` | GET | checkItems=all |
+| CustomFields | `/1/boards/{id}/customFields` | GET | - |
+| CustomFieldItems | `/1/cards/{id}/customFieldItems` | GET | - |
 
 ### 7.2 認証
 
@@ -344,22 +492,22 @@ class FetchResult(TypedDict):
 | key | API Key | [https://trello.com/app-key](https://trello.com/app-key) |
 | token | API Token | API Key ページからトークン生成 |
 
-### 7.3 リクエストパラメータ
+### 7.3 リクエストパラメータ詳細
 
-**Boards**:
-
-| パラメータ | 説明 | 値 |
-|-----------|------|-----|
-| filter | ボードのフィルタ | "open" (デフォルト) |
-| fields | 取得フィールド | "id,name,desc,..." |
-
-**Cards**:
+**Actions**:
 
 | パラメータ | 説明 | 値 |
 |-----------|------|-----|
-| filter | カードのフィルタ | "all" (アーカイブ含む) |
-| fields | 取得フィールド | "id,name,desc,..." |
-| checklists | チェックリスト | "all" |
+| since | この日時以降のアクションを取得 | ISO 8601形式 |
+| limit | 取得上限 | 1000 (最大) |
+| fields | 取得フィールド | id,idMemberCreator,type,date,data,memberCreator |
+
+**Checklists**:
+
+| パラメータ | 説明 | 値 |
+|-----------|------|-----|
+| checkItems | チェックアイテム取得 | "all" |
+| checkItem_fields | アイテムのフィールド | id,name,state,pos,due,idMember |
 
 ## 8. データベース設計
 
@@ -371,103 +519,98 @@ class FetchResult(TypedDict):
 | `raw.trello_lists` | `id` | リスト |
 | `raw.trello_labels` | `id` | ラベル |
 | `raw.trello_cards` | `id` | カード |
+| `raw.trello_actions` | `id` | アクション履歴 |
+| `raw.trello_checklists` | `id` | チェックリスト |
+| `raw.trello_checkitems` | `id` | チェックアイテム |
+| `raw.trello_custom_fields` | `id` | カスタムフィールド定義 |
+| `raw.trello_custom_field_items` | `id` | カスタムフィールド値 |
 
-### 8.2 テーブル定義
+### 8.2 追加テーブル定義
 
-**raw.trello_boards**:
+**raw.trello_actions**:
 
-| カラム | 型 | NULL | デフォルト | 説明 |
-|--------|-----|------|-----------|------|
-| id | TEXT | NO | - | PK (Trello ID) |
-| name | TEXT | NO | - | ボード名 |
-| description | TEXT | YES | - | 説明 |
-| url | TEXT | YES | - | URL |
-| short_url | TEXT | YES | - | 短縮URL |
-| is_closed | BOOLEAN | YES | false | アーカイブ済みか |
-| id_organization | TEXT | YES | - | 組織ID |
-| pinned | BOOLEAN | YES | false | ピン留め |
-| starred | BOOLEAN | YES | false | スター付き |
-| date_last_activity | TIMESTAMPTZ | YES | - | 最終アクティビティ日時 |
-| date_last_view | TIMESTAMPTZ | YES | - | 最終閲覧日時 |
-| prefs | JSONB | YES | - | 設定情報 |
-| label_names | JSONB | YES | - | ラベル名マッピング |
-| synced_at | TIMESTAMPTZ | YES | now() | 同期日時 |
+| カラム | 型 | NULL | 説明 |
+|--------|-----|------|------|
+| id | TEXT | NO | PK (Trello Action ID) |
+| board_id | TEXT | YES | ボードID |
+| card_id | TEXT | YES | カードID |
+| list_id | TEXT | YES | リストID |
+| member_creator_id | TEXT | YES | 実行者ID |
+| type | TEXT | NO | アクションタイプ |
+| date | TIMESTAMPTZ | NO | 実行日時 |
+| data | JSONB | YES | アクションデータ |
+| member_creator | JSONB | YES | 実行者情報 |
+| synced_at | TIMESTAMPTZ | YES | 同期日時 |
 
-**raw.trello_lists**:
+**raw.trello_checklists**:
 
-| カラム | 型 | NULL | デフォルト | 説明 |
-|--------|-----|------|-----------|------|
-| id | TEXT | NO | - | PK (Trello ID) |
-| board_id | TEXT | NO | - | FK → trello_boards.id |
-| name | TEXT | NO | - | リスト名 |
-| pos | NUMERIC | YES | - | 表示順序 |
-| is_closed | BOOLEAN | YES | false | アーカイブ済みか |
-| subscribed | BOOLEAN | YES | false | 購読中か |
-| synced_at | TIMESTAMPTZ | YES | now() | 同期日時 |
+| カラム | 型 | NULL | 説明 |
+|--------|-----|------|------|
+| id | TEXT | NO | PK |
+| board_id | TEXT | NO | ボードID |
+| card_id | TEXT | NO | カードID |
+| name | TEXT | NO | チェックリスト名 |
+| pos | NUMERIC | YES | 表示順序 |
+| synced_at | TIMESTAMPTZ | YES | 同期日時 |
 
-**raw.trello_labels**:
+**raw.trello_checkitems**:
 
-| カラム | 型 | NULL | デフォルト | 説明 |
-|--------|-----|------|-----------|------|
-| id | TEXT | NO | - | PK (Trello ID) |
-| board_id | TEXT | NO | - | FK → trello_boards.id |
-| name | TEXT | YES | - | ラベル名 |
-| color | TEXT | YES | - | 色 |
-| synced_at | TIMESTAMPTZ | YES | now() | 同期日時 |
+| カラム | 型 | NULL | 説明 |
+|--------|-----|------|------|
+| id | TEXT | NO | PK |
+| checklist_id | TEXT | NO | FK → trello_checklists.id |
+| name | TEXT | NO | アイテム名 |
+| state | TEXT | NO | 状態 (complete/incomplete) |
+| pos | NUMERIC | YES | 表示順序 |
+| due | TIMESTAMPTZ | YES | 期限 |
+| id_member | TEXT | YES | 担当者ID |
+| synced_at | TIMESTAMPTZ | YES | 同期日時 |
 
-**raw.trello_cards**:
+**raw.trello_custom_fields**:
 
-| カラム | 型 | NULL | デフォルト | 説明 |
-|--------|-----|------|-----------|------|
-| id | TEXT | NO | - | PK (Trello ID) |
-| board_id | TEXT | NO | - | FK → trello_boards.id |
-| list_id | TEXT | NO | - | FK → trello_lists.id |
-| name | TEXT | NO | - | カード名 |
-| description | TEXT | YES | - | 説明 |
-| url | TEXT | YES | - | URL |
-| short_url | TEXT | YES | - | 短縮URL |
-| pos | NUMERIC | YES | - | 表示順序 |
-| is_closed | BOOLEAN | YES | false | アーカイブ済みか |
-| due | TIMESTAMPTZ | YES | - | 期限日時 |
-| due_complete | BOOLEAN | YES | false | 期限完了フラグ |
-| date_last_activity | TIMESTAMPTZ | YES | - | 最終アクティビティ日時 |
-| id_members | TEXT[] | YES | - | 割り当てメンバーID配列 |
-| id_labels | TEXT[] | YES | - | ラベルID配列 |
-| labels | JSONB | YES | - | ラベル詳細 |
-| badges | JSONB | YES | - | バッジ情報 |
-| cover | JSONB | YES | - | カバー画像情報 |
-| checklists | JSONB | YES | - | チェックリスト |
-| synced_at | TIMESTAMPTZ | YES | now() | 同期日時 |
+| カラム | 型 | NULL | 説明 |
+|--------|-----|------|------|
+| id | TEXT | NO | PK |
+| board_id | TEXT | NO | ボードID |
+| name | TEXT | NO | フィールド名 |
+| type | TEXT | NO | 型 (text/number/checkbox/date/list) |
+| pos | NUMERIC | YES | 表示順序 |
+| display | JSONB | YES | 表示設定 |
+| options | JSONB | YES | 選択肢 (list型の場合) |
+| synced_at | TIMESTAMPTZ | YES | 同期日時 |
 
-### 8.3 外部キー制約
+**raw.trello_custom_field_items**:
 
-```sql
-ALTER TABLE raw.trello_lists
-  ADD CONSTRAINT trello_lists_board_id_fkey
-  FOREIGN KEY (board_id) REFERENCES raw.trello_boards(id);
+| カラム | 型 | NULL | 説明 |
+|--------|-----|------|------|
+| id | TEXT | NO | PK (card_id_custom_field_id) |
+| card_id | TEXT | NO | カードID |
+| custom_field_id | TEXT | NO | カスタムフィールドID |
+| value | JSONB | YES | 値 |
+| id_value | TEXT | YES | 選択肢ID (list型の場合) |
+| synced_at | TIMESTAMPTZ | YES | 同期日時 |
 
-ALTER TABLE raw.trello_labels
-  ADD CONSTRAINT trello_labels_board_id_fkey
-  FOREIGN KEY (board_id) REFERENCES raw.trello_boards(id);
-
-ALTER TABLE raw.trello_cards
-  ADD CONSTRAINT trello_cards_board_id_fkey
-  FOREIGN KEY (board_id) REFERENCES raw.trello_boards(id);
-
-ALTER TABLE raw.trello_cards
-  ADD CONSTRAINT trello_cards_list_id_fkey
-  FOREIGN KEY (list_id) REFERENCES raw.trello_lists(id);
-```
-
-### 8.4 インデックス
+### 8.3 インデックス
 
 ```sql
-CREATE INDEX idx_trello_lists_board_id ON raw.trello_lists(board_id);
-CREATE INDEX idx_trello_labels_board_id ON raw.trello_labels(board_id);
-CREATE INDEX idx_trello_cards_board_id ON raw.trello_cards(board_id);
-CREATE INDEX idx_trello_cards_list_id ON raw.trello_cards(list_id);
-CREATE INDEX idx_trello_cards_due ON raw.trello_cards(due) WHERE due IS NOT NULL;
-CREATE INDEX idx_trello_cards_date_last_activity ON raw.trello_cards(date_last_activity);
+-- Actions
+CREATE INDEX idx_trello_actions_board_id ON raw.trello_actions(board_id);
+CREATE INDEX idx_trello_actions_card_id ON raw.trello_actions(card_id);
+CREATE INDEX idx_trello_actions_date ON raw.trello_actions(date);
+CREATE INDEX idx_trello_actions_type ON raw.trello_actions(type);
+
+-- Checklists
+CREATE INDEX idx_trello_checklists_board_id ON raw.trello_checklists(board_id);
+CREATE INDEX idx_trello_checklists_card_id ON raw.trello_checklists(card_id);
+
+-- Checkitems
+CREATE INDEX idx_trello_checkitems_checklist_id ON raw.trello_checkitems(checklist_id);
+CREATE INDEX idx_trello_checkitems_state ON raw.trello_checkitems(state);
+
+-- Custom Fields
+CREATE INDEX idx_trello_custom_fields_board_id ON raw.trello_custom_fields(board_id);
+CREATE INDEX idx_trello_cf_items_card_id ON raw.trello_custom_field_items(card_id);
+CREATE INDEX idx_trello_cf_items_custom_field_id ON raw.trello_custom_field_items(custom_field_id);
 ```
 
 ## 9. エラーハンドリング
@@ -481,7 +624,7 @@ CREATE INDEX idx_trello_cards_date_last_activity ON raw.trello_cards(date_last_a
 | Not Found | 404 | 即座に終了、リソース存在確認 |
 | レート制限 | 429 | 即座に終了、待機後リトライ |
 | サーバーエラー | 500系 | リトライ可能 |
-| タイムアウト | httpx.TimeoutException | 30秒、ログ記録 |
+| タイムアウト | httpx.TimeoutException | 60秒、ログ記録 |
 
 ### 9.2 例外一覧
 
@@ -489,7 +632,7 @@ CREATE INDEX idx_trello_cards_date_last_activity ON raw.trello_cards(date_last_a
 |------|---------|--------|
 | `ValueError` | api_key/api_token 未設定 | credentials.services を確認 |
 | `httpx.HTTPStatusError` | APIエラー | ログを確認し原因を特定 |
-| `httpx.TimeoutException` | タイムアウト（30秒） | ネットワーク状況を確認 |
+| `httpx.TimeoutException` | タイムアウト（60秒） | ネットワーク状況を確認 |
 
 ## 10. パフォーマンス
 
@@ -499,115 +642,63 @@ CREATE INDEX idx_trello_cards_date_last_activity ON raw.trello_cards(date_last_a
 |---------|---------|------------|
 | 認証情報取得 | <1秒 | 0 |
 | ボード一覧取得 | ~0.5秒 | 1 |
-| 各ボードのデータ取得（並列） | ~2秒 | 15 (5×3) |
+| 各ボードのデータ取得（並列） | ~3秒 | 30 (5×6) |
+| カスタムフィールド値取得 | ~2秒 | ~50 |
 | データ変換 | <1秒 | 0 |
-| DB保存 | ~1秒 | 4 |
-| **合計** | **~4秒** | **16** |
+| DB保存 | ~2秒 | 9 |
+| **合計** | **~8秒** | **~90** |
 
 ### 10.2 計測指標
 
 | 指標 | 説明 | 目標値 |
 |------|------|--------|
-| HTTP リクエスト数 | Trello API への呼び出し回数 | 1 + (ボード数×3) |
-| fetch 時間 | API 取得の合計時間 | < 5秒 |
-| db 時間 | DB 保存の合計時間 | < 3秒 |
-| 合計時間 | 同期全体の時間 | < 10秒 |
+| HTTP リクエスト数 | Trello API への呼び出し回数 | 1 + (ボード数×6) + カード数 |
+| fetch 時間 | API 取得の合計時間 | < 10秒 |
+| db 時間 | DB 保存の合計時間 | < 5秒 |
+| 合計時間 | 同期全体の時間 | < 20秒 |
 
 ### 10.3 最適化手法
 
 1. **認証情報のキャッシュ**: DB アクセス削減
-2. **ボードごとの並列取得**: 待ち時間の最小化
-3. **upsert**: 存在チェック不要
+2. **HTTPクライアント共有**: コネクション再利用
+3. **ボードごとの並列取得**: 待ち時間の最小化
+4. **差分同期**: アクション取得量の削減
+5. **upsert**: 存在チェック不要
 
-## 11. テスト戦略
+## 11. 運用
 
-### 11.1 テスト構成
-
-| テストタイプ | ファイル | 件数 | カバレッジ |
-|------------|---------|------|-----------|
-| Unit Tests | `tests/pipelines/test_trello.py` | 20 | Helper, Transform, DB |
-| Integration Tests | 同上 | 3 | API Fetch, Full Sync |
-| **合計** | - | **23** | **~90%** |
-
-### 11.2 主要テストケース
-
-**Authentication (5件)**:
-- `test_get_auth_params_success`: 正常系
-- `test_get_auth_params_missing_key`: api_key欠損
-- `test_get_auth_params_missing_token`: api_token欠損
-- `test_get_member_id_success`: 正常系
-- `test_get_member_id_default`: デフォルト値
-- `test_auth_params_cached`: キャッシュ動作
-
-**API Fetch (5件)**:
-- `test_fetch_boards_success`: ボード取得
-- `test_fetch_lists_for_board_success`: リスト取得
-- `test_fetch_labels_for_board_success`: ラベル取得
-- `test_fetch_cards_for_board_success`: カード取得
-- `test_fetch_boards_http_error`: HTTPエラー
-
-**Data Transformation (6件)**:
-- `test_to_db_board`: ボード変換
-- `test_to_db_board_minimal`: 最小フィールド
-- `test_to_db_list`: リスト変換
-- `test_to_db_label`: ラベル変換
-- `test_to_db_label_no_name`: 名前なしラベル
-- `test_to_db_card`: カード変換
-- `test_to_db_card_minimal`: 最小フィールド
-
-**DB Operations (5件)**:
-- `test_upsert_boards_success`: ボード保存
-- `test_upsert_boards_empty`: 空リスト
-- `test_upsert_lists_success`: リスト保存
-- `test_upsert_labels_success`: ラベル保存
-- `test_upsert_cards_success`: カード保存
-
-**Full Sync (3件)**:
-- `test_sync_trello_success`: エンドツーエンド
-- `test_sync_trello_no_boards`: ボードなし
-- `test_sync_trello_multiple_boards`: 複数ボード
-
-### 11.3 テスト実行
-
-```bash
-# 全テスト実行
-pytest tests/pipelines/test_trello.py -v
-
-# 特定カテゴリのテスト
-pytest tests/pipelines/test_trello.py -k "upsert" -v   # DB書き込み
-pytest tests/pipelines/test_trello.py -k "auth" -v     # 認証
-pytest tests/pipelines/test_trello.py -k "fetch" -v    # API取得
-pytest tests/pipelines/test_trello.py -k "sync" -v     # 統合
-
-# カバレッジ測定
-pytest tests/pipelines/test_trello.py --cov=pipelines.services.trello
-```
-
-## 12. 運用
-
-### 12.1 実行方法
+### 11.1 実行方法
 
 **手動実行**:
 ```bash
-# 仮想環境アクティベート
-source .venv/Scripts/activate
-
-# 同期実行
+# 差分同期（推奨）
 python -m pipelines.services.trello
+
+# 全同期
+python -c "
+import asyncio
+from pipelines.services.trello import sync_trello
+asyncio.run(sync_trello(full_sync=True))
+"
 ```
 
-**GitHub Actions（予定）**:
+**GitHub Actions**:
 ```yaml
-# .github/workflows/sync-daily.yml
+# .github/workflows/sync-trello.yml
 - name: Sync Trello
-  run: python -m pipelines.services.trello
   env:
-    SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-    SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-    TOKEN_ENCRYPTION_KEY: ${{ secrets.TOKEN_ENCRYPTION_KEY }}
+    TRELLO_FULL_SYNC: ${{ inputs.full_sync || 'false' }}
+  run: |
+    python -c "
+    import asyncio
+    import os
+    from pipelines.services.trello import sync_trello
+    full_sync = os.environ.get('TRELLO_FULL_SYNC', 'false').lower() == 'true'
+    asyncio.run(sync_trello(full_sync=full_sync))
+    "
 ```
 
-### 12.2 必要な環境変数
+### 11.2 必要な環境変数
 
 `.env` ファイルに設定：
 
@@ -617,7 +708,7 @@ SUPABASE_SERVICE_ROLE_KEY=eyJ...
 TOKEN_ENCRYPTION_KEY=...
 ```
 
-### 12.3 認証情報の設定
+### 11.3 認証情報の設定
 
 `credentials.services` テーブルに保存（暗号化済み）：
 
@@ -629,70 +720,57 @@ TOKEN_ENCRYPTION_KEY=...
 }
 ```
 
-### 12.4 ログ出力
+### 11.4 ログ出力
 
 ```
-[2025-12-01 12:00:00] INFO [trello] Starting Trello sync
+[2025-12-01 12:00:00] INFO [trello] Starting Trello sync (incremental since 2025-11-30T12:00:00+00:00)
 [2025-12-01 12:00:01] INFO [trello] Fetched 3 boards
-[2025-12-01 12:00:01] INFO [trello] Board 'Project A': 4 lists, 6 labels, 25 cards
-[2025-12-01 12:00:02] INFO [trello] Board 'Project B': 3 lists, 5 labels, 18 cards
-[2025-12-01 12:00:02] INFO [trello] Board 'Personal': 2 lists, 4 labels, 10 cards
-[2025-12-01 12:00:02] INFO [trello] Fetched 3 boards, 9 lists, 15 labels, 53 cards (10 HTTP requests in 2.34s)
-[2025-12-01 12:00:02] INFO [trello] Saving to database...
-[2025-12-01 12:00:03] INFO [trello] Saved 3 boards to raw.trello_boards
-[2025-12-01 12:00:03] INFO [trello] Saved 9 lists to raw.trello_lists
-[2025-12-01 12:00:03] INFO [trello] Saved 15 labels to raw.trello_labels
-[2025-12-01 12:00:04] INFO [trello] Saved 53 cards to raw.trello_cards
-[2025-12-01 12:00:04] INFO [trello] Trello sync completed in 3.56s: 3 boards, 9 lists, 15 labels, 53 cards
+[2025-12-01 12:00:02] INFO [trello] Board 'Project A': 4 lists, 6 labels, 25 cards, 15 actions, 8 checklists, 2 custom fields
+[2025-12-01 12:00:03] INFO [trello] Board 'Project B': 3 lists, 5 labels, 18 cards, 10 actions, 5 checklists, 0 custom fields
+[2025-12-01 12:00:04] INFO [trello] Board 'Personal': 2 lists, 4 labels, 10 cards, 5 actions, 3 checklists, 0 custom fields
+[2025-12-01 12:00:04] INFO [trello] Fetched 25 custom field items
+[2025-12-01 12:00:04] INFO [trello] Fetched ... (90 HTTP requests in 4.12s)
+[2025-12-01 12:00:05] INFO [trello] Saving to database...
+[2025-12-01 12:00:06] INFO [trello] Trello sync completed in 5.56s (fetch: 4.12s, db: 1.44s)
 ```
 
-### 12.5 モニタリング
+## 12. 将来対応
 
-**監視項目**:
-- 同期成功/失敗回数
-- データ件数（boards, lists, labels, cards）
-- 処理時間
-- レート制限到達回数
+### 12.1 短期（1-2ヶ月）
 
-**アラート条件**:
-- 3日連続同期失敗
-- 処理時間が30秒超
+- [x] GitHub Actions 統合
+- [x] アクション履歴の取得
+- [x] チェックリストの正規化
 
-## 13. 将来対応
-
-### 13.1 短期（1-2ヶ月）
-
-- [ ] GitHub Actions 統合
-- [ ] アクション履歴の取得
-
-### 13.2 中期（3-6ヶ月）
+### 12.2 中期（3-6ヶ月）
 
 - [ ] メンバー詳細情報の取得
-- [ ] チェックリストの正規化（staging層）
+- [ ] 添付ファイル情報の取得
 
-### 13.3 長期（6ヶ月以降）
+### 12.3 長期（6ヶ月以降）
 
 - [ ] Webhookによるリアルタイム同期
 - [ ] 複数ワークスペース対応
 
-## 14. 参考資料
+## 13. 参考資料
 
-### 14.1 外部ドキュメント
+### 13.1 外部ドキュメント
 
 - [Trello REST API](https://developer.atlassian.com/cloud/trello/rest/)
 - [Trello API Key](https://trello.com/app-key)
 
-### 14.2 内部ドキュメント
+### 13.2 内部ドキュメント
 
 - `docs/DESIGN.md` - 全体設計書
 - `supabase/migrations/20251201000000_create_trello_tables.sql` - DBスキーマ
-- `tests/pipelines/test_trello.py` - テストコード
+- `supabase/migrations/20251201010000_add_trello_additional_tables.sql` - 追加テーブル
 
-## 15. 変更履歴
+## 14. 変更履歴
 
 | バージョン | 日付 | 変更内容 |
 |-----------|------|---------|
 | 1.0.0 | 2025-12-01 | 初版作成 |
+| 2.0.0 | 2025-12-01 | Actions, Checklists, CustomFields, 差分同期対応 |
 
 ---
 

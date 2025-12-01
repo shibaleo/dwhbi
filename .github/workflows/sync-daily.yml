@@ -38,6 +38,11 @@ on:
         required: false
         default: "false"
         type: string
+      ticktick_sync_days:
+        description: "TickTick: 完了タスク同期日数"
+        required: false
+        default: "7"
+        type: string
 
 jobs:
   sync-all:
@@ -68,6 +73,7 @@ jobs:
           GCAL_SYNC_DAYS: ${{ inputs.gcal_sync_days || '3' }}
           FITBIT_SYNC_DAYS: ${{ inputs.fitbit_sync_days || '3' }}
           TRELLO_FULL_SYNC: ${{ inputs.trello_full_sync || 'false' }}
+          TICKTICK_SYNC_DAYS: ${{ inputs.ticktick_sync_days || '7' }}
         run: |
           python -c "
           import asyncio
@@ -78,6 +84,7 @@ jobs:
           from pipelines.services.gcalendar import sync_gcalendar
           from pipelines.services.fitbit import sync_fitbit
           from pipelines.services.trello import sync_trello
+          from pipelines.services.ticktick import sync_ticktick
 
           async def run_all():
               results = {}
@@ -142,6 +149,16 @@ jobs:
               except Exception as e:
                   errors.append(f'Trello: {e}')
                   print(f'❌ Trello: {e}')
+
+              # TickTick
+              try:
+                  days = int(os.environ.get('TICKTICK_SYNC_DAYS', '7'))
+                  result = await sync_ticktick(days=days)
+                  results['ticktick'] = result
+                  print(f'✅ TickTick: {result}')
+              except Exception as e:
+                  errors.append(f'TickTick: {e}')
+                  print(f'❌ TickTick: {e}')
 
               if errors:
                   print(f'\\n⚠️ {len(errors)} service(s) failed')

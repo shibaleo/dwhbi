@@ -1,0 +1,59 @@
+name: Sync Airtable
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_ids:
+        description: "同期対象のベースID（カンマ区切り、空欄で全ベース）"
+        required: false
+        default: ""
+        type: string
+      include_records:
+        description: "レコードを取得する"
+        required: false
+        default: "true"
+        type: string
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Sync Airtable
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TOKEN_ENCRYPTION_KEY: ${{ secrets.TOKEN_ENCRYPTION_KEY }}
+          AIRTABLE_BASE_IDS: ${{ inputs.base_ids || '' }}
+          AIRTABLE_INCLUDE_RECORDS: ${{ inputs.include_records || 'true' }}
+        run: |
+          python -c "
+          import asyncio
+          import os
+          from pipelines.services.airtable import sync_airtable
+
+          base_ids_str = os.environ.get('AIRTABLE_BASE_IDS', '')
+          base_ids = [b.strip() for b in base_ids_str.split(',') if b.strip()] or None
+          include_records = os.environ.get('AIRTABLE_INCLUDE_RECORDS', 'true').lower() == 'true'
+
+          result = asyncio.run(sync_airtable(base_ids=base_ids, include_records=include_records))
+          print(f'Result: {result}')
+          "
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ Airtable同期が失敗しました"
+          echo "詳細は上記ログを確認してください"

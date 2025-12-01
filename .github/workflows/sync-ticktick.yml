@@ -1,0 +1,53 @@
+name: TickTick Daily Sync
+
+on:
+  # 手動実行のみ（定期実行は sync-daily.yml に統合）
+  workflow_dispatch:
+    inputs:
+      sync_days:
+        description: "完了タスクの同期日数"
+        required: false
+        default: "7"
+        type: string
+
+jobs:
+  sync-ticktick:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run TickTick sync
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TOKEN_ENCRYPTION_KEY: ${{ secrets.TOKEN_ENCRYPTION_KEY }}
+          SYNC_DAYS: ${{ inputs.sync_days || '7' }}
+        run: |
+          python -c "
+          import asyncio
+          import os
+          from pipelines.services.ticktick import sync_ticktick
+          days = int(os.environ.get('SYNC_DAYS', '7'))
+          result = asyncio.run(sync_ticktick(days=days))
+          print(result)
+          if not result.get('success'):
+              exit(1)
+          "
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "TickTick日次同期が失敗しました"
+          echo "詳細は Actions ログを確認してください"
