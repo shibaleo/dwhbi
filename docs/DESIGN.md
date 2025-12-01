@@ -1,20 +1,165 @@
-# LIFETRACER 設計ドキュメント
+# LIFETRACER 基本設計書
 
-このドキュメントは、未実装の機能や将来の設計方針をまとめたものです。
+| 項目 | 内容 |
+|------|------|
+| ドキュメントバージョン | 2.0.0 |
+| 最終更新日 | 2025-12-01 |
+| ステータス | Phase 1完了・運用中 |
 
 ## 目次
 
-- [DWH 4層アーキテクチャ](#dwh-4層アーキテクチャ)
-- [refスキーマとAirtable](#refスキーマとairtable)
-- [配布設計](#配布設計)
-- [TODO（優先度順）](#todo優先度順)
-- [ドキュメント作成予定](#ドキュメント作成予定)
+- [1. システム概要](#1-システム概要)
+- [2. アーキテクチャ](#2-アーキテクチャ)
+- [3. データソース一覧](#3-データソース一覧)
+- [4. DWH 4層アーキテクチャ](#4-dwh-4層アーキテクチャ)
+- [5. 認証・セキュリティ設計](#5-認証セキュリティ設計)
+- [6. モノレポ構成](#6-モノレポ構成)
+- [7. 技術スタック](#7-技術スタック)
+- [8. 配布設計](#8-配布設計)
+- [9. 運用設計](#9-運用設計)
+- [10. 実装状況](#10-実装状況)
+- [11. TODO（優先度順）](#11-todo優先度順)
+- [12. 参考資料](#12-参考資料)
 
 ---
 
-## DWH 4層アーキテクチャ
+## 1. システム概要
 
-### 目標構造
+### 1.1 目的
+
+**LIFETRACER = Personal Data Warehouse Platform**
+
+個人の生活データ（健康・時間・支出）を統合し、60年間の長期運用に耐える分析基盤を提供する。
+
+### 1.2 設計思想
+
+| 原則 | 説明 |
+|------|------|
+| **60年運用** | PostgreSQL + Python + dbt は枯れた技術スタック |
+| **テンプレート提供** | ユーザーが全リソースを所有し、提供者への依存なく運用可能 |
+| **サービス非依存** | core層以降ではサービス名が消え、将来の移行に耐える |
+
+### 1.3 対象データドメイン
+
+| ドメイン | データソース | 用途 |
+|---------|------------|------|
+| 健康 | Fitbit, Tanita | 睡眠・心拍・体組成・血圧 |
+| 時間 | Toggl Track, Google Calendar | 時間追跡・予定管理 |
+| 支出 | Zaim | 家計簿 |
+
+---
+
+## 2. アーキテクチャ
+
+### 2.1 システム全体図
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        External APIs                                 │
+│  ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐                       │
+│  │Fitbit│ │Tanita│ │Toggl │ │GCal  │ │ Zaim │                       │
+│  └──┬───┘ └──┬───┘ └──┬───┘ └──┬───┘ └──┬───┘                       │
+└─────┼────────┼────────┼────────┼────────┼───────────────────────────┘
+      │        │        │        │        │
+      └────────┴────────┴────┬───┴────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Python Pipelines (GitHub Actions)                 │
+│  pipelines/services/{fitbit,tanita,toggl,gcalendar,zaim}.py         │
+└─────────────────────────────────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                         Supabase                                     │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │  raw.*           生データ（テーブル）                         │   │
+│  │  staging.*       クリーニング・正規化（ビュー）               │   │
+│  │  core.*          サービス統合（ビュー）                       │   │
+│  │  marts.*         分析集計（ビュー）                           │   │
+│  │  credentials.*   認証情報（暗号化）                           │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                      Grafana Cloud                                   │
+│                   PostgreSQL Datasource → Dashboard                  │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 2.2 データフロー
+
+```
+External APIs
+    ↓ Python (pipelines/)
+Supabase raw.*
+    ↓ dbt models (transform/models/staging/) [将来]
+Supabase staging.*
+    ↓ dbt models (transform/models/core/) [将来]
+Supabase core.*
+    ↓ dbt models (transform/models/marts/) [将来]
+Supabase marts.*
+    ↓ PostgreSQL datasource
+Grafana Cloud
+```
+
+---
+
+## 3. データソース一覧
+
+### 3.1 実装済みデータソース
+
+| サービス | 認証方式 | データ種類 | 実装ステータス |
+|---------|---------|-----------|--------------|
+| **Toggl Track** | Basic Auth (API Token) | clients, projects, tags, entries | ✅ 実装完了・運用中 |
+| **Google Calendar** | Service Account JWT | events | ✅ 実装完了・運用中 |
+| **Zaim** | OAuth 1.0a (HMAC-SHA1) | categories, genres, accounts, transactions | ✅ 実装完了・テスト済み |
+| **Fitbit** | OAuth 2.0 | sleep, heart_rate, hrv, activity, spo2 | ✅ 実装完了・テスト済み |
+| **Tanita** | OAuth 2.0 | body_composition, blood_pressure | ✅ 実装完了・テスト済み |
+
+### 3.2 データソース別概要
+
+#### Toggl Track
+- **認証**: Basic Auth (`api_token:api_token` の Base64エンコード)
+- **API**: Toggl Track API v9
+- **取得データ**: クライアント、プロジェクト、タグ、時間エントリー
+- **特徴**: 並列API取得（4エンドポイント同時）、認証情報キャッシュ
+- **詳細設計**: `docs/Detailed_Design/toggl.md`
+
+#### Google Calendar
+- **認証**: Service Account JWT → Bearer Token
+- **API**: Google Calendar API v3
+- **取得データ**: カレンダーイベント（通常/終日/繰り返し）
+- **特徴**: JWT自前生成、繰り返しイベント展開（singleEvents=true）
+- **詳細設計**: `docs/Detailed_Design/gcalendar.md`
+
+#### Zaim
+- **認証**: OAuth 1.0a (HMAC-SHA1署名を自前実装)
+- **API**: Zaim API v2
+- **取得データ**: カテゴリ、ジャンル、口座、取引
+- **特徴**: JSTタイムスタンプのUTC変換、外部キー順序を考慮した保存
+- **詳細設計**: `docs/Detailed_Design/zaim.md`
+
+#### Fitbit
+- **認証**: OAuth 2.0 (自動トークンリフレッシュ)
+- **API**: Fitbit Web API
+- **取得データ**: 睡眠、心拍数、HRV、活動、SpO2
+- **特徴**: チャンク処理（100日/30日/1日）、レート制限管理（150 req/h）
+- **詳細設計**: `docs/Detailed_Design/fitbit.md`
+
+#### Tanita Health Planet
+- **認証**: OAuth 2.0 (自動トークンリフレッシュ)
+- **API**: Health Planet API
+- **取得データ**: 体組成（体重、体脂肪率）、血圧
+- **特徴**: 3ヶ月チャンク、Shift_JISエンコーディング対応、測定タグのグループ化
+- **詳細設計**: `docs/Detailed_Design/tanita.md`
+
+---
+
+## 4. DWH 4層アーキテクチャ
+
+### 4.1 目標構造
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -42,451 +187,99 @@
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### 設計思想
+### 4.2 層別設計
 
-| 層 | 役割 | サービス名 | 形式 |
-|----|------|-----------|------|
-| raw | APIレスポンスをそのまま保存 | あり | テーブル |
-| staging | 型変換、列名正規化、タイムゾーン変換 | あり | ビュー |
-| core | 複数サービスの統合、ビジネスエンティティ化 | **なし** | ビュー |
-| marts | 分析・集計、ドメイン別ビュー | なし | ビュー |
+| 層 | 役割 | サービス名 | 形式 | 実装状況 |
+|----|------|-----------|------|---------|
+| raw | APIレスポンスをそのまま保存 | あり | テーブル | ✅ 実装済み |
+| staging | 型変換、列名正規化、タイムゾーン変換 | あり | ビュー | 未着手 |
+| core | 複数サービスの統合、ビジネスエンティティ化 | **なし** | ビュー | 未着手 |
+| marts | 分析・集計、ドメイン別ビュー | なし | ビュー | 未着手 |
 
-### サービス非依存の設計
+### 4.3 サービス非依存の設計
 
 core層以降ではサービス名が消える。これにより：
 - 将来Togglから別サービスに移行しても、core/marts層は変更不要
 - 分析クエリは `fct_time_entries` を参照し、データソースを意識しない
 - staging層で新旧サービスを統合するロジックを吸収
 
-### 命名規則
+### 4.4 命名規則
 
 | 層 | プレフィックス | 例 |
 |----|---------------|----|
+| raw | `{service}_{entity}` | toggl_entries, fitbit_sleep |
 | staging | `stg_{service}__{entity}` | stg_toggl__entries |
 | core | `fct_` / `dim_` | fct_time_entries, dim_projects |
 | marts | `agg_` / ドメイン名 | agg_daily_health |
 
----
+### 4.5 raw層テーブル一覧
 
-## refスキーマとAirtable
-
-### 役割分担
-
-| スキーマ/サービス | 役割 | 同期方向 |
-|------------------|------|----------|
-| Airtable | マスタデータの編集UI | - |
-| ref.* | マスタデータの永続化（テーブル） | Airtable → ref |
-| core.dim_* | マスタの統合ビュー | ref → core（ビュー参照） |
-
-### データフロー
-
-```
-Airtable（編集UI、無料枠1,000件/base）
-    ↓ sync（Airtable API）
-ref.expense_categories（Supabase、永続化）
-    ↓ view
-core.dim_expense_categories
-```
-
-### 設計意図
-
-- **Airtable**: モバイル対応、型強制、バリデーション機能を持つ編集UI
-- **ref**: Supabase内でのマスタデータ永続化層
-- **無料枠1,000件の制約**: マスタ専用という役割を物理的に強制（分析対象にはならない）
-
-### Notionとの使い分け
-
-| サービス | 用途 | スキーマ |
-|---------|------|----------|
-| Airtable | マスタ編集UI（静的、増えない） | ref.* |
-| Notion | 分析対象データソース（時系列で増える） | raw.* |
-
-### ⚠️ 双方向同期の注意点
-
-マッピングテーブル（例: Togglプロジェクト → カテゴリ）を作成する場合、IDの管理が必要：
-
-```
-1. Supabaseでレコード作成時にIDが生成される
-2. そのIDをAirtableに同期する必要がある（Supabase → Airtable）
-3. Airtable側での編集はAirtable → Supabaseで同期
-```
-
-同期パターン：
-- **通常のマスタ**: Airtable → ref（一方向）
-- **IDを含むマッピング**: 初回はref → Airtable、以降はAirtable → ref
-
-ID競合を避けるため、Airtable側ではSupabaseのIDを編集不可フィールドとして表示する設計を推奨。
+| テーブル | 主キー | データソース |
+|---------|--------|------------|
+| `raw.toggl_clients` | id | Toggl |
+| `raw.toggl_projects` | id | Toggl |
+| `raw.toggl_tags` | id | Toggl |
+| `raw.toggl_entries` | id | Toggl |
+| `raw.gcalendar_events` | id | Google Calendar |
+| `raw.zaim_categories` | (zaim_user_id, id) | Zaim |
+| `raw.zaim_genres` | (zaim_user_id, id) | Zaim |
+| `raw.zaim_accounts` | (zaim_user_id, id) | Zaim |
+| `raw.zaim_transactions` | (zaim_user_id, zaim_id) | Zaim |
+| `raw.fitbit_sleep` | log_id | Fitbit |
+| `raw.fitbit_heart_rate_daily` | date | Fitbit |
+| `raw.fitbit_hrv_daily` | date | Fitbit |
+| `raw.fitbit_activity_daily` | date | Fitbit |
+| `raw.fitbit_spo2_daily` | date | Fitbit |
+| `raw.tanita_body_composition` | measured_at | Tanita |
+| `raw.tanita_blood_pressure` | measured_at | Tanita |
 
 ---
 
-## 配布設計
+## 5. 認証・セキュリティ設計
 
-### 設計哲学
-
-**テンプレート提供に徹する**
-
-- 他人のアプリを管理しない
-- リポジトリは突然消える可能性がある
-- 各ユーザーが真の意味で主導権を持つ
-
-**60年運用の思想と一貫**
-
-各ユーザーが全リソースを所有し、テンプレート提供者（私）への依存なく運用できること。
+### 5.1 認証情報の保存
 
 ```
-私 ────提供────→ テンプレート
-                    ↓ fork
-ユーザー ─所有─→ 全リソース
-
-私のリポジトリが消えても、ユーザーのシステムは動き続ける
+credentials.services テーブル
+├── service: サービス名 (toggl, fitbit, tanita, zaim, gcalendar)
+├── credentials_encrypted: AES-256-GCM 暗号化済み認証情報
+└── expires_at: トークン有効期限（OAuth 2.0の場合）
 ```
 
-### 最小構成（2サービス）
+### 5.2 暗号化方式
 
-| サービス | 役割 | 無料枠 |
-|---------|------|--------|
-| **GitHub** | コード、Actions（同期ジョブ）、Pages（管理UI） | Actions 2000分/月 |
-| **Supabase** | PostgreSQL、認証情報保存 | DB 500MB |
+| 項目 | 値 |
+|------|---|
+| アルゴリズム | AES-256-GCM |
+| 鍵長 | 256bit (32bytes) |
+| Nonce | 12bytes (96bit) |
+| 鍵の保存場所 | 環境変数 `TOKEN_ENCRYPTION_KEY` |
 
-```
-GitHub
-├── Private Repository
-├── Secrets（client_secret、ENCRYPTION_KEY保存）
-├── Actions（ビルド + 同期ジョブ）
-└── Pages（管理UI、secret注入済み）
+### 5.3 認証方式別の実装
 
-Supabase
-└── PostgreSQL（データ + 暗号化token）
-```
+| サービス | 認証方式 | 保存する認証情報 |
+|---------|---------|----------------|
+| Toggl | Basic Auth | api_token, workspace_id |
+| Google Calendar | Service Account | service_account_json (Base64), calendar_id |
+| Zaim | OAuth 1.0a | consumer_key, consumer_secret, access_token, access_token_secret |
+| Fitbit | OAuth 2.0 | client_id, client_secret, access_token, refresh_token |
+| Tanita | OAuth 2.0 | client_id, client_secret, access_token, refresh_token |
 
-### 管理UI設計
+### 5.4 トークンリフレッシュ戦略
 
-**GitHub Pages + ビルド時secret注入**
-
-```
-1. client_secretはGitHub Secretsに保存
-2. GitHub ActionsでPages用JSをビルド
-3. ビルド時に環境変数を注入
-4. 生成されたJSにclient_secretが含まれる
-5. GitHub Pagesで配信
-```
-
-**セキュリティのトレードオフ**
-
-| 観点 | 評価 |
-|------|------|
-| 正統なセキュリティ | ✗ client_secretがクライアントに露出 |
-| 実質的なリスク | △ URLを知らなければアクセスされない |
-| 被害の深刻度 | 低（金銭被害なし、データ閲覧のみ） |
-| シンプルさ | ◎ Edge Functions不要 |
-
-→ 親しい人向け・自己責任で使うなら許容範囲
-
-### ツールの役割分担
-
-| ツール | 役割 | 頻度 |
-|--------|------|------|
-| 管理UI（GitHub Pages） | 認証管理、OAuth再認証、復旧作業 | 月数回 |
-| Airtable | マスタデータ編集 | 順時 |
-| Grafana Cloud | 分析ダッシュボード、可視化 | 日常的 |
-
-```
-┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
-│  管理UI          │     │  Airtable        │     │  Grafana Cloud   │
-│  - OAuth再認証   │     │  - マスタ編集    │     │  - 時間分析      │
-│  - トークン復旧  │     │  - カテゴリ管理  │     │  - 支出推移      │
-│  （低頻度）      │     │  （順時）        │     │  - 健康指標      │
-└─────────┬────────┘     └─────────┬────────┘     └─────────┬────────┘
-          │                        │                        │
-          └────────────┬───────────┴────────────┘
-                       │
-                       ▼
-               ┌───────────────┐
-               │   Supabase    │
-               │   PostgreSQL  │
-               └───────────────┘
-```
-
-### ユーザーセットアップフロー
-
-**初期設定（1回、手動）**
-
-```
-1. GitHub「Use this template」でリポジトリ作成（Private）
-2. Supabaseプロジェクト作成
-3. 各サービスでOAuthアプリ登録
-   - callback URI: https://{username}.github.io/{repo}/callback/{service}
-4. GitHub Secretsに設定
-   - client_id / client_secret（各サービス）
-   - SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY
-   - TOKEN_ENCRYPTION_KEY
-5. GitHub Pages有効化（Settings → Pages）
-6. supabase db push でマイグレーション適用
-```
-
-**日常運用（ボタン1つ）**
-
-```
-┌─────────────────────────────────────────┐
-│  管理UI                                 │
-│                                         │
-│  [Fitbitを連携]  [Tanitaを連携]  ...    │
-│       ↓                                 │
-│  OAuth画面 → 許可 → 自動保存 → 完了     │
-└─────────────────────────────────────────┘
-```
-
-**障害時**
-
-- トークン期限切れ → 「再連携」ボタン押すだけ
-- よくわからないエラー → 最初からやり直し
-
-「直す」より「作り直す」のほうが非エンジニアには分かりやすい。
-
-### ドキュメント責任の分離
-
-| 項目 | ドキュメント |
-|------|-------------|
-| GitHub PAT | GitHub公式（膨大、多言語対応） |
-| Supabaseプロジェクト作成 | Supabase公式 |
-| 各サービスOAuth登録 | 各サービス公式 + 自前で最低限（callback URI、スコープ一覧） |
-| 管理UIの使い方 | 自前（直感的なUIを目指す） |
-
-### 認証情報の階層構造
-
-```
-GitHub PAT（手動、公式ドキュメント参照）
-    │
-    ├─→ GitHub Secrets 設定
-    │       ├── SUPABASE_URL
-    │       ├── SUPABASE_SERVICE_ROLE_KEY
-    │       ├── TOKEN_ENCRYPTION_KEY
-    │       └── 各サービスのclient_id / client_secret
-    │
-    └─→ GitHub Actions 実行
-            │
-            ▼
-        Supabase credentials.services
-            ├── Fitbit tokens
-            ├── Tanita tokens
-            ├── Toggl credentials
-            ├── Zaim credentials
-            └── etc.
-```
+| サービス | 有効期限 | リフレッシュ閾値 | 戦略 |
+|---------|---------|----------------|------|
+| Fitbit | 8時間 | 60分前 | 自動リフレッシュ、DBに保存 |
+| Tanita | 3時間 | 30分前 | 自動リフレッシュ、DBに保存 |
+| Toggl | なし | - | リフレッシュ不要 |
+| Google Calendar | 1時間 | - | 毎回JWT生成 |
+| Zaim | なし | - | リフレッシュ不要（OAuth 1.0a） |
 
 ---
 
-## TODO（優先度順）
+## 6. モノレポ構成
 
-### 🔴 緊急度：高（運用停止リスク）
-
-| タスク | 内容 | ステータス |
-|--------|------|------------|
-| ENCRYPTION KEY復旧手順 | 紛失時の認証情報再設定フロー、全サービスの再認証手順 | 未着手 |
-| OAuth再認証手順 | リフレッシュトークン失効時の手動再認証フロー（Fitbit, Tanita, Zaim） | 未着手 |
-| Phase 6: 同期テスト | sync_daily.ts の動作確認 | 未着手 |
-| Phase 7: .env整理 | SUPABASE_* と TOKEN_ENCRYPTION_KEY 以外を削除 | 未着手 |
-
-### 🟠 優先度：高（ドキュメント・運用基盤）
-
-| タスク | 内容 | ステータス |
-|--------|------|------------|
-| 各サービス接続ドキュメント | API登録、OAuth設定、credentials.services への初期データ投入手順 | 未着手 |
-| バックアップ・リストア手順 | Supabaseデータの定期エクスポート、pg_dump/restore手順 | 未着手 |
-| ローカル開発環境セットアップ | 新PC/新環境での構築手順、必要なツール一覧 | 未着手 |
-| Phase 8: 旧tokens削除 | fitbit.tokens, tanita.tokens テーブル削除 | 未着手 |
-
-### 🟡 優先度：中（アーキテクチャ・品質）
-
-| タスク | 内容 | ステータス |
-|--------|------|------------|
-| Phase 9: DWH 4層構築 | staging/core/marts層のビュー作成 | 未着手 |
-| 管理UI構築 | GitHub Pages + ビルド時secret注入、OAuthフロー実装 | 未着手 |
-| Airtable連携 | refスキーマとの同期、マスタ編集UI | 未着手 |
-| Grafana Cloud連携 | PostgreSQLデータソース設定、ダッシュボード作成 | 未着手 |
-| マイグレーション管理方針 | 保管場所、命名規則、ロールバック手順 | 未着手 |
-| 同期失敗アラート | GitHub Actions失敗時のSlack/メール通知 | 未着手 |
-| 新サービス追加テンプレート | ボイラープレートコード、チェックリスト | 未着手 |
-| スキーマ変更手順 | 新フィールド追加時のマイグレーションフロー | 未着手 |
-| 整合性チェッククエリ | raw↔staging↔coreの件数・欠損確認SQL | 未着手 |
-
-### 🟢 優先度：低（耐障害性・将来対応）
-
-| タスク | 内容 | ステータス |
-|--------|------|------------|
-| Supabase終了時の移行計画 | PostgreSQLエクスポート、別ホストへの移行手順 | 未着手 |
-| 各サービスAPI廃止時の対応 | データ保全方針、代替サービス選定基準 | 未着手 |
-| Airtable終了時の代替 | ref層UIの移行先候補（NocoDB等） | 未着手 |
-| 重複検知クエリ | 同期ミスによる重複レコードの検出・修正SQL | 未着手 |
-
----
-
-## ドキュメント作成予定
-
-```
-docs/
-├── SETUP.md                    # ローカル開発環境セットアップ
-├── USER_SETUP.md               # ユーザー向けセットアップガイド（テンプレート利用者用）
-├── SERVICE_CONNECTION.md       # 各サービスへの接続方法（OAuthアプリ登録、callback URI設定）
-├── ENCRYPTION_KEY_RECOVERY.md  # ENCRYPTION KEY復旧手順
-├── OAUTH_REAUTH.md             # OAuth再認証手順
-├── BACKUP_RESTORE.md           # バックアップ・リストア手順
-├── MIGRATION_POLICY.md         # マイグレーション管理方針
-├── NEW_SERVICE_GUIDE.md        # 新サービス追加ガイド
-└── DISASTER_RECOVERY.md        # 障害復旧計画
-```
-
-## 配布設計 (Revised: Security-First Approach)
-
-### 1. 設計哲学（テンプレート提供に徹する）
-
-* **基本方針:** LIFETRACERは、**60年運用の思想**に基づき、ユーザーが全ての権限とリソースを所有する**テンプレート（配布物）**として提供される。
-* **最小構成:** **GitHub (リポジトリ/Pages/Actions)** と **Supabase (DB/Auth/Edge Functions)** の2サービス構成を維持する。
-
-### 2. セキュリティ課題の解決（Client Secretの隔離）
-
-元の設計における最大の課題は、OAuth連携に必要な **Client Secret** がクライアント側（GitHub Pagesで配信されるJavaScript）に露出する点であった。これを解決するため、以下の構成を採用する。
-
-* **機密情報の隔離:**
-    * **Client Secret** は、Supabase DB内の専用テーブル（`ref.secrets`）にのみ保存し、クライアントサイドには一切露出させない。
-    * このテーブルへのアクセスは、Supabaseの**サービスロールキー**を持つ**サーバーサイドコンポーネント**（Edge Functions および GitHub Actions）に限定する。
-* **認証・同期処理の分担:**
-    * **初回トークン交換（認証時）:** **Supabase Edge Functions**が実行する。FunctionsがDBから Secret を安全に読み出し、トークン交換処理を行い、取得したトークン（暗号化済み）をDBに保存する。
-    * **継続的データ同期（運用時）:** **GitHub Actions**が実行する。ActionsがDBから Secret および Refresh Token を安全に読み出し、トークンリフレッシュとデータ取得を行う。
-
-### 3. 管理UIのアクセス制御と初回設定の簡略化
-
-利用者＝管理者であるユーザーの利便性とセキュリティを両立させるため、管理UI（GitHub Pages）に**Supabase Auth**による認証機能を追加する。
-
-| 機能 | コンポーネント | 実現内容 |
-| :--- | :--- | :--- |
-| **アクセス制限** | **Supabase Auth / GitHub Pages** | 管理UIへのアクセスを、Supabaseに登録されたユーザー（テンプレート所有者）のみに限定する。URL直打ちによる第三者のアクセスを防ぐ。 |
-| **安全なSecret入力** | **Edge Functions / Supabase DB** | ユーザーはログイン後、ブラウザ上の管理UIでClient Secretを一度だけ入力できる。この情報は、**認証済みユーザーのJWT**と共に **HTTPS通信** で **Edge Function** に送信され、**DB**に安全に保存される。 |
-
-### 4. ユーザーセットアップフロー（Client Secret入力含む）
-
-1.  GitHubでリポジトリ作成、Pages有効化。
-2.  Supabaseプロジェクト作成、スキーマ（`ref.secrets`含む）と**Edge Functions**をデプロイ。
-3.  Supabase Authで管理者アカウントを登録。
-4.  FitbitなどのOAuthアプリを作成し、**Callback URI**を**デプロイしたEdge Functionのエンドポイント**に設定。
-5.  GitHub Pagesの管理UIへ**ログイン**（Supabase Auth利用）。
-6.  ログイン後、管理UIのフォームに**Client IDとClient Secret**を入力・送信。
-7.  Edge Functionが**認証済みリクエスト**を確認後、DBの `ref.secrets` にClient Secretを安全に保存する。
-
-### 5. 将来的なデータ公開への対応
-
-Supabase AuthとRLS（Row Level Security）を最大限活用することで、将来的なデータ公開にも対応できる。
-
-* **管理者認証:** 現在の設計通り、システム管理者としての管理UIへのアクセスを制御。
-* **ビューア認証:** データ公開用の**別ユーザーアカウント**をSupabase Authで管理し、**`marts` スキーマ**のビューに対して「認証済みビューアは閲覧のみ可能」といった**きめ細やかなアクセス制御**をRLSで適用する。
-
----
-
-## TODO（優先度順）
-
-### 🔴 優先度：高（リリース必須）
-
-| タスク | 内容 | ステータス |
-|--------|------|------------|
-| OAuth再認証手順 | トークン期限切れ・失効時のリカバリ手順 | **見直し中** (Edge Functions利用前提で再設計) |
-| ENCRYPTION KEY復旧手順 | トークン暗号化キー紛失時のリカバリ手順 | 未着手 |
-| **セキュリティ強化版管理UI** | **GitHub PagesへのSupabase Authログイン機能と、認証済みEdge Function経由でのClient Secret登録フォームの実装** | **設計完了** (実装前) |
-| **Edge Functionの実装** | **初回OAuthトークン交換、認証済みClient Secret登録APIの実装** | **設計完了** (実装前) |
-| 初期データ投入手順 | 未着手 |
-| バックアップ・リストア手順 | Supabaseデータの定期エクスポート、pg_dump/restore手順 | 未着手 |
-| ローカル開発環境セットアップ | 新PC/新環境での構築手順、必要なツール一覧 | 未着手 |
-| Phase 8: 旧tokens削除 | fitbit.tokens, tanita.tokens テーブル削除 | 未着手 |
-
-### 🟡 優先度：中（アーキテクチャ・品質）
-
-| タスク | 内容 | ステータス |
-|--------|------|------------|
-| Phase 9: DWH 4層構築 | staging/core/marts層のビュー作成 | 未着手 |
-| 管理UI構築 | GitHub Pages + ビルド時secret注入、OAuthフロー実装 | **置き換え** (セキュリティ強化版管理UIタスクへ) |
-| Airtable連携 | refスキーマとの同期、マスタ編集UI | 未着手 |
-| Grafana Cloud連携 | PostgreSQLデータソース設定、ダッシュボード作成 | 未着手 |
-| マイグレーション管理方針 | 保管場所、命名規則、ロールバック手順 | 未着手 |
-| 同期失敗アラート | GitHub Actions失敗時のSlack/メール通知 | 未着手 |
-| 新サービス追加テンプレート | ボイラープレートコード、チェックリスト | 未着手 |
-| スキーマ変更手順 | 新フィールド追加時のマイグレーションフロー | 未着手 |
-| 整合性チェッククエリ | raw↔staging↔coreの件数・欠損確認SQL | 未着手 |
-
-### 🟢 優先度：低（耐障害性・将来対応）
-
-| タスク | 内容 | ステータス |
-|--------|------|------------|
-| Supabase終了時の移行計画 | PostgreSQLエクスポート... | 未着手 |
-
-### デプロイ設計
-
-管理画面はgithub pagesではなく、vercelを利用。
-管理画面初回ログイン時にはsupabase authを利用して認証を行う。
-個人データ配信のためにauth 不要なlanding pageを作成するか否かのトグルボタンを実装する。
-一般ユーザ向けのログインもsupabase authを利用する。
-トークンの入力は管理画面で行い、vercel functions経由でsupabaseに保存する。
-ただし、使い捨ての暗号化キーをその場で作成し、vercelの環境変数へ設定させる。
-supabaseへは暗号化して保存。
-暗号化キーを紛失した場合は、再登録が必要。
-supabase functionsでoauthのcallbackを受け取り、トークン交換とsupabaseへの保存を行う。
-データの可視化はgrafana cloudを利用する。これにより、可視化基盤のクラウド化とデータの公開範囲の設定を実現できる。
-そうなると管理画面はいらないかも。
-
----
-
-## 技術スタック刷新（Deno → Python + dbt）
-
-### 移行の背景
-
-現在Denoで実装されているデータ同期スクリプトを、Python + dbt に移行する。
-
-**移行理由:**
-1. **データ変換の標準化**: DWH 4層（raw → staging → core → marts）をdbtで実装
-2. **エコシステムの充実**: データエンジニアリング領域ではPythonが標準
-3. **Edge Functions の実用途**: OAuth callbackのみ（Supabase標準のDeno利用）
-4. **管理UIの技術選定**: Vercel + Next.js（Node.js環境）
-5. **60年運用思想**: PostgreSQL + Python + dbt は枯れた技術スタック
-
-**Denoの残存箇所**: Supabase Edge Functions **のみ**（OAuthトークン交換処理）
-
-### 技術スタック
-
-| レイヤー | 技術 | 実行環境 | 用途 |
-|---------|------|---------|------|
-| **API同期 → raw** | Python 3.12+ | GitHub Actions | 外部API呼び出し、raw層への書き込み |
-| **raw → staging** | dbt (SQL) | GitHub Actions | 型変換、カラム正規化、タイムゾーン変換 |
-| **staging → core** | dbt (SQL) | GitHub Actions | サービス統合、ビジネスエンティティ化 |
-| **core → marts** | dbt (SQL) | GitHub Actions | 分析集計、ドメイン別ビュー |
-| **管理UI** | Next.js + Vercel | Vercel Edge | OAuth再認証、Client Secret登録 |
-| **OAuth Callback** | Deno (Edge Functions) | Supabase | トークン交換、DB保存 |
-| **可視化** | Grafana Cloud | - | PostgreSQL接続、ダッシュボード |
-
-### データフロー
-
-```
-External APIs
-    ↓ Python (pipelines/)
-Supabase raw.*
-    ↓ dbt models (transform/models/staging/)
-Supabase staging.*
-    ↓ dbt models (transform/models/core/)
-Supabase core.*
-    ↓ dbt models (transform/models/marts/)
-Supabase marts.*
-    ↓ PostgreSQL datasource
-Grafana Cloud
-```
-
----
-
-## モノレポ構成
-
-### リポジトリ全体の目的
-
-**LIFETRACER = Personal Data Warehouse Platform**
-
-個人の生活データ（健康・時間・支出）を統合し、60年間の長期運用に耐える分析基盤を提供する。
-
-### フォルダ構成
+### 6.1 フォルダ構成
 
 ```
 lifetracer/                           # モノレポルート
@@ -496,569 +289,334 @@ lifetracer/                           # モノレポルート
 │   ├── main.py                       # オーケストレーター
 │   ├── services/                     # API同期スクリプト
 │   │   ├── __init__.py
-│   │   ├── fitbit.py
-│   │   ├── tanita.py
-│   │   ├── toggl.py
-│   │   ├── zaim.py
-│   │   ├── gcalendar.py
-│   │   └── notion.py
-│   ├── lib/                          # 共通ライブラリ（基盤機能）
+│   │   ├── fitbit.py                 # ~650行
+│   │   ├── tanita.py                 # ~720行
+│   │   ├── toggl.py                  # ~600行
+│   │   ├── zaim.py                   # ~600行
+│   │   └── gcalendar.py              # ~480行
+│   ├── lib/                          # 共通ライブラリ
 │   │   ├── __init__.py
 │   │   ├── credentials.py            # 認証情報取得・復号
 │   │   ├── db.py                     # Supabase client
 │   │   ├── encryption.py             # AES-GCM暗号化
-│   │   ├── logger.py                 # ロギング
-│   │   └── sync_state.py             # 同期状態管理
+│   │   └── logger.py                 # ロギング
 │   └── utils/                        # 汎用ユーティリティ
 │       ├── __init__.py
-│       ├── dates.py                  # 日付操作
-│       └── retry.py                  # リトライロジック
+│       └── dates.py                  # 日付操作
 │
-├── transform/                        # dbt project（データ変換）
+├── transform/                        # dbt project（データ変換）[将来]
 │   ├── dbt_project.yml
 │   ├── profiles.yml
-│   ├── models/
-│   │   ├── staging/                  # raw → staging
-│   │   │   ├── _sources.yml
-│   │   │   ├── stg_fitbit__sleep.sql
-│   │   │   ├── stg_toggl__entries.sql
-│   │   │   └── ...
-│   │   ├── core/                     # staging → core（サービス非依存化）
-│   │   │   ├── fct_time_entries.sql
-│   │   │   ├── fct_transactions.sql
-│   │   │   ├── fct_health_metrics.sql
-│   │   │   └── dim_categories.sql
-│   │   └── marts/                    # core → marts（分析用集計）
-│   │       ├── health/
-│   │       │   └── agg_daily_health.sql
-│   │       ├── productivity/
-│   │       │   └── agg_weekly_time.sql
-│   │       └── finance/
-│   │           └── agg_monthly_expense.sql
-│   ├── macros/
-│   ├── tests/
-│   └── seeds/
-│
-├── app/                              # 管理UI（Next.js App Router）
-│   ├── (auth)/
-│   │   └── login/
-│   │       └── page.tsx
-│   ├── (dashboard)/
-│   │   ├── layout.tsx
-│   │   ├── page.tsx
-│   │   ├── services/                 # サービス接続管理
-│   │   │   └── page.tsx
-│   │   ├── secrets/                  # Client Secret登録
-│   │   │   └── page.tsx
-│   │   └── sync-status/              # 同期状態確認
-│   │       └── page.tsx
-│   ├── api/                          # Vercel Functions
-│   │   ├── register-secret/
-│   │   │   └── route.ts
-│   │   └── auth/
-│   │       └── [...nextauth]/
-│   │           └── route.ts
-│   ├── components/
-│   │   ├── ServiceCard.tsx
-│   │   ├── SecretForm.tsx
-│   │   └── SyncStatusTable.tsx
-│   ├── lib/
-│   │   ├── supabase.ts
-│   │   └── api-client.ts
-│   ├── types/
-│   │   └── index.ts
-│   ├── layout.tsx
-│   ├── page.tsx
-│   ├── globals.css
-│   └── package.json                  # app専用のpackage.json
-│
-├── shared/                           # 共有型定義・定数
-│   ├── types/
-│   │   ├── services.ts               # ServiceName型、ServiceConfig型
-│   │   ├── credentials.ts            # 認証情報型
-│   │   ├── sync.ts                   # 同期結果型
-│   │   └── index.ts
-│   └── constants/
-│       ├── services.ts               # サービス一覧定数（SERVICES）
-│       └── schemas.ts                # DBスキーマ名定数
+│   └── models/
+│       ├── staging/
+│       ├── core/
+│       └── marts/
 │
 ├── supabase/
 │   ├── config.toml
 │   ├── functions/                    # Edge Functions（Deno）
-│   │   ├── oauth-callback-fitbit/
-│   │   │   ├── index.ts
-│   │   │   └── deno.json
-│   │   ├── oauth-callback-tanita/
-│   │   ├── oauth-callback-zaim/
-│   │   └── admin-secret-register/
-│   └── migrations/
-│       ├── 00001_create_raw_schema.sql
-│       ├── 00002_create_credentials.sql
-│       └── 00003_create_ref_schema.sql
+│   └── migrations/                   # DBマイグレーション
 │
 ├── tests/
-│   ├── pipelines/                    # pytest（Python同期スクリプト）
-│   │   ├── test_fitbit.py
-│   │   └── ...
-│   ├── transform/                    # dbt test結果格納
-│   ├── app/                          # Vitest/Playwright（管理UI）
-│   │   ├── unit/
-│   │   └── e2e/
-│   └── integration/
-│       └── test_e2e_sync.py
+│   └── pipelines/                    # pytest
+│       ├── test_fitbit.py            # 23テスト
+│       ├── test_tanita.py            # 24テスト
+│       ├── test_toggl.py             # 12テスト
+│       ├── test_zaim.py              # 25テスト
+│       └── test_gcalendar.py         # 20テスト
+│
+├── docs/
+│   ├── DESIGN.md                     # 本ドキュメント（基本設計書）
+│   └── Detailed_Design/              # 詳細設計書
+│       ├── toggl.md
+│       ├── gcalendar.md
+│       ├── zaim.md
+│       ├── fitbit.md
+│       └── tanita.md
 │
 ├── .github/
 │   └── workflows/
-│       ├── sync-daily.yml            # pipelines/ 実行
-│       ├── transform-daily.yml       # dbt run/test
-│       ├── deploy-app.yml            # Vercelデプロイ
-│       └── test.yml                  # pytest + dbt test
+│       └── sync-daily.yml            # 定期同期 [将来]
 │
-├── docs/
-│   ├── DESIGN.md
-│   ├── ARCHITECTURE.md               # システム全体アーキテクチャ
-│   ├── SETUP.md                      # ローカル開発環境
-│   └── USER_SETUP.md                 # テンプレート利用者向け
-│
-├── scripts/
-│   ├── setup_local.sh
-│   └── check_dependencies.py
-│
-├── pyproject.toml                    # Python依存管理（pipelines用）
+├── pyproject.toml                    # Python依存管理
 ├── requirements.txt
-├── package.json                      # ルートpackage.json（workspaces管理）
-├── .python-version
+├── .python-version                   # 3.12+
 ├── .gitignore
 ├── .env.example
-├── next.config.js
-├── tsconfig.json                     # TypeScript設定（shared + app）
-├── vercel.json
 └── README.md
 ```
 
-### フォルダの責務
+### 6.2 フォルダの責務
 
 | フォルダ | 責務 | 言語/技術 | 実行環境 |
 |---------|------|----------|---------|
 | **pipelines/** | 外部API → raw層への同期 | Python 3.12+ | GitHub Actions |
 | **transform/** | raw → staging → core → marts | dbt (SQL) | GitHub Actions |
-| **app/** | 管理UI（OAuth再認証、設定） | Next.js | Vercel |
-| **shared/** | 型定義・定数の共有 | TypeScript | app/, supabase/functions/ から参照 |
 | **supabase/** | インフラ定義、Edge Functions | SQL, Deno | Supabase |
-| **tests/** | 各レイヤーのテスト | pytest, dbt test, Vitest | ローカル/CI |
+| **tests/** | 各レイヤーのテスト | pytest | ローカル/CI |
 | **docs/** | ドキュメント | Markdown | - |
-
-### 依存関係の境界
-
-```
-app/ ──→ shared/  ✅ OK（型定義を参照）
-app/ ──→ pipelines/ ❌ NG
-app/ ──→ transform/ ❌ NG
-
-supabase/functions/ ──→ shared/ ✅ OK
-
-pipelines/ ──→ shared/ ⚠️ 可能だが推奨しない
-```
-
-### package.json の分離
-
-**ルート `package.json`** (workspaces管理)
-
-```json
-{
-  "name": "lifetracer",
-  "version": "1.0.0",
-  "private": true,
-  "workspaces": ["app"],
-  "scripts": {
-    "dev": "npm run dev --workspace=app",
-    "build": "npm run build --workspace=app"
-  },
-  "devDependencies": {
-    "@types/node": "^20.0.0",
-    "typescript": "^5.3.0"
-  }
-}
-```
-
-**app/package.json** (Next.js依存を閉じ込める)
-
-```json
-{
-  "name": "@lifetracer/app",
-  "version": "1.0.0",
-  "private": true,
-  "dependencies": {
-    "next": "^14.0.0",
-    "react": "^18.2.0",
-    "@supabase/supabase-js": "^2.38.0"
-  }
-}
-```
-
-### デプロイターゲット
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ GitHub Actions (CI/CD)                                      │
-│                                                             │
-│ ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│ │ sync-daily   │  │ transform    │  │ deploy-app   │      │
-│ │ pipelines/   │  │ transform/   │  │ app/         │      │
-│ └──────┬───────┘  └──────┬───────┘  └──────┬───────┘      │
-└────────┼──────────────────┼──────────────────┼─────────────┘
-         ↓                  ↓                  ↓
-    ┌─────────┐        ┌─────────┐       ┌─────────┐
-    │ Python  │        │   dbt   │       │ Vercel  │
-    │ 3.12+   │        │ (SQL)   │       │ (Edge)  │
-    └────┬────┘        └────┬────┘       └────┬────┘
-         │                  │                  │
-         └──────────┬───────┴──────────────────┘
-                    ↓
-         ┌─────────────────────┐
-         │  Supabase           │
-         │  - PostgreSQL (DWH) │
-         │  - Edge Functions   │
-         │  - Auth             │
-         └─────────────────────┘
-```
-
-### TypeScript設定の分離
-
-**ルート `tsconfig.json`**
-
-```json
-{
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "paths": {
-      "@shared/*": ["./shared/*"]
-    }
-  },
-  "include": ["shared/**/*"],
-  "exclude": ["node_modules", "app"]
-}
-```
-
-**app/tsconfig.json**
-
-```json
-{
-  "extends": "../tsconfig.json",
-  "compilerOptions": {
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "jsx": "preserve",
-    "paths": {
-      "@/*": ["./*"],
-      "@shared/*": ["../shared/*"]
-    }
-  },
-  "include": ["**/*.ts", "**/*.tsx"]
-}
-```
-
-### 移行戦略
-
-**Phase 1: Python同期スクリプト構築**
-
-1. `pipelines/` フォルダ作成
-2. Toggl の Python実装（最もシンプル）
-3. GitHub Actions で動作確認
-4. Deno版との並行運用（データ整合性検証）
-5. 全サービス移行後、`src/` 削除
-
-**Phase 2: dbt導入**
-
-1. `transform/` フォルダ作成、dbt初期化
-2. staging層モデル作成（`stg_toggl__entries.sql`）
-3. core層モデル作成（`fct_time_entries.sql`）
-4. marts層モデル作成（`agg_daily_productivity.sql`）
-5. GitHub Actions統合（`dbt run && dbt test`）
-
-**Phase 3: 管理UI（オプショナル）**
-
-- Grafana Cloudで十分なら `app/` は作らない
-- 必要と判明した場合のみ実装開始
-
-### この構成のメリット
-
-1. **型安全性**: `shared/types/` で型を一元管理
-2. **依存の隔離**: Next.js依存は `app/package.json` に閉じる
-3. **デプロイの独立性**: 各レイヤーが独立してデプロイ可能
-4. **管理の一元化**: 1つのリポジトリで全体を把握
-5. **60年運用思想**: `app/` を削除しても `pipelines/` + `transform/` は動作継続
 
 ---
 
-## 実装状況と設計判断（2024年12月）
+## 7. 技術スタック
 
-### ✅ Phase 1 完了: Python パイプライン基盤
+### 7.1 レイヤー別技術
 
-**実装済み:**
-- Python 3.12+ 環境
-- `pipelines/lib/` 共通ライブラリ
-  - `credentials.py` - Supabase credentials.services からの認証情報取得・復号
-  - `db.py` - Supabase クライアント
-  - `encryption.py` - AES-GCM 暗号化（Deno版と互換）
-  - `logger.py` - ロギング設定
-- `pipelines/services/toggl.py` - Toggl Track 同期実装
-- `tests/pipelines/test_toggl.py` - 12個のテスト（全て成功）
+| レイヤー | 技術 | 実装状況 |
+|---------|------|---------|
+| **API同期 → raw** | Python 3.12+ | ✅ 全サービス実装完了 |
+| **raw → staging** | dbt (SQL) | 未着手 |
+| **staging → core** | dbt (SQL) | 未着手 |
+| **core → marts** | dbt (SQL) | 未着手 |
+| **認証・暗号化** | Python (cryptography) | ✅ 実装完了 |
+| **DB接続** | Python (supabase-py) | ✅ 実装完了 |
+| **テスト** | pytest + pytest-asyncio | ✅ 104テスト |
+| **管理UI** | Next.js + Vercel | 保留 |
+| **OAuth Callback** | Deno (Edge Functions) | 未着手 |
+| **可視化** | Grafana Cloud | 未着手 |
 
-**設計判断の記録:**
+### 7.2 Python依存関係
 
-#### 1. raw層のスキーマ設計: **型付きテーブルを維持**
+**主要ライブラリ**:
 
-**判断:** raw層は型付きテーブルを維持する（全文字列化しない）
+| ライブラリ | バージョン | 用途 |
+|-----------|-----------|------|
+| httpx | >= 0.27.0 | 非同期HTTPクライアント |
+| supabase | >= 2.0.0 | Supabaseクライアント |
+| cryptography | >= 41.0.0 | AES-GCM暗号化 |
+| python-dotenv | >= 1.0.0 | 環境変数読み込み |
+| pytest | >= 8.0.0 | テストフレームワーク |
+| pytest-asyncio | >= 0.23.0 | 非同期テスト |
+| pytest-mock | >= 3.12.0 | モック |
+| tzdata | >= 2024.1 | Windows用タイムゾーンデータ |
 
-**理由:**
+---
+
+## 8. 配布設計
+
+### 8.1 設計哲学
+
+**テンプレート提供に徹する**
+
+- 他人のアプリを管理しない
+- リポジトリは突然消える可能性がある
+- 各ユーザーが真の意味で主導権を持つ
+
+```
+私 ────提供────→ テンプレート
+                    ↓ fork
+ユーザー ─所有─→ 全リソース
+
+私のリポジトリが消えても、ユーザーのシステムは動き続ける
+```
+
+### 8.2 最小構成（2サービス）
+
+| サービス | 役割 | 無料枠 |
+|---------|------|--------|
+| **GitHub** | コード、Actions（同期ジョブ） | Actions 2000分/月 |
+| **Supabase** | PostgreSQL、認証情報保存 | DB 500MB |
+
+### 8.3 ツールの役割分担
+
+| ツール | 役割 | 頻度 |
+|--------|------|------|
+| GitHub Actions | データ同期ジョブ | 日次 |
+| Supabase | DWH（PostgreSQL） | 常時 |
+| Grafana Cloud | 分析ダッシュボード | 日常的 |
+
+---
+
+## 9. 運用設計
+
+### 9.1 実行方法
+
+**手動実行**:
+```bash
+# 仮想環境アクティベート
+source .venv/Scripts/activate  # Git Bash
+# または
+.venv\Scripts\activate  # Windows CMD
+
+# 各サービス個別実行
+python -m pipelines.services.toggl
+python -m pipelines.services.gcalendar
+python -m pipelines.services.zaim
+python -m pipelines.services.fitbit
+python -m pipelines.services.tanita
+```
+
+**GitHub Actions（予定）**:
+```yaml
+# .github/workflows/sync-daily.yml
+- name: Sync All Services
+  run: |
+    python -m pipelines.services.toggl
+    python -m pipelines.services.gcalendar
+    python -m pipelines.services.zaim
+    python -m pipelines.services.fitbit
+    python -m pipelines.services.tanita
+  env:
+    SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+    SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    TOKEN_ENCRYPTION_KEY: ${{ secrets.TOKEN_ENCRYPTION_KEY }}
+```
+
+### 9.2 必要な環境変数
+
+`.env` ファイルに設定：
+
+```bash
+SUPABASE_URL=https://xxx.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+TOKEN_ENCRYPTION_KEY=... # 32バイトの暗号化キー
+```
+
+### 9.3 テスト実行
+
+```bash
+# 全テスト実行
+pytest tests/pipelines/ -v
+
+# サービス別テスト
+pytest tests/pipelines/test_toggl.py -v      # 12テスト
+pytest tests/pipelines/test_gcalendar.py -v  # 20テスト
+pytest tests/pipelines/test_zaim.py -v       # 25テスト
+pytest tests/pipelines/test_fitbit.py -v     # 23テスト
+pytest tests/pipelines/test_tanita.py -v     # 24テスト
+
+# カバレッジ測定
+pytest tests/pipelines/ --cov=pipelines
+```
+
+### 9.4 モニタリング項目
+
+| 項目 | 説明 | アラート条件 |
+|------|------|------------|
+| 同期成功率 | 各サービスの同期成功/失敗 | 3日連続失敗 |
+| データ件数 | 各テーブルのレコード数 | 0件 |
+| 処理時間 | 同期の所要時間 | 10分超 |
+| レート制限 | Fitbit: 150 req/h | 90%超 |
+
+---
+
+## 10. 実装状況
+
+### 10.1 Phase 1 完了: Python パイプライン基盤
+
+**実装済み（2025年12月）**:
+
+| モジュール | 行数 | テスト数 | カバレッジ |
+|-----------|------|---------|-----------|
+| `toggl.py` | ~600行 | 12 | ~90% |
+| `gcalendar.py` | ~480行 | 20 | ~95% |
+| `zaim.py` | ~600行 | 25 | ~95% |
+| `fitbit.py` | ~650行 | 23 | ~90% |
+| `tanita.py` | ~720行 | 24 | ~98% |
+| **合計** | **~3050行** | **104** | **~93%** |
+
+**共通ライブラリ**:
+- `pipelines/lib/credentials.py` - 認証情報取得・復号
+- `pipelines/lib/db.py` - Supabaseクライアント
+- `pipelines/lib/encryption.py` - AES-GCM暗号化（Deno版と互換）
+- `pipelines/lib/logger.py` - ロギング設定
+
+### 10.2 設計判断の記録
+
+#### raw層のスキーマ設計
+
+**判断**: raw層は型付きテーブルを維持する（全文字列化しない）
+
+**理由**:
 - データ品質: INSERT時にDB側でバリデーション
 - パフォーマンス: staging層で毎回CASTする必要がない
 - デバッグ: INSERT失敗で即座にエラー発見
-- dbtテスト: シンプルなテスト記述
 
-**実装例（Toggl）:**
-```python
-# pipelines/services/toggl.py
-def to_db_entry(entry: TogglTimeEntry) -> DbEntry:
-    """API型 → DB型への変換（型強制）"""
-    return {
-        "id": int(entry["id"]),
-        "workspace_id": int(entry["workspace_id"]),
-        "start": entry["start"],  # ISO8601 → PostgreSQL TIMESTAMPTZ
-        "duration_ms": int(entry["duration"]) * 1000,
-        "tags": entry.get("tags", []),  # Python list → PostgreSQL TEXT[]
-    }
-```
+#### Pythonモジュール構造
 
-#### 2. 認証機構: **変更なし（Deno版と互換）**
+**判断**: Deno版の分割構造をPythonでは1ファイル/サービスに統合
 
-**判断:** 既存の認証機構（AES-GCM, credentials.services）をPythonで移植
-
-**理由:**
-- 既存の仕組みが堅牢（AES-256-GCM, nonce管理）
-- Python移植が容易（`cryptography` ライブラリ）
-- 環境変数 `TOKEN_ENCRYPTION_KEY` を継続利用
-- Supabaseテーブル構造は不変
-
-**実装例:**
-```python
-# pipelines/lib/encryption.py
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-
-def decrypt_credentials(data: bytes) -> dict[str, Any]:
-    """認証情報を復号（Deno版と互換）"""
-    key = get_encryption_key()
-    aesgcm = AESGCM(key)
-
-    nonce = data[:12]
-    ciphertext = data[12:]
-
-    plaintext = aesgcm.decrypt(nonce, ciphertext, None)
-    return json.loads(plaintext.decode("utf-8"))
-
-# pipelines/lib/credentials.py
-async def get_credentials(service: str) -> CredentialsResult:
-    """credentials.servicesから認証情報を取得・復号"""
-    supabase = get_supabase_client()
-
-    result = (
-        supabase.schema("credentials")
-        .table("services")
-        .select("credentials_encrypted, expires_at")
-        .eq("service", service)
-        .single()
-        .execute()
-    )
-
-    encrypted_hex = result.data["credentials_encrypted"]
-    encrypted_bytes = hex_to_bytes(encrypted_hex)
-    credentials = decrypt_credentials(encrypted_bytes)
-
-    return CredentialsResult(
-        credentials=credentials,
-        expires_at=expires_at
-    )
-```
-
-#### 3. Pythonモジュール構造: **1ファイル/サービス**
-
-**判断:** Deno版の分割構造（auth.ts, api.ts, write_db.ts）をPythonでは統合
-
-**理由:**
-- TypeScriptは型定義が大きく分割が自然、Pythonは型ヒントがコンパクト
-- 5ファイル × 6サービス = 30ファイル → 6ファイルに削減
+**理由**:
+- 5ファイル × 6サービス = 30ファイル → 5ファイルに削減
 - 認知負荷の軽減（1ファイル内で完結）
-- 小規模（200-300行）なら1ファイルが最適
+- 小規模（500-700行）なら1ファイルが最適
 
-**実装例（Toggl: 約250行）:**
-```python
-# pipelines/services/toggl.py
+#### 認証情報のキャッシュ
 
-# ============================================================================
-# Types
-# ============================================================================
-class TogglTimeEntry(TypedDict): ...
-class DbEntry(TypedDict): ...
+**判断**: モジュールレベル変数でキャッシュ
 
-# ============================================================================
-# Authentication
-# ============================================================================
-async def get_auth_headers() -> dict[str, str]: ...
-
-# ============================================================================
-# API Client
-# ============================================================================
-async def fetch_entries_by_range(start_date: str, end_date: str) -> list[TogglTimeEntry]: ...
-
-# ============================================================================
-# DB Transformation
-# ============================================================================
-def to_db_entry(entry: TogglTimeEntry) -> DbEntry: ...
-
-# ============================================================================
-# DB Write
-# ============================================================================
-async def upsert_entries(entries: list[TogglTimeEntry]) -> int: ...
-
-# ============================================================================
-# Main Sync Function
-# ============================================================================
-async def sync_toggl(days: int = 3) -> SyncResult: ...
-```
-
-#### 4. フォルダ命名: **`pipelines/lib/` (not `core/`)**
-
-**判断:** `pipelines/core/` → `pipelines/lib/` に変更
-
-**理由:**
-- `transform/models/core/` との混乱を回避
-- `pipelines/lib/` = Pythonライブラリ（実行時依存）
-- `transform/models/core/` = dbtモデル（ビジネスエンティティ）
-- Pythonコミュニティの慣習（Django, FastAPIでも `lib/` を使用）
-
-**責務の分離:**
-```
-pipelines/
-├── services/      # ビジネスロジック（API同期）
-├── lib/          # 汎用ライブラリ（再利用可能）
-│   ├── credentials.py  # 外部システム接続
-│   ├── db.py
-│   ├── encryption.py
-│   └── logger.py
-└── utils/        # ヘルパー関数（特定タスク用）
-    ├── dates.py
-    └── retry.py
-```
+**理由**:
+- `get_credentials()` は毎回 DB アクセスを伴う
+- 1回の同期中に認証情報は変わらない
+- 複数回の DB アクセスを1回に削減
 
 ---
 
-## テストカバレッジと品質保証
+## 11. TODO（優先度順）
 
-### Toggl Pipeline テスト（12個、全て成功）
-
-**単体テスト:**
-- ✅ 認証ヘッダー生成（正常系・異常系）
-- ✅ API呼び出し（正常系・500系リトライ・4xxエラー処理）
-- ✅ API型 → DB型変換（全フィールド・最小フィールド）
-- ✅ DB書き込み（正常系・実行中エントリー除外・空リスト）
-
-**統合テスト:**
-- ✅ `sync_toggl()` エンドツーエンド
-- ✅ 日付範囲計算の検証
-
-**実行結果:**
-```bash
-$ pytest tests/pipelines/test_toggl.py -v
-============================= test session starts =============================
-collected 12 items
-
-tests/pipelines/test_toggl.py::test_get_auth_headers_success PASSED      [  8%]
-tests/pipelines/test_toggl.py::test_get_auth_headers_missing_token PASSED [ 16%]
-tests/pipelines/test_toggl.py::test_fetch_entries_by_range_success PASSED [ 25%]
-tests/pipelines/test_toggl.py::test_fetch_entries_by_range_500_retry PASSED [ 33%]
-tests/pipelines/test_toggl.py::test_fetch_entries_by_range_400_no_retry PASSED [ 41%]
-tests/pipelines/test_toggl.py::test_to_db_entry PASSED                   [ 50%]
-tests/pipelines/test_toggl.py::test_to_db_entry_minimal PASSED           [ 58%]
-tests/pipelines/test_toggl.py::test_upsert_entries_success PASSED        [ 66%]
-tests/pipelines/test_toggl.py::test_upsert_entries_filters_running PASSED [ 75%]
-tests/pipelines/test_toggl.py::test_upsert_entries_empty PASSED          [ 83%]
-tests/pipelines/test_toggl.py::test_sync_toggl_success PASSED            [ 91%]
-tests/pipelines/test_toggl.py::test_sync_toggl_date_range PASSED         [100%]
-
-============================= 12 passed in 2.59s ==============================
-```
-
----
-
-## 次のステップ
-
-### 🔴 優先度：高（Phase 2）
+### 🔴 優先度：高（リリース必須）
 
 | タスク | 内容 | ステータス |
 |--------|------|------------|
-| 他サービスのPython移行 | fitbit, tanita, zaim, gcalendar, notion を Python で実装 | 未着手 |
 | GitHub Actions統合 | `.github/workflows/sync-daily.yml` を Python実行に変更 | 未着手 |
-| Deno版との並行運用 | データ整合性検証（1-2週間） | 未着手 |
-| Phase 6-8の完了 | 同期テスト、.env整理、旧tokensテーブル削除 | 未着手 |
+| 本番環境での動作確認 | 全サービスのE2Eテスト | 未着手 |
+| ENCRYPTION KEY復旧手順 | トークン暗号化キー紛失時のリカバリ手順 | 未着手 |
 
-### 🟡 優先度：中（Phase 3）
+### 🟡 優先度：中（アーキテクチャ・品質）
 
 | タスク | 内容 | ステータス |
 |--------|------|------------|
 | dbt導入 | `transform/` フォルダ作成、staging/core/marts層の構築 | 未着手 |
-| Deno版削除 | 全サービス移行完了後、`src/` フォルダ削除 | 未着手 |
+| Grafana Cloud連携 | PostgreSQLデータソース設定、ダッシュボード作成 | 未着手 |
+| 同期失敗アラート | GitHub Actions失敗時のSlack/メール通知 | 未着手 |
+| バックアップ・リストア手順 | Supabaseデータの定期エクスポート | 未着手 |
 
 ### 🟢 優先度：低（将来対応）
 
 | タスク | 内容 | ステータス |
 |--------|------|------------|
 | 管理UI構築 | Vercel + Next.js（Grafana Cloudで十分なら不要） | 保留 |
-| Grafana Cloud連携 | PostgreSQLデータソース設定、ダッシュボード作成 | 未着手 |
+| 差分同期 | sinceパラメータによる増分同期 | 未着手 |
+| Fitbit追加データ | Breathing Rate, Cardio Score, Temperature Skin | 未着手 |
+| Tanita追加データ | 歩数データ（pedometer） | 未着手 |
 
 ---
 
-## 技術スタックの最終決定
+## 12. 参考資料
 
-| レイヤー | 技術 | 実装状況 |
-|---------|------|---------|
-| **API同期 → raw** | Python 3.12+ | ✅ Toggl実装完了 |
-| **raw → staging** | dbt (SQL) | 未着手 |
-| **staging → core** | dbt (SQL) | 未着手 |
-| **core → marts** | dbt (SQL) | 未着手 |
-| **認証・暗号化** | Python (cryptography) | ✅ 実装完了 |
-| **DB接続** | Python (supabase-py) | ✅ 実装完了 |
-| **テスト** | pytest + pytest-asyncio | ✅ Toggl完了 |
-| **管理UI** | Next.js + Vercel | 保留 |
-| **OAuth Callback** | Deno (Edge Functions) | 未着手 |
-| **可視化** | Grafana Cloud | 未着手 |
+### 12.1 外部ドキュメント
+
+| サービス | ドキュメント |
+|---------|------------|
+| Toggl Track | [API v9](https://developers.track.toggl.com/docs/) |
+| Google Calendar | [API v3](https://developers.google.com/calendar/api) |
+| Zaim | [API v2](https://dev.zaim.net/) |
+| Fitbit | [Web API](https://dev.fitbit.com/build/reference/web-api/) |
+| Tanita | [Health Planet API](https://www.healthplanet.jp/apis/api.html) |
+
+### 12.2 内部ドキュメント
+
+| ドキュメント | パス |
+|------------|------|
+| 基本設計書（本書） | `docs/DESIGN.md` |
+| Toggl詳細設計 | `docs/Detailed_Design/toggl.md` |
+| GCalendar詳細設計 | `docs/Detailed_Design/gcalendar.md` |
+| Zaim詳細設計 | `docs/Detailed_Design/zaim.md` |
+| Fitbit詳細設計 | `docs/Detailed_Design/fitbit.md` |
+| Tanita詳細設計 | `docs/Detailed_Design/tanita.md` |
+| DBマイグレーション | `supabase/migrations/` |
+| テストコード | `tests/pipelines/` |
 
 ---
 
-## 学習ポイント
+## 変更履歴
 
-### Python 3.14.0 対応
+| バージョン | 日付 | 変更内容 |
+|-----------|------|---------|
+| 1.0.0 | 2024-11 | 初版作成 |
+| 1.5.0 | 2025-11 | Toggl Python実装完了 |
+| 2.0.0 | 2025-12-01 | 全サービスPython実装完了、詳細設計書と整合性を取り再構成 |
 
-- Scoop経由でインストール
-- `python3` コマンドで実行（`python` は仮想環境内のみ）
-- 仮想環境（`.venv`）の使用を推奨
+---
 
-### 仮想環境のセットアップ
-
-```bash
-# 1回だけ実行（初回）
-python3 -m venv .venv
-.venv/Scripts/pip install -r requirements.txt
-
-# 毎回実行（開発時）
-source .venv/Scripts/activate  # Git Bash
-pytest tests/pipelines/test_toggl.py -v
-```
-
-### テスト駆動開発の実践
-
-- 実装前にテストを作成
-- モック（pytest-mock）を活用
-- 非同期テスト（pytest-asyncio）の理解
+**ドキュメント終了**
