@@ -428,3 +428,365 @@ Supabase AuthとRLS（Row Level Security）を最大限活用することで、�
 supabaseへは暗号化して保存。
 暗号化キーを紛失した場合は、再登録が必要。
 supabase functionsでoauthのcallbackを受け取り、トークン交換とsupabaseへの保存を行う。
+データの可視化はgrafana cloudを利用する。これにより、可視化基盤のクラウド化とデータの公開範囲の設定を実現できる。
+そうなると管理画面はいらないかも。
+
+---
+
+## 技術スタック刷新（Deno → Python + dbt）
+
+### 移行の背景
+
+現在Denoで実装されているデータ同期スクリプトを、Python + dbt に移行する。
+
+**移行理由:**
+1. **データ変換の標準化**: DWH 4層（raw → staging → core → marts）をdbtで実装
+2. **エコシステムの充実**: データエンジニアリング領域ではPythonが標準
+3. **Edge Functions の実用途**: OAuth callbackのみ（Supabase標準のDeno利用）
+4. **管理UIの技術選定**: Vercel + Next.js（Node.js環境）
+5. **60年運用思想**: PostgreSQL + Python + dbt は枯れた技術スタック
+
+**Denoの残存箇所**: Supabase Edge Functions **のみ**（OAuthトークン交換処理）
+
+### 技術スタック
+
+| レイヤー | 技術 | 実行環境 | 用途 |
+|---------|------|---------|------|
+| **API同期 → raw** | Python 3.12+ | GitHub Actions | 外部API呼び出し、raw層への書き込み |
+| **raw → staging** | dbt (SQL) | GitHub Actions | 型変換、カラム正規化、タイムゾーン変換 |
+| **staging → core** | dbt (SQL) | GitHub Actions | サービス統合、ビジネスエンティティ化 |
+| **core → marts** | dbt (SQL) | GitHub Actions | 分析集計、ドメイン別ビュー |
+| **管理UI** | Next.js + Vercel | Vercel Edge | OAuth再認証、Client Secret登録 |
+| **OAuth Callback** | Deno (Edge Functions) | Supabase | トークン交換、DB保存 |
+| **可視化** | Grafana Cloud | - | PostgreSQL接続、ダッシュボード |
+
+### データフロー
+
+```
+External APIs
+    ↓ Python (pipelines/)
+Supabase raw.*
+    ↓ dbt models (transform/models/staging/)
+Supabase staging.*
+    ↓ dbt models (transform/models/core/)
+Supabase core.*
+    ↓ dbt models (transform/models/marts/)
+Supabase marts.*
+    ↓ PostgreSQL datasource
+Grafana Cloud
+```
+
+---
+
+## モノレポ構成
+
+### リポジトリ全体の目的
+
+**LIFETRACER = Personal Data Warehouse Platform**
+
+個人の生活データ（健康・時間・支出）を統合し、60年間の長期運用に耐える分析基盤を提供する。
+
+### フォルダ構成
+
+```
+lifetracer/                           # モノレポルート
+│
+├── pipelines/                        # データ収集（Python）
+│   ├── __init__.py
+│   ├── main.py                       # オーケストレーター
+│   ├── services/                     # API同期スクリプト
+│   │   ├── __init__.py
+│   │   ├── fitbit.py
+│   │   ├── tanita.py
+│   │   ├── toggl.py
+│   │   ├── zaim.py
+│   │   ├── gcalendar.py
+│   │   └── notion.py
+│   ├── lib/                          # 共通ライブラリ（基盤機能）
+│   │   ├── __init__.py
+│   │   ├── credentials.py            # 認証情報取得・復号
+│   │   ├── db.py                     # Supabase client
+│   │   ├── encryption.py             # AES-GCM暗号化
+│   │   ├── logger.py                 # ロギング
+│   │   └── sync_state.py             # 同期状態管理
+│   └── utils/                        # 汎用ユーティリティ
+│       ├── __init__.py
+│       ├── dates.py                  # 日付操作
+│       └── retry.py                  # リトライロジック
+│
+├── transform/                        # dbt project（データ変換）
+│   ├── dbt_project.yml
+│   ├── profiles.yml
+│   ├── models/
+│   │   ├── staging/                  # raw → staging
+│   │   │   ├── _sources.yml
+│   │   │   ├── stg_fitbit__sleep.sql
+│   │   │   ├── stg_toggl__entries.sql
+│   │   │   └── ...
+│   │   ├── core/                     # staging → core（サービス非依存化）
+│   │   │   ├── fct_time_entries.sql
+│   │   │   ├── fct_transactions.sql
+│   │   │   ├── fct_health_metrics.sql
+│   │   │   └── dim_categories.sql
+│   │   └── marts/                    # core → marts（分析用集計）
+│   │       ├── health/
+│   │       │   └── agg_daily_health.sql
+│   │       ├── productivity/
+│   │       │   └── agg_weekly_time.sql
+│   │       └── finance/
+│   │           └── agg_monthly_expense.sql
+│   ├── macros/
+│   ├── tests/
+│   └── seeds/
+│
+├── app/                              # 管理UI（Next.js App Router）
+│   ├── (auth)/
+│   │   └── login/
+│   │       └── page.tsx
+│   ├── (dashboard)/
+│   │   ├── layout.tsx
+│   │   ├── page.tsx
+│   │   ├── services/                 # サービス接続管理
+│   │   │   └── page.tsx
+│   │   ├── secrets/                  # Client Secret登録
+│   │   │   └── page.tsx
+│   │   └── sync-status/              # 同期状態確認
+│   │       └── page.tsx
+│   ├── api/                          # Vercel Functions
+│   │   ├── register-secret/
+│   │   │   └── route.ts
+│   │   └── auth/
+│   │       └── [...nextauth]/
+│   │           └── route.ts
+│   ├── components/
+│   │   ├── ServiceCard.tsx
+│   │   ├── SecretForm.tsx
+│   │   └── SyncStatusTable.tsx
+│   ├── lib/
+│   │   ├── supabase.ts
+│   │   └── api-client.ts
+│   ├── types/
+│   │   └── index.ts
+│   ├── layout.tsx
+│   ├── page.tsx
+│   ├── globals.css
+│   └── package.json                  # app専用のpackage.json
+│
+├── shared/                           # 共有型定義・定数
+│   ├── types/
+│   │   ├── services.ts               # ServiceName型、ServiceConfig型
+│   │   ├── credentials.ts            # 認証情報型
+│   │   ├── sync.ts                   # 同期結果型
+│   │   └── index.ts
+│   └── constants/
+│       ├── services.ts               # サービス一覧定数（SERVICES）
+│       └── schemas.ts                # DBスキーマ名定数
+│
+├── supabase/
+│   ├── config.toml
+│   ├── functions/                    # Edge Functions（Deno）
+│   │   ├── oauth-callback-fitbit/
+│   │   │   ├── index.ts
+│   │   │   └── deno.json
+│   │   ├── oauth-callback-tanita/
+│   │   ├── oauth-callback-zaim/
+│   │   └── admin-secret-register/
+│   └── migrations/
+│       ├── 00001_create_raw_schema.sql
+│       ├── 00002_create_credentials.sql
+│       └── 00003_create_ref_schema.sql
+│
+├── tests/
+│   ├── pipelines/                    # pytest（Python同期スクリプト）
+│   │   ├── test_fitbit.py
+│   │   └── ...
+│   ├── transform/                    # dbt test結果格納
+│   ├── app/                          # Vitest/Playwright（管理UI）
+│   │   ├── unit/
+│   │   └── e2e/
+│   └── integration/
+│       └── test_e2e_sync.py
+│
+├── .github/
+│   └── workflows/
+│       ├── sync-daily.yml            # pipelines/ 実行
+│       ├── transform-daily.yml       # dbt run/test
+│       ├── deploy-app.yml            # Vercelデプロイ
+│       └── test.yml                  # pytest + dbt test
+│
+├── docs/
+│   ├── DESIGN.md
+│   ├── ARCHITECTURE.md               # システム全体アーキテクチャ
+│   ├── SETUP.md                      # ローカル開発環境
+│   └── USER_SETUP.md                 # テンプレート利用者向け
+│
+├── scripts/
+│   ├── setup_local.sh
+│   └── check_dependencies.py
+│
+├── pyproject.toml                    # Python依存管理（pipelines用）
+├── requirements.txt
+├── package.json                      # ルートpackage.json（workspaces管理）
+├── .python-version
+├── .gitignore
+├── .env.example
+├── next.config.js
+├── tsconfig.json                     # TypeScript設定（shared + app）
+├── vercel.json
+└── README.md
+```
+
+### フォルダの責務
+
+| フォルダ | 責務 | 言語/技術 | 実行環境 |
+|---------|------|----------|---------|
+| **pipelines/** | 外部API → raw層への同期 | Python 3.12+ | GitHub Actions |
+| **transform/** | raw → staging → core → marts | dbt (SQL) | GitHub Actions |
+| **app/** | 管理UI（OAuth再認証、設定） | Next.js | Vercel |
+| **shared/** | 型定義・定数の共有 | TypeScript | app/, supabase/functions/ から参照 |
+| **supabase/** | インフラ定義、Edge Functions | SQL, Deno | Supabase |
+| **tests/** | 各レイヤーのテスト | pytest, dbt test, Vitest | ローカル/CI |
+| **docs/** | ドキュメント | Markdown | - |
+
+### 依存関係の境界
+
+```
+app/ ──→ shared/  ✅ OK（型定義を参照）
+app/ ──→ pipelines/ ❌ NG
+app/ ──→ transform/ ❌ NG
+
+supabase/functions/ ──→ shared/ ✅ OK
+
+pipelines/ ──→ shared/ ⚠️ 可能だが推奨しない
+```
+
+### package.json の分離
+
+**ルート `package.json`** (workspaces管理)
+
+```json
+{
+  "name": "lifetracer",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": ["app"],
+  "scripts": {
+    "dev": "npm run dev --workspace=app",
+    "build": "npm run build --workspace=app"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  }
+}
+```
+
+**app/package.json** (Next.js依存を閉じ込める)
+
+```json
+{
+  "name": "@lifetracer/app",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "next": "^14.0.0",
+    "react": "^18.2.0",
+    "@supabase/supabase-js": "^2.38.0"
+  }
+}
+```
+
+### デプロイターゲット
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ GitHub Actions (CI/CD)                                      │
+│                                                             │
+│ ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│ │ sync-daily   │  │ transform    │  │ deploy-app   │      │
+│ │ pipelines/   │  │ transform/   │  │ app/         │      │
+│ └──────┬───────┘  └──────┬───────┘  └──────┬───────┘      │
+└────────┼──────────────────┼──────────────────┼─────────────┘
+         ↓                  ↓                  ↓
+    ┌─────────┐        ┌─────────┐       ┌─────────┐
+    │ Python  │        │   dbt   │       │ Vercel  │
+    │ 3.12+   │        │ (SQL)   │       │ (Edge)  │
+    └────┬────┘        └────┬────┘       └────┬────┘
+         │                  │                  │
+         └──────────┬───────┴──────────────────┘
+                    ↓
+         ┌─────────────────────┐
+         │  Supabase           │
+         │  - PostgreSQL (DWH) │
+         │  - Edge Functions   │
+         │  - Auth             │
+         └─────────────────────┘
+```
+
+### TypeScript設定の分離
+
+**ルート `tsconfig.json`**
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "paths": {
+      "@shared/*": ["./shared/*"]
+    }
+  },
+  "include": ["shared/**/*"],
+  "exclude": ["node_modules", "app"]
+}
+```
+
+**app/tsconfig.json**
+
+```json
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "jsx": "preserve",
+    "paths": {
+      "@/*": ["./*"],
+      "@shared/*": ["../shared/*"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx"]
+}
+```
+
+### 移行戦略
+
+**Phase 1: Python同期スクリプト構築**
+
+1. `pipelines/` フォルダ作成
+2. Toggl の Python実装（最もシンプル）
+3. GitHub Actions で動作確認
+4. Deno版との並行運用（データ整合性検証）
+5. 全サービス移行後、`src/` 削除
+
+**Phase 2: dbt導入**
+
+1. `transform/` フォルダ作成、dbt初期化
+2. staging層モデル作成（`stg_toggl__entries.sql`）
+3. core層モデル作成（`fct_time_entries.sql`）
+4. marts層モデル作成（`agg_daily_productivity.sql`）
+5. GitHub Actions統合（`dbt run && dbt test`）
+
+**Phase 3: 管理UI（オプショナル）**
+
+- Grafana Cloudで十分なら `app/` は作らない
+- 必要と判明した場合のみ実装開始
+
+### この構成のメリット
+
+1. **型安全性**: `shared/types/` で型を一元管理
+2. **依存の隔離**: Next.js依存は `app/package.json` に閉じる
+3. **デプロイの独立性**: 各レイヤーが独立してデプロイ可能
+4. **管理の一元化**: 1つのリポジトリで全体を把握
+5. **60年運用思想**: `app/` を削除しても `pipelines/` + `transform/` は動作継続
