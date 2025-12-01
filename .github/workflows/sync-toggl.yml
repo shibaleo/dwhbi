@@ -18,20 +18,33 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Deno
-        uses: denoland/setup-deno@v2
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          deno-version: v2.x
+          python-version: "3.12"
 
-      - name: Run daily sync
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Toggl sync
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           TOKEN_ENCRYPTION_KEY: ${{ secrets.TOKEN_ENCRYPTION_KEY }}
-          TOGGL_SYNC_DAYS: ${{ inputs.sync_days || '3' }}
+          SYNC_DAYS: ${{ inputs.sync_days || '3' }}
         run: |
-          deno run --allow-net --allow-env --allow-read \
-            src/services/toggl/sync_daily.ts
+          python -c "
+          import asyncio
+          import os
+          from pipelines.services.toggl import sync_toggl
+          days = int(os.environ.get('SYNC_DAYS', '3'))
+          result = asyncio.run(sync_toggl(days=days))
+          print(result)
+          if not result.get('success'):
+              exit(1)
+          "
 
       - name: Notify on failure
         if: failure()
