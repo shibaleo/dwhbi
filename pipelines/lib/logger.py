@@ -33,6 +33,7 @@ def setup_logger(name: str, level: Optional[str] = None) -> logging.Logger:
     )
     handler.setFormatter(formatter)
     logger.addHandler(handler)
+    logger.propagate = False  # 親ロガーへの伝播を防止
 
     return logger
 

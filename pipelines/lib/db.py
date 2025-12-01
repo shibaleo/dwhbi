@@ -5,6 +5,13 @@ from typing import Any
 
 from supabase import Client, create_client
 
+# ローカル開発時のみ .env を読み込む（GitHub Actions では不要）
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 
 _supabase_client: Client | None = None
 
