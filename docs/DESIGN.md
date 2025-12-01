@@ -790,3 +790,275 @@ pipelines/ ──→ shared/ ⚠️ 可能だが推奨しない
 3. **デプロイの独立性**: 各レイヤーが独立してデプロイ可能
 4. **管理の一元化**: 1つのリポジトリで全体を把握
 5. **60年運用思想**: `app/` を削除しても `pipelines/` + `transform/` は動作継続
+
+---
+
+## 実装状況と設計判断（2024年12月）
+
+### ✅ Phase 1 完了: Python パイプライン基盤
+
+**実装済み:**
+- Python 3.12+ 環境
+- `pipelines/lib/` 共通ライブラリ
+  - `credentials.py` - Supabase credentials.services からの認証情報取得・復号
+  - `db.py` - Supabase クライアント
+  - `encryption.py` - AES-GCM 暗号化（Deno版と互換）
+  - `logger.py` - ロギング設定
+- `pipelines/services/toggl.py` - Toggl Track 同期実装
+- `tests/pipelines/test_toggl.py` - 12個のテスト（全て成功）
+
+**設計判断の記録:**
+
+#### 1. raw層のスキーマ設計: **型付きテーブルを維持**
+
+**判断:** raw層は型付きテーブルを維持する（全文字列化しない）
+
+**理由:**
+- データ品質: INSERT時にDB側でバリデーション
+- パフォーマンス: staging層で毎回CASTする必要がない
+- デバッグ: INSERT失敗で即座にエラー発見
+- dbtテスト: シンプルなテスト記述
+
+**実装例（Toggl）:**
+```python
+# pipelines/services/toggl.py
+def to_db_entry(entry: TogglTimeEntry) -> DbEntry:
+    """API型 → DB型への変換（型強制）"""
+    return {
+        "id": int(entry["id"]),
+        "workspace_id": int(entry["workspace_id"]),
+        "start": entry["start"],  # ISO8601 → PostgreSQL TIMESTAMPTZ
+        "duration_ms": int(entry["duration"]) * 1000,
+        "tags": entry.get("tags", []),  # Python list → PostgreSQL TEXT[]
+    }
+```
+
+#### 2. 認証機構: **変更なし（Deno版と互換）**
+
+**判断:** 既存の認証機構（AES-GCM, credentials.services）をPythonで移植
+
+**理由:**
+- 既存の仕組みが堅牢（AES-256-GCM, nonce管理）
+- Python移植が容易（`cryptography` ライブラリ）
+- 環境変数 `TOKEN_ENCRYPTION_KEY` を継続利用
+- Supabaseテーブル構造は不変
+
+**実装例:**
+```python
+# pipelines/lib/encryption.py
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+def decrypt_credentials(data: bytes) -> dict[str, Any]:
+    """認証情報を復号（Deno版と互換）"""
+    key = get_encryption_key()
+    aesgcm = AESGCM(key)
+
+    nonce = data[:12]
+    ciphertext = data[12:]
+
+    plaintext = aesgcm.decrypt(nonce, ciphertext, None)
+    return json.loads(plaintext.decode("utf-8"))
+
+# pipelines/lib/credentials.py
+async def get_credentials(service: str) -> CredentialsResult:
+    """credentials.servicesから認証情報を取得・復号"""
+    supabase = get_supabase_client()
+
+    result = (
+        supabase.schema("credentials")
+        .table("services")
+        .select("credentials_encrypted, expires_at")
+        .eq("service", service)
+        .single()
+        .execute()
+    )
+
+    encrypted_hex = result.data["credentials_encrypted"]
+    encrypted_bytes = hex_to_bytes(encrypted_hex)
+    credentials = decrypt_credentials(encrypted_bytes)
+
+    return CredentialsResult(
+        credentials=credentials,
+        expires_at=expires_at
+    )
+```
+
+#### 3. Pythonモジュール構造: **1ファイル/サービス**
+
+**判断:** Deno版の分割構造（auth.ts, api.ts, write_db.ts）をPythonでは統合
+
+**理由:**
+- TypeScriptは型定義が大きく分割が自然、Pythonは型ヒントがコンパクト
+- 5ファイル × 6サービス = 30ファイル → 6ファイルに削減
+- 認知負荷の軽減（1ファイル内で完結）
+- 小規模（200-300行）なら1ファイルが最適
+
+**実装例（Toggl: 約250行）:**
+```python
+# pipelines/services/toggl.py
+
+# ============================================================================
+# Types
+# ============================================================================
+class TogglTimeEntry(TypedDict): ...
+class DbEntry(TypedDict): ...
+
+# ============================================================================
+# Authentication
+# ============================================================================
+async def get_auth_headers() -> dict[str, str]: ...
+
+# ============================================================================
+# API Client
+# ============================================================================
+async def fetch_entries_by_range(start_date: str, end_date: str) -> list[TogglTimeEntry]: ...
+
+# ============================================================================
+# DB Transformation
+# ============================================================================
+def to_db_entry(entry: TogglTimeEntry) -> DbEntry: ...
+
+# ============================================================================
+# DB Write
+# ============================================================================
+async def upsert_entries(entries: list[TogglTimeEntry]) -> int: ...
+
+# ============================================================================
+# Main Sync Function
+# ============================================================================
+async def sync_toggl(days: int = 3) -> SyncResult: ...
+```
+
+#### 4. フォルダ命名: **`pipelines/lib/` (not `core/`)**
+
+**判断:** `pipelines/core/` → `pipelines/lib/` に変更
+
+**理由:**
+- `transform/models/core/` との混乱を回避
+- `pipelines/lib/` = Pythonライブラリ（実行時依存）
+- `transform/models/core/` = dbtモデル（ビジネスエンティティ）
+- Pythonコミュニティの慣習（Django, FastAPIでも `lib/` を使用）
+
+**責務の分離:**
+```
+pipelines/
+├── services/      # ビジネスロジック（API同期）
+├── lib/          # 汎用ライブラリ（再利用可能）
+│   ├── credentials.py  # 外部システム接続
+│   ├── db.py
+│   ├── encryption.py
+│   └── logger.py
+└── utils/        # ヘルパー関数（特定タスク用）
+    ├── dates.py
+    └── retry.py
+```
+
+---
+
+## テストカバレッジと品質保証
+
+### Toggl Pipeline テスト（12個、全て成功）
+
+**単体テスト:**
+- ✅ 認証ヘッダー生成（正常系・異常系）
+- ✅ API呼び出し（正常系・500系リトライ・4xxエラー処理）
+- ✅ API型 → DB型変換（全フィールド・最小フィールド）
+- ✅ DB書き込み（正常系・実行中エントリー除外・空リスト）
+
+**統合テスト:**
+- ✅ `sync_toggl()` エンドツーエンド
+- ✅ 日付範囲計算の検証
+
+**実行結果:**
+```bash
+$ pytest tests/pipelines/test_toggl.py -v
+============================= test session starts =============================
+collected 12 items
+
+tests/pipelines/test_toggl.py::test_get_auth_headers_success PASSED      [  8%]
+tests/pipelines/test_toggl.py::test_get_auth_headers_missing_token PASSED [ 16%]
+tests/pipelines/test_toggl.py::test_fetch_entries_by_range_success PASSED [ 25%]
+tests/pipelines/test_toggl.py::test_fetch_entries_by_range_500_retry PASSED [ 33%]
+tests/pipelines/test_toggl.py::test_fetch_entries_by_range_400_no_retry PASSED [ 41%]
+tests/pipelines/test_toggl.py::test_to_db_entry PASSED                   [ 50%]
+tests/pipelines/test_toggl.py::test_to_db_entry_minimal PASSED           [ 58%]
+tests/pipelines/test_toggl.py::test_upsert_entries_success PASSED        [ 66%]
+tests/pipelines/test_toggl.py::test_upsert_entries_filters_running PASSED [ 75%]
+tests/pipelines/test_toggl.py::test_upsert_entries_empty PASSED          [ 83%]
+tests/pipelines/test_toggl.py::test_sync_toggl_success PASSED            [ 91%]
+tests/pipelines/test_toggl.py::test_sync_toggl_date_range PASSED         [100%]
+
+============================= 12 passed in 2.59s ==============================
+```
+
+---
+
+## 次のステップ
+
+### 🔴 優先度：高（Phase 2）
+
+| タスク | 内容 | ステータス |
+|--------|------|------------|
+| 他サービスのPython移行 | fitbit, tanita, zaim, gcalendar, notion を Python で実装 | 未着手 |
+| GitHub Actions統合 | `.github/workflows/sync-daily.yml` を Python実行に変更 | 未着手 |
+| Deno版との並行運用 | データ整合性検証（1-2週間） | 未着手 |
+| Phase 6-8の完了 | 同期テスト、.env整理、旧tokensテーブル削除 | 未着手 |
+
+### 🟡 優先度：中（Phase 3）
+
+| タスク | 内容 | ステータス |
+|--------|------|------------|
+| dbt導入 | `transform/` フォルダ作成、staging/core/marts層の構築 | 未着手 |
+| Deno版削除 | 全サービス移行完了後、`src/` フォルダ削除 | 未着手 |
+
+### 🟢 優先度：低（将来対応）
+
+| タスク | 内容 | ステータス |
+|--------|------|------------|
+| 管理UI構築 | Vercel + Next.js（Grafana Cloudで十分なら不要） | 保留 |
+| Grafana Cloud連携 | PostgreSQLデータソース設定、ダッシュボード作成 | 未着手 |
+
+---
+
+## 技術スタックの最終決定
+
+| レイヤー | 技術 | 実装状況 |
+|---------|------|---------|
+| **API同期 → raw** | Python 3.12+ | ✅ Toggl実装完了 |
+| **raw → staging** | dbt (SQL) | 未着手 |
+| **staging → core** | dbt (SQL) | 未着手 |
+| **core → marts** | dbt (SQL) | 未着手 |
+| **認証・暗号化** | Python (cryptography) | ✅ 実装完了 |
+| **DB接続** | Python (supabase-py) | ✅ 実装完了 |
+| **テスト** | pytest + pytest-asyncio | ✅ Toggl完了 |
+| **管理UI** | Next.js + Vercel | 保留 |
+| **OAuth Callback** | Deno (Edge Functions) | 未着手 |
+| **可視化** | Grafana Cloud | 未着手 |
+
+---
+
+## 学習ポイント
+
+### Python 3.14.0 対応
+
+- Scoop経由でインストール
+- `python3` コマンドで実行（`python` は仮想環境内のみ）
+- 仮想環境（`.venv`）の使用を推奨
+
+### 仮想環境のセットアップ
+
+```bash
+# 1回だけ実行（初回）
+python3 -m venv .venv
+.venv/Scripts/pip install -r requirements.txt
+
+# 毎回実行（開発時）
+source .venv/Scripts/activate  # Git Bash
+pytest tests/pipelines/test_toggl.py -v
+```
+
+### テスト駆動開発の実践
+
+- 実装前にテストを作成
+- モック（pytest-mock）を活用
+- 非同期テスト（pytest-asyncio）の理解
