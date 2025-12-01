@@ -117,6 +117,7 @@ Grafana Cloud
 | **Zaim** | OAuth 1.0a (HMAC-SHA1) | categories, genres, accounts, transactions | ✅ 実装完了・テスト済み |
 | **Fitbit** | OAuth 2.0 | sleep, heart_rate, hrv, activity, spo2 | ✅ 実装完了・テスト済み |
 | **Tanita** | OAuth 2.0 | body_composition, blood_pressure | ✅ 実装完了・テスト済み |
+| **Trello** | API Key + Token | boards, lists, labels, cards | ✅ 実装完了 |
 
 ### 3.2 データソース別概要
 
@@ -154,6 +155,13 @@ Grafana Cloud
 - **取得データ**: 体組成（体重、体脂肪率）、血圧
 - **特徴**: 3ヶ月チャンク、Shift_JISエンコーディング対応、測定タグのグループ化
 - **詳細設計**: `docs/Detailed_Design/tanita.md`
+
+#### Trello
+- **認証**: API Key + Token (クエリパラメータ)
+- **API**: Trello REST API
+- **取得データ**: ボード、リスト、ラベル、カード
+- **特徴**: ボードごとの並列取得、チェックリストのJSONB保存
+- **詳細設計**: `docs/Detailed_Design/trello.md`
 
 ---
 
@@ -232,6 +240,10 @@ core層以降ではサービス名が消える。これにより：
 | `raw.fitbit_spo2_daily` | date | Fitbit |
 | `raw.tanita_body_composition` | measured_at | Tanita |
 | `raw.tanita_blood_pressure` | measured_at | Tanita |
+| `raw.trello_boards` | id | Trello |
+| `raw.trello_lists` | id | Trello |
+| `raw.trello_labels` | id | Trello |
+| `raw.trello_cards` | id | Trello |
 
 ---
 
@@ -241,7 +253,7 @@ core層以降ではサービス名が消える。これにより：
 
 ```
 credentials.services テーブル
-├── service: サービス名 (toggl, fitbit, tanita, zaim, gcalendar)
+├── service: サービス名 (toggl, fitbit, tanita, zaim, gcalendar, trello)
 ├── credentials_encrypted: AES-256-GCM 暗号化済み認証情報
 └── expires_at: トークン有効期限（OAuth 2.0の場合）
 ```
@@ -264,6 +276,7 @@ credentials.services テーブル
 | Zaim | OAuth 1.0a | consumer_key, consumer_secret, access_token, access_token_secret |
 | Fitbit | OAuth 2.0 | client_id, client_secret, access_token, refresh_token |
 | Tanita | OAuth 2.0 | client_id, client_secret, access_token, refresh_token |
+| Trello | API Key + Token | api_key, api_token, member_id (optional) |
 
 ### 5.4 トークンリフレッシュ戦略
 
@@ -274,6 +287,7 @@ credentials.services テーブル
 | Toggl | なし | - | リフレッシュ不要 |
 | Google Calendar | 1時間 | - | 毎回JWT生成 |
 | Zaim | なし | - | リフレッシュ不要（OAuth 1.0a） |
+| Trello | なし | - | リフレッシュ不要（永続トークン） |
 
 ---
 
@@ -293,7 +307,8 @@ lifetracer/                           # モノレポルート
 │   │   ├── tanita.py                 # ~720行
 │   │   ├── toggl.py                  # ~600行
 │   │   ├── zaim.py                   # ~600行
-│   │   └── gcalendar.py              # ~480行
+│   │   ├── gcalendar.py              # ~480行
+│   │   └── trello.py                 # ~500行
 │   ├── lib/                          # 共通ライブラリ
 │   │   ├── __init__.py
 │   │   ├── credentials.py            # 認証情報取得・復号
@@ -323,7 +338,8 @@ lifetracer/                           # モノレポルート
 │       ├── test_tanita.py            # 24テスト
 │       ├── test_toggl.py             # 12テスト
 │       ├── test_zaim.py              # 25テスト
-│       └── test_gcalendar.py         # 20テスト
+│       ├── test_gcalendar.py         # 20テスト
+│       └── test_trello.py            # 23テスト
 │
 ├── docs/
 │   ├── DESIGN.md                     # 本ドキュメント（基本設計書）
@@ -332,7 +348,8 @@ lifetracer/                           # モノレポルート
 │       ├── gcalendar.md
 │       ├── zaim.md
 │       ├── fitbit.md
-│       └── tanita.md
+│       ├── tanita.md
+│       └── trello.md
 │
 ├── .github/
 │   └── workflows/
@@ -370,7 +387,7 @@ lifetracer/                           # モノレポルート
 | **core → marts** | dbt (SQL) | 未着手 |
 | **認証・暗号化** | Python (cryptography) | ✅ 実装完了 |
 | **DB接続** | Python (supabase-py) | ✅ 実装完了 |
-| **テスト** | pytest + pytest-asyncio | ✅ 104テスト |
+| **テスト** | pytest + pytest-asyncio | ✅ 127テスト |
 | **管理UI** | Next.js + Vercel | 保留 |
 | **OAuth Callback** | Deno (Edge Functions) | 未着手 |
 | **可視化** | Grafana Cloud | 未着手 |
@@ -513,7 +530,8 @@ pytest tests/pipelines/ --cov=pipelines
 | `zaim.py` | ~600行 | 25 | ~95% |
 | `fitbit.py` | ~650行 | 23 | ~90% |
 | `tanita.py` | ~720行 | 24 | ~98% |
-| **合計** | **~3050行** | **104** | **~93%** |
+| `trello.py` | ~500行 | 23 | ~90% |
+| **合計** | **~3550行** | **127** | **~93%** |
 
 **共通ライブラリ**:
 - `pipelines/lib/credentials.py` - 認証情報取得・復号
@@ -537,7 +555,7 @@ pytest tests/pipelines/ --cov=pipelines
 **判断**: Deno版の分割構造をPythonでは1ファイル/サービスに統合
 
 **理由**:
-- 5ファイル × 6サービス = 30ファイル → 5ファイルに削減
+- 5ファイル × 7サービス = 35ファイル → 7ファイルに削減
 - 認知負荷の軽減（1ファイル内で完結）
 - 小規模（500-700行）なら1ファイルが最適
 
@@ -593,6 +611,7 @@ pytest tests/pipelines/ --cov=pipelines
 | Zaim | [API v2](https://dev.zaim.net/) |
 | Fitbit | [Web API](https://dev.fitbit.com/build/reference/web-api/) |
 | Tanita | [Health Planet API](https://www.healthplanet.jp/apis/api.html) |
+| Trello | [REST API](https://developer.atlassian.com/cloud/trello/rest/) |
 
 ### 12.2 内部ドキュメント
 
@@ -604,6 +623,7 @@ pytest tests/pipelines/ --cov=pipelines
 | Zaim詳細設計 | `docs/Detailed_Design/zaim.md` |
 | Fitbit詳細設計 | `docs/Detailed_Design/fitbit.md` |
 | Tanita詳細設計 | `docs/Detailed_Design/tanita.md` |
+| Trello詳細設計 | `docs/Detailed_Design/trello.md` |
 | DBマイグレーション | `supabase/migrations/` |
 | テストコード | `tests/pipelines/` |
 

@@ -33,6 +33,11 @@ on:
         required: false
         default: "3"
         type: string
+      trello_full_sync:
+        description: "Trello: 全アクションを取得（差分ではなく全取得）"
+        required: false
+        default: "false"
+        type: string
 
 jobs:
   sync-all:
@@ -62,6 +67,7 @@ jobs:
           ZAIM_SYNC_DAYS: ${{ inputs.zaim_sync_days || '7' }}
           GCAL_SYNC_DAYS: ${{ inputs.gcal_sync_days || '3' }}
           FITBIT_SYNC_DAYS: ${{ inputs.fitbit_sync_days || '3' }}
+          TRELLO_FULL_SYNC: ${{ inputs.trello_full_sync || 'false' }}
         run: |
           python -c "
           import asyncio
@@ -71,6 +77,7 @@ jobs:
           from pipelines.services.zaim import sync_zaim
           from pipelines.services.gcalendar import sync_gcalendar
           from pipelines.services.fitbit import sync_fitbit
+          from pipelines.services.trello import sync_trello
 
           async def run_all():
               results = {}
@@ -125,6 +132,16 @@ jobs:
               except Exception as e:
                   errors.append(f'Fitbit: {e}')
                   print(f'❌ Fitbit: {e}')
+
+              # Trello (差分同期)
+              try:
+                  full_sync = os.environ.get('TRELLO_FULL_SYNC', 'false').lower() == 'true'
+                  result = await sync_trello(full_sync=full_sync)
+                  results['trello'] = result
+                  print(f'✅ Trello: {result}')
+              except Exception as e:
+                  errors.append(f'Trello: {e}')
+                  print(f'❌ Trello: {e}')
 
               if errors:
                   print(f'\\n⚠️ {len(errors)} service(s) failed')

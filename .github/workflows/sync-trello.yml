@@ -1,0 +1,53 @@
+name: Trello Daily Sync
+
+on:
+  # 手動実行のみ（定期実行は sync-daily.yml に統合）
+  workflow_dispatch:
+    inputs:
+      full_sync:
+        description: "全アクションを取得（差分ではなく全取得）"
+        required: false
+        default: "false"
+        type: string
+
+jobs:
+  sync-trello:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Trello sync
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TOKEN_ENCRYPTION_KEY: ${{ secrets.TOKEN_ENCRYPTION_KEY }}
+          FULL_SYNC: ${{ inputs.full_sync || 'false' }}
+        run: |
+          python -c "
+          import asyncio
+          import os
+          from pipelines.services.trello import sync_trello
+          full_sync = os.environ.get('FULL_SYNC', 'false').lower() == 'true'
+          result = asyncio.run(sync_trello(full_sync=full_sync))
+          print(result)
+          if not result.get('success'):
+              exit(1)
+          "
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "Trello日次同期が失敗しました"
+          echo "詳細は Actions ログを確認してください"
