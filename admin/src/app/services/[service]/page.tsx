@@ -6,14 +6,14 @@ import { ServiceForm } from "./service-form";
 type Params = Promise<{ service: string }>;
 
 // サービスごとの入力フィールド定義
-const SERVICE_FIELDS: Record<ServiceName, { key: string; label: string; type?: string; placeholder?: string }[]> = {
+// required: true の場合、更新時も必ず入力が必要（セットで更新するフィールド）
+const SERVICE_FIELDS: Record<ServiceName, { key: string; label: string; type?: string; placeholder?: string; required?: boolean }[]> = {
   toggl: [
-    { key: "api_token", label: "API Token", placeholder: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" },
+    { key: "api_token", label: "API Token", placeholder: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", required: true },
   ],
   trello: [
-    { key: "api_key", label: "API Key", placeholder: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" },
-    { key: "api_token", label: "API Token", placeholder: "xxxxxxxx..." },
-    { key: "board_id", label: "Board ID (オプション)", placeholder: "xxxxxxxx" },
+    { key: "api_key", label: "API Key", placeholder: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", required: true },
+    { key: "api_token", label: "API Token", placeholder: "xxxxxxxx...", required: true },
   ],
   airtable: [
     { key: "personal_access_token", label: "Personal Access Token", placeholder: "patXXX..." },

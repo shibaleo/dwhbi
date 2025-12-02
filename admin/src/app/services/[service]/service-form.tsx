@@ -9,6 +9,7 @@ interface Field {
   label: string;
   type?: string;
   placeholder?: string;
+  required?: boolean;
 }
 
 interface ServiceFormProps {
@@ -61,14 +62,22 @@ export function ServiceForm({ service, fields, authType }: ServiceFormProps) {
       }
     }
 
-    // 必須フィールドのチェック（最初の2つは必須とする）
-    const requiredFields = fields.slice(0, 2);
+    // 必須フィールドのチェック
+    // required: true のフィールドは、新規・更新問わず必ず入力が必要
+    const requiredFields = fields.filter((f) => f.required);
     for (const field of requiredFields) {
-      if (!credentials[field.key] && !maskedData?.[field.key]) {
+      if (!credentials[field.key]) {
         setError(`${field.label} は必須です`);
         setSaving(false);
         return;
       }
+    }
+
+    // 入力がない場合はエラー
+    if (Object.keys(credentials).length === 0) {
+      setError("少なくとも1つのフィールドを入力してください");
+      setSaving(false);
+      return;
     }
 
     try {
@@ -160,6 +169,7 @@ export function ServiceForm({ service, fields, authType }: ServiceFormProps) {
               className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1"
             >
               {field.label}
+              {field.required && <span className="text-red-500 ml-1">*</span>}
             </label>
             <input
               id={field.key}
