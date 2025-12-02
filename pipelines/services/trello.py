@@ -11,7 +11,7 @@ from typing import Any, TypedDict
 
 import httpx
 
-from pipelines.lib.credentials import get_credentials
+from pipelines.lib.credentials_vault import get_credentials
 from pipelines.lib.db import get_supabase_client
 from pipelines.lib.logger import setup_logger
 

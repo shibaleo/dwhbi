@@ -289,6 +289,7 @@ core層以降ではサービス名が消える：
 - [テーブル定義書（詳細）](../database/table-design)
 - [認証・セキュリティ設計](security)
 - [管理ダッシュボード設計](admin-dashboard)
+- [リリース戦略](release-strategy)
 
 ---
 

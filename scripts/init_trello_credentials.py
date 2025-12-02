@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """Trello認証情報の初期登録スクリプト
 
-環境変数から認証情報を読み取り、暗号化してcredentials.servicesに登録する。
+環境変数から認証情報を読み取り、Supabase Vaultに登録する。
 
 必要な環境変数:
-  - SUPABASE_URL
-  - SUPABASE_SERVICE_ROLE_KEY
-  - TOKEN_ENCRYPTION_KEY
+  - DIRECT_DATABASE_URL
   - TRELLO_API_KEY
   - TRELLO_API_TOKEN (TRELLO_API_SECRETでも可)
   - TRELLO_MEMBER_ID (オプション)
@@ -15,9 +13,9 @@
   python scripts/init_trello_credentials.py
 """
 
+import asyncio
 import os
 import sys
-
 
 from dotenv import load_dotenv
 
@@ -27,11 +25,10 @@ load_dotenv()
 # プロジェクトルートをパスに追加
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from pipelines.lib.db import get_supabase_client
-from pipelines.lib.encryption import encrypt_credentials
+from pipelines.lib.credentials_vault import save_credentials, get_credentials
 
 
-def main():
+async def main():
     """メイン処理"""
     print("=== Trello認証情報の初期登録 ===\n")
 
@@ -63,60 +60,29 @@ def main():
     if member_id:
         credentials["member_id"] = member_id
 
-    # 暗号化
-    print("認証情報を暗号化中...")
-    encrypted = encrypt_credentials(credentials)
-    print(f"暗号化後のサイズ: {len(encrypted)} bytes")
-
-    # Supabaseに保存
-    print("\ncredentials.servicesに保存中...")
-    supabase = get_supabase_client()
-
-    # バイナリデータをhex形式に変換（credentials.pyのhex_to_bytesと互換）
-    # PostgreSQL bytea形式: \x...
-    encrypted_hex = "\\x" + encrypted.hex()
-
-    result = (
-        supabase.schema("credentials")
-        .table("services")
-        .upsert(
-            {
-                "service": "trello",
-                "auth_type": "api_key",  # Trelloは API Key + Token 認証
-                "credentials_encrypted": encrypted_hex,
-                "expires_at": None,  # Trelloトークンは無期限
-            },
-            on_conflict="service",
-        )
-        .execute()
+    # Vaultに保存
+    print("Vaultに認証情報を保存中...")
+    await save_credentials(
+        service="trello",
+        credentials=credentials,
+        auth_type="api_key",
+        expires_at=None,  # Trelloトークンは無期限
+        description="Trello API credentials"
     )
 
-    if result.data:
-        print("\n✅ 認証情報を正常に登録しました！")
-        print(f"   サービス: trello")
-        print(f"   有効期限: なし（永続トークン）")
-    else:
-        print("\n❌ 登録に失敗しました")
-        sys.exit(1)
+    print("\n✅ 認証情報を正常に登録しました！")
+    print("   サービス: trello")
+    print("   有効期限: なし（永続トークン）")
 
     # 確認のため読み戻し
     print("\n確認のため読み戻し中...")
-    verify = (
-        supabase.schema("credentials")
-        .table("services")
-        .select("service, auth_type, expires_at, updated_at")
-        .eq("service", "trello")
-        .single()
-        .execute()
-    )
-
-    if verify.data:
-        print(f"   認証方式: {verify.data.get('auth_type')}")
-        print(f"   更新日時: {verify.data.get('updated_at')}")
+    result = await get_credentials("trello")
+    if result["credentials"]:
+        print("   認証情報キー:", list(result["credentials"].keys()))
         print("\n✅ 検証完了！")
     else:
         print("⚠️ 読み戻しに失敗しましたが、登録自体は成功している可能性があります")
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

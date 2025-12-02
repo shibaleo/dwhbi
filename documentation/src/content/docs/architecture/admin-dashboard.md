@@ -478,6 +478,7 @@ SUPABASE_SERVICE_ROLE_KEY=eyJ...
 
 - [認証・セキュリティ設計](security)
 - [DWH 4層アーキテクチャ](dwh-layers)
+- [リリース戦略](release-strategy)
 
 ---
 

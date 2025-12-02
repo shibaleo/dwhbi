@@ -295,6 +295,7 @@ SUPABASE_SERVICE_ROLE_KEY=eyJ...
 
 - [管理ダッシュボード設計](admin-dashboard)
 - [DWH 4層アーキテクチャ](dwh-layers)
+- [リリース戦略](release-strategy)
 
 ---
 

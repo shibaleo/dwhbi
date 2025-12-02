@@ -2,12 +2,10 @@
 """TickTick OAuth2 認証フロー初期化スクリプト
 
 OAuth2 Authorization Code Flowを実行し、アクセストークンを取得して
-credentials.servicesに保存する。
+Supabase Vaultに保存する。
 
 必要な環境変数:
-  - SUPABASE_URL
-  - SUPABASE_SERVICE_ROLE_KEY
-  - TOKEN_ENCRYPTION_KEY
+  - DIRECT_DATABASE_URL
   - TICKTICK_CLIENT_ID
   - TICKTICK_CLIENT_SECRET
 
@@ -15,13 +13,15 @@ credentials.servicesに保存する。
   python scripts/init_ticktick_oauth.py
 """
 
+import asyncio
 import os
 import sys
 import webbrowser
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import parse_qs, urlparse, urlencode
-import httpx
+from datetime import datetime, timedelta, timezone
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import parse_qs, urlencode, urlparse
 
+import httpx
 from dotenv import load_dotenv
 
 # .envファイルを読み込む
@@ -30,8 +30,7 @@ load_dotenv()
 # プロジェクトルートをパスに追加
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from pipelines.lib.db import get_supabase_client
-from pipelines.lib.encryption import encrypt_credentials
+from pipelines.lib.credentials_vault import save_credentials
 
 # TickTick OAuth2 設定
 TICKTICK_AUTH_URL = "https://ticktick.com/oauth/authorize"
@@ -91,8 +90,6 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
 
 def get_authorization_code(client_id: str) -> str:
     """ブラウザで認証画面を開き、認証コードを取得"""
-    # 認証URLを構築
-    # access_type=offline を追加してrefresh_tokenを取得
     params = {
         "client_id": client_id,
         "redirect_uri": REDIRECT_URI,
@@ -105,15 +102,13 @@ def get_authorization_code(client_id: str) -> str:
     print("\n1. ブラウザで認証画面を開きます...")
     print(f"   URL: {auth_url}")
 
-    # ブラウザを開く
     webbrowser.open(auth_url)
 
-    # ローカルサーバーでコールバックを待つ
     print("\n2. ブラウザで認証を許可してください...")
     print(f"   コールバックを待機中: {REDIRECT_URI}")
 
     server = HTTPServer(("localhost", 8765), OAuthCallbackHandler)
-    server.handle_request()  # 1リクエストだけ処理
+    server.handle_request()
 
     if OAuthCallbackHandler.authorization_code:
         print("\n3. 認証コードを取得しました！")
@@ -151,11 +146,10 @@ def exchange_code_for_token(client_id: str, client_secret: str, code: str) -> di
     return token_data
 
 
-def save_credentials(client_id: str, client_secret: str, token_data: dict):
-    """認証情報をSupabaseに保存"""
-    print("\n5. 認証情報を保存中...")
+async def save_credentials_to_vault(client_id: str, client_secret: str, token_data: dict):
+    """認証情報をSupabase Vaultに保存"""
+    print("\n5. 認証情報をVaultに保存中...")
 
-    # 保存する認証情報
     credentials = {
         "client_id": client_id,
         "client_secret": client_secret,
@@ -165,42 +159,22 @@ def save_credentials(client_id: str, client_secret: str, token_data: dict):
         "scope": token_data.get("scope", SCOPES),
     }
 
-    # 暗号化
-    encrypted = encrypt_credentials(credentials)
-    encrypted_hex = "\\x" + encrypted.hex()
-
     # expires_in から expires_at を計算
     expires_at = None
     if "expires_in" in token_data:
-        from datetime import datetime, timedelta, timezone
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=token_data["expires_in"])
 
-        expires_at = (
-            datetime.now(timezone.utc) + timedelta(seconds=token_data["expires_in"])
-        ).isoformat()
-
-    # Supabaseに保存
-    supabase = get_supabase_client()
-    result = (
-        supabase.schema("credentials")
-        .table("services")
-        .upsert(
-            {
-                "service": "ticktick",
-                "auth_type": "oauth2",
-                "credentials_encrypted": encrypted_hex,
-                "expires_at": expires_at,
-            },
-            on_conflict="service",
-        )
-        .execute()
+    await save_credentials(
+        service="ticktick",
+        credentials=credentials,
+        auth_type="oauth2",
+        expires_at=expires_at,
+        description="TickTick OAuth2 credentials"
     )
 
-    if result.data:
-        print("   認証情報を保存しました！")
-        if expires_at:
-            print(f"   有効期限: {expires_at}")
-    else:
-        raise RuntimeError("認証情報の保存に失敗")
+    print("   認証情報をVaultに保存しました！")
+    if expires_at:
+        print(f"   有効期限: {expires_at.isoformat()}")
 
 
 def main():
@@ -230,8 +204,8 @@ def main():
         # 2. トークンを取得
         token_data = exchange_code_for_token(client_id, client_secret, code)
 
-        # 3. 保存
-        save_credentials(client_id, client_secret, token_data)
+        # 3. Vaultに保存
+        asyncio.run(save_credentials_to_vault(client_id, client_secret, token_data))
 
         print("\n" + "=" * 50)
         print("TickTick OAuth2 認証が完了しました！")

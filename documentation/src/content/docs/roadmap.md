@@ -6,87 +6,80 @@ description: 次に何をすべきか、一目でわかるドキュメント
 ## 現在のステータス
 
 ```
-Phase 1: データ収集基盤   ████████████████░░░░  80% 🔄 進行中
-Phase 2: DWH構築(staging) ░░░░░░░░░░░░░░░░░░░░   0% ⏳ 未着手
-Phase 3: 可視化           ░░░░░░░░░░░░░░░░░░░░   0% ⏳ 未着手
-Phase 4: 本番運用         ░░░░░░░░░░░░░░░░░░░░   0% ⏳ 未着手
-Phase 5: ビジュアルETL    ░░░░░░░░░░░░░░░░░░░░   0% ⏳ 未着手
+Phase 0: API Token系     ░░░░░░░░░░░░░░░░░░░░   0% ⏳ 未着手
+Phase 1: OAuth系         ░░░░░░░░░░░░░░░░░░░░   0% ⏳ 未着手
+Phase 2: DWH構築(staging)░░░░░░░░░░░░░░░░░░░░   0% ⏳ 未着手
+Phase 3: 可視化          ░░░░░░░░░░░░░░░░░░░░   0% ⏳ 未着手
+Phase 4: 本番運用        ░░░░░░░░░░░░░░░░░░░░   0% ⏳ 未着手
+Phase 5: ビジュアルETL   ░░░░░░░░░░░░░░░░░░░░   0% ⏳ 未着手
 ```
+
+---
+
+## リリース計画
+
+### Phase 0: API Token系（v0.1.0 〜 v0.3.0）
+
+| バージョン | サービス | 認証方式 | ステータス |
+|-----------|---------|---------|:----------:|
+| v0.1.0 | Toggl Track | API Token | ⏳ |
+| v0.2.0 | Trello | API Key + Token | ⏳ |
+| v0.3.0 | Airtable | PAT | ⏳ |
+
+### Phase 1: OAuth系（v0.4.0 〜 v0.8.0）
+
+| バージョン | サービス | 認証方式 | ステータス |
+|-----------|---------|---------|:----------:|
+| v0.4.0 | Fitbit | OAuth 2.0 | ⏳ |
+| v0.5.0 | Tanita | OAuth 2.0 | ⏳ |
+| v0.6.0 | Google Calendar | OAuth 2.0 | ⏳ |
+| v0.7.0 | TickTick | OAuth 2.0 | ⏳ |
+| v0.8.0 | Zaim | OAuth 1.0a | ⏳ |
+
+### v1.0.0: 正式リリース
+
+- 全8サービス対応完了
+- 管理ダッシュボード安定
+- ドキュメント完備
 
 ---
 
 ## 対象ドメイン
 
-| ドメイン | サービス | 実装状況 |
+| ドメイン | サービス | フェーズ |
 |---------|---------|:--------:|
-| 時間管理 | Toggl Track | ✅ |
-| 予定管理 | Google Calendar | ✅ |
-| 家計管理 | Zaim | ✅ |
-| 健康管理 | Fitbit, Tanita | ✅ |
-| プロジェクト管理 | Trello | ✅ |
-| タスク管理 | TickTick, Todoist | ✅ / ⏳ |
-| 習慣管理 | TickTick, Habitify, Habitica | ✅ / ⏳ / ⏳ |
-| 休息管理 | YouTube | ⏳ |
-| マスタ管理 | Airtable | ✅ |
-| 知識管理 | Notion, Obsidian | ⏳ |
-| 社会関係管理 | Notion, Coda | ⏳ |
+| 時間管理 | Toggl Track | Phase 0 |
+| 予定管理 | Google Calendar | Phase 1 |
+| 家計管理 | Zaim | Phase 1 |
+| 健康管理 | Fitbit, Tanita | Phase 1 |
+| プロジェクト管理 | Trello | Phase 0 |
+| タスク管理 | TickTick, Todoist | Phase 1 / 将来 |
+| 習慣管理 | TickTick, Habitify, Habitica | Phase 1 / 将来 |
+| 休息管理 | YouTube | 将来 |
+| マスタ管理 | Airtable | Phase 0 |
+| 知識管理 | Notion, Obsidian | 将来 |
+| 社会関係管理 | Notion, Coda | 将来 |
 
 ---
 
 ## マイルストーン
 
-### Phase 1: データ収集基盤 🔄 進行中（80%）
+### v0.1.0: Toggl Track 🔄 進行中
 
-**目標**: 全データソースからraw層へのパイプライン構築 + 管理UI
-
-#### 1-A. パイプライン実装
-
-| サービス | ドメイン | 実装 | テスト | 本番稼働 |
-|---------|---------|:----:|:------:|:--------:|
-| Toggl Track | 時間管理 | ✅ | ✅ 12 | ✅ |
-| Google Calendar | 予定管理 | ✅ | ✅ 20 | ✅ |
-| Zaim | 家計管理 | ✅ | ✅ 26 | ✅ |
-| Fitbit | 健康管理 | ✅ | ✅ 23 | ✅ |
-| Tanita | 健康管理 | ✅ | ✅ 24 | ✅ |
-| Trello | プロジェクト管理 | ✅ | ✅ 26 | ✅ |
-| TickTick | タスク/習慣管理 | ✅ | - | ✅ |
-| Airtable | マスタ管理 | ✅ | - | ✅ |
-| Todoist | タスク管理 | ⏳ | - | - |
-| Habitify | 習慣管理 | ⏳ | - | - |
-| Habitica | 習慣管理 | ⏳ | - | - |
-| YouTube | 休息管理 | ⏳ | - | - |
-| Notion | 知識/社会関係 | ⏳ | - | - |
-| Obsidian | 知識管理 | ⏳ | - | - |
-| Coda | 社会関係管理 | ⏳ | - | - |
-| Asana | プロジェクト管理 | ⏳ | - | - |
-
-#### 1-B. 管理ダッシュボード
+**目標**: 管理ダッシュボード基盤 + 最初のサービス連携
 
 | タスク | ステータス | 備考 |
 |--------|:----------:|------|
 | Next.js + Vercel セットアップ | ⏳ | Supabase Starterベース |
-| 初回セットアップフロー | ⏳ | PAT入力 → オーナー登録 |
-| GitHub OAuth ログイン | ⏳ | オーナーのみ許可 |
-| サービス連携UI（OAuth） | ⏳ | Fitbit, Tanita, TickTick, GCal, Zaim |
-| サービス連携UI（API Key） | ⏳ | Toggl, Trello, Airtable |
-| 同期状況ダッシュボード | ⏳ | 最終同期、エラー表示 |
-| 手動同期実行 | ⏳ | GitHub Actions dispatch |
-| 自動実行トグル | ⏳ | workflow enable/disable |
-| Actions使用量表示 | ⏳ | GitHub API billing |
+| メール + パスワード認証 | ⏳ | 初回Magic Link → パスワード設定 |
+| マイグレーション自動実行 | ⏳ | 初回アクセス時 |
+| Toggl設定フォーム | ⏳ | API Token + Workspace ID |
+| Vault保存/読み取り | ⏳ | |
+| Togglパイプライン | ⏳ | Python実装済み、統合 |
+| GitHub PAT設定（オプション） | ⏳ | |
+| 同期ログ表示 | ⏳ | |
 
-#### 1-C. rawテーブルスキーマ
-
-| タスク | ステータス | 備考 |
-|--------|:----------:|------|
-| スキーマ設計の統一 | ⏳ | 構造化列 + raw_response |
-| マイグレーション整備 | ⏳ | 初回セットアップで全テーブル作成 |
-| Vault移行 | ⏳ | 認証情報をSupabase Vaultへ |
-
-**成果物**:
-- Python パイプライン ~5160行
-- テスト 131件 / カバレッジ ~90%
-- GitHub Actions による毎日 JST 00:00 自動同期
-- 管理ダッシュボード（Next.js on Vercel）
+**完了条件**: Togglのデータが自動同期され、ダッシュボードで確認できる
 
 ---
 
@@ -101,12 +94,7 @@ Phase 5: ビジュアルETL    ░░░░░░░░░░░░░░░░�
 | 型変換・正規化ロジック | ⏳ | タイムゾーン、NULL処理 |
 | テスト・ドキュメント | ⏳ | dbt test, dbt docs |
 
-**スコープ**:
-- raw → staging の変換のみ
-- サーバー側で定義、全ユーザー共通
-- core/martsはPhase 5で動的構築
-
-**完了条件**: `SELECT * FROM staging.stg_fitbit__sleep` が動作
+**完了条件**: `SELECT * FROM staging.stg_toggl__entries` が動作
 
 ---
 
@@ -152,13 +140,6 @@ Phase 5: ビジュアルETL    ░░░░░░░░░░░░░░░░�
 | VIEW自動作成 | ⏳ | 保存時にDDL実行 |
 | プレビュー機能 | ⏳ | リアルタイムクエリ結果 |
 
-**構想**:
-```
-[stg_fitbit__sleep]──┐
-                     ├──[結合]──[集計]──[日次サマリー]
-[stg_toggl__entries]─┘
-```
-
 **完了条件**: GUIでクロスドメイン分析ビューを作成できる
 
 ---
@@ -167,10 +148,9 @@ Phase 5: ビジュアルETL    ░░░░░░░░░░░░░░░░�
 
 | # | タスク | 見積 | 優先度 | ステータス | 備考 |
 |---|--------|------|:------:|:----------:|------|
-| 1 | 管理ダッシュボード構築 | - | 🔴 高 | ⏳ | Next.js + Vercel |
-| 2 | rawテーブルスキーマ統一 | 4h | 🔴 高 | ⏳ | 構造化列 + raw_response |
-| 3 | Supabase Vault移行 | 2h | 🔴 高 | ⏳ | 認証情報の保存先変更 |
-| 4 | Phase 1 残りサービスの優先順位決定 | 30m | 中 | ⏳ | |
+| 1 | v0.1.0 管理ダッシュボード構築 | - | 🔴 高 | ⏳ | Next.js + Vercel |
+| 2 | Togglスキーマ確定 | 2h | 🔴 高 | ⏳ | 構造化列 + raw_response |
+| 3 | マイグレーション自動実行実装 | 4h | 🔴 高 | ⏳ | |
 
 ---
 
@@ -214,7 +194,7 @@ Phase 5: ビジュアルETL    ░░░░░░░░░░░░░░░░�
 このファイルは以下のタイミングで更新：
 
 1. **タスク完了時**: ステータスを ✅ に変更
-2. **Phase完了時**: 次のPhaseを「進行中」に変更
+2. **バージョンリリース時**: 次のバージョンを「進行中」に変更
 3. **週次レビュー**: 優先度の見直し
 
 ---
@@ -224,6 +204,7 @@ Phase 5: ビジュアルETL    ░░░░░░░░░░░░░░░░�
 - [DWH 4層アーキテクチャ](./architecture/dwh-layers)
 - [管理ダッシュボード設計](./architecture/admin-dashboard)
 - [認証・セキュリティ設計](./architecture/security)
+- [リリース戦略](./architecture/release-strategy)
 
 ---
 

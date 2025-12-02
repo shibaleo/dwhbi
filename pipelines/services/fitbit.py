@@ -22,7 +22,7 @@ from typing import TypedDict, Any, Optional
 from zoneinfo import ZoneInfo
 
 from pipelines.lib.logger import setup_logger
-from pipelines.lib.credentials import get_credentials, update_credentials
+from pipelines.lib.credentials_vault import get_credentials, update_credentials
 from pipelines.lib.db import get_supabase_client
 
 logger = setup_logger(__name__)

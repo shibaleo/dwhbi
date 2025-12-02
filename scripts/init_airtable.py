@@ -2,22 +2,21 @@
 """Airtable 認証情報初期化スクリプト
 
 環境変数から Personal Access Token を取得し、
-credentials.services に保存する。
+Supabase Vault に保存する。
 
 必要な環境変数:
-  - SUPABASE_URL
-  - SUPABASE_SERVICE_ROLE_KEY
-  - TOKEN_ENCRYPTION_KEY
+  - DIRECT_DATABASE_URL
   - AIRTABLE_PERSONAL_ACCESS_TOKEN
 
 使用方法:
   python scripts/init_airtable.py
 """
 
+import asyncio
 import os
 import sys
-from datetime import datetime, timezone
 
+import httpx
 from dotenv import load_dotenv
 
 # .envファイルを読み込む
@@ -26,11 +25,10 @@ load_dotenv()
 # プロジェクトルートをパスに追加
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from pipelines.lib.db import get_supabase_client
-from pipelines.lib.encryption import encrypt_credentials
+from pipelines.lib.credentials_vault import save_credentials
 
 
-def main():
+async def main():
     """メイン処理"""
     print("=== Airtable 認証情報セットアップ ===\n")
 
@@ -53,43 +51,24 @@ def main():
 
     print(f"Token: {token[:10]}...{token[-4:]}")
 
-    # 認証情報を暗号化
-    print("\n認証情報を暗号化中...")
+    # 認証情報をVaultに保存
+    print("\nVaultに認証情報を保存中...")
     credentials = {
         "personal_access_token": token,
     }
 
-    encrypted = encrypt_credentials(credentials)
-    encrypted_hex = "\\x" + encrypted.hex()
-
-    # Supabaseに保存
-    print("認証情報を保存中...")
-    supabase = get_supabase_client()
-    result = (
-        supabase.schema("credentials")
-        .table("services")
-        .upsert(
-            {
-                "service": "airtable",
-                "auth_type": "personal_access_token",
-                "credentials_encrypted": encrypted_hex,
-                "expires_at": None,  # PAT には有効期限がない
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            },
-            on_conflict="service",
-        )
-        .execute()
+    await save_credentials(
+        service="airtable",
+        credentials=credentials,
+        auth_type="personal_access_token",
+        expires_at=None,  # PAT には有効期限がない
+        description="Airtable Personal Access Token"
     )
 
-    if result.data:
-        print("認証情報を保存しました！")
-    else:
-        raise RuntimeError("認証情報の保存に失敗")
+    print("認証情報を保存しました！")
 
     # 動作確認（ベース一覧を取得）
     print("\n動作確認中...")
-    import httpx
-
     response = httpx.get(
         "https://api.airtable.com/v0/meta/bases",
         headers={"Authorization": f"Bearer {token}"},
@@ -118,9 +97,8 @@ def main():
     print("Airtable 認証情報のセットアップが完了しました！")
     print("=" * 50)
     print("\n次のステップ:")
-    print("  1. マイグレーションを適用: supabase db push")
-    print("  2. 同期を実行: python -m pipelines.services.airtable")
+    print("  同期を実行: python -c \"import asyncio; from pipelines.services.airtable import sync_airtable; asyncio.run(sync_airtable())\"")
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
