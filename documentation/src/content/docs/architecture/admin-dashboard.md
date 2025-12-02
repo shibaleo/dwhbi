@@ -474,6 +474,76 @@ SUPABASE_SERVICE_ROLE_KEY=eyJ...
 
 ---
 
+## 実装状況（2025-12-02）
+
+### 完了
+
+| 機能 | 説明 |
+|------|------|
+| プロジェクト構造 | `admin/` フォルダに Next.js 16 (App Router) で実装 |
+| 初回セットアップ | Magic Link → パスワード設定 → オーナー登録 |
+| ログイン/ログアウト | メール + パスワード認証 |
+| サービス一覧表示 | Vault から連携状況を取得して表示 |
+| API Key 登録 | Toggl, Trello の設定フォーム |
+| 連携解除 | Vault から認証情報を削除 |
+| proxy.ts 移行 | Next.js 16 の middleware → proxy 移行対応 |
+
+### ファイル構成
+
+```
+admin/
+├── src/
+│   ├── app/
+│   │   ├── page.tsx                    # ホーム（サービス一覧）
+│   │   ├── layout.tsx                  # ルートレイアウト
+│   │   ├── login/page.tsx              # ログイン
+│   │   ├── setup/page.tsx              # 初回セットアップ
+│   │   ├── services/[service]/
+│   │   │   ├── page.tsx                # サービス設定ページ
+│   │   │   └── service-form.tsx        # 設定フォーム
+│   │   ├── api/
+│   │   │   ├── services/
+│   │   │   │   ├── route.ts            # GET: 全サービス状況
+│   │   │   │   └── [service]/route.ts  # GET/POST/DELETE
+│   │   │   └── setup/
+│   │   │       ├── status/route.ts     # セットアップ状態確認
+│   │   │       └── complete/route.ts   # セットアップ完了
+│   │   └── auth/
+│   │       ├── callback/route.ts       # OAuth コールバック
+│   │       └── signout/route.ts        # ログアウト
+│   ├── components/
+│   │   └── service-list.tsx            # サービス一覧コンポーネント
+│   ├── lib/
+│   │   ├── vault.ts                    # Vault アクセス（postgres）
+│   │   └── supabase/
+│   │       ├── client.ts               # ブラウザ用
+│   │       ├── server.ts               # サーバー用
+│   │       └── proxy.ts                # セッション管理
+│   └── proxy.ts                        # Next.js Proxy
+└── .env.local.example                  # 環境変数テンプレート
+```
+
+### 未実装
+
+| 機能 | 優先度 |
+|------|:------:|
+| OAuth 連携 (Fitbit, Tanita, etc.) | 高 |
+| Airtable 設定フォーム | 中 |
+| sync_logs 表示 | 中 |
+| GitHub 連携 (PAT, Actions) | 低 |
+| パスワードリセット | 低 |
+
+### 必要な環境変数
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+DIRECT_DATABASE_URL=postgresql://postgres.[ref]:[password]@db.[ref].supabase.co:5432/postgres
+```
+
+---
+
 ## 関連ドキュメント
 
 - [認証・セキュリティ設計](security)

@@ -12,7 +12,7 @@ title: 認証・セキュリティ設計
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
 │  2. Vercelデプロイ                                          │
-│     → 環境変数3つ設定                                       │
+│     → 環境変数4つ設定（DIRECT_DATABASE_URL追加）             │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
@@ -82,30 +82,30 @@ title: 認証・セキュリティ設計
 
 ### オーナー判定ロジック
 
-1. 初回アクセス時、`allowed_users` テーブルが空かチェック
-2. 空なら「セットアップ画面」を表示
+1. 初回アクセス時、`profiles` テーブルに `setup_completed=true` のオーナーがいるかチェック
+2. いなければ「セットアップ画面」を表示
 3. メールアドレス入力 → Magic Link送信
-4. リンククリック → メール確認完了
+4. リンククリック → `auth.users` に登録 → トリガーで `profiles` 作成（`is_owner=true`, `setup_completed=false`）
 5. パスワード設定画面を表示
-6. パスワード登録 → 初回ユーザーをオーナーとして `allowed_users` に登録
-7. 以降のログイン時、`allowed_users` に存在するメールのみ許可
-
-### 未登録ユーザーの処理
-
-```
-メール入力 → allowed_users確認 →
-  登録済み → ログイン処理
-  未登録 → 「このメールは登録されていません」表示
-```
+6. パスワード登録 → `setup_completed=true` に更新
+7. 以降のログイン時、`profiles` に存在するユーザーのみ許可
 
 ### データベース構造
 
 ```sql
-CREATE TABLE allowed_users (
-  email TEXT PRIMARY KEY,
+CREATE TABLE public.profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
   is_owner BOOLEAN DEFAULT FALSE,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  setup_completed BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- auth.users 作成時に自動で profiles を作成
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 ```
 
 ---
@@ -159,34 +159,6 @@ GitHub連携はオプション機能です。基本的なサービス連携管�
 
 ---
 
-## マイグレーション自動実行
-
-### 概要
-
-初回アクセス時に、API Routeからマイグレーションを自動実行します。
-
-### 実行条件
-
-1. `app_config` テーブルが存在しない、または `migration_complete` が `false`
-2. `SERVICE_ROLE_KEY` が設定されている
-
-### 実行内容
-
-```
-/api/setup/migrate
-  → Supabase SQL実行（SERVICE_ROLE_KEY使用）
-  → 全テーブル作成（raw, app_config, allowed_users, sync_logs）
-  → app_config.migration_complete = 'true' を設定
-```
-
-### セキュリティ
-
-- SERVICE_ROLE_KEY はサーバーサイドのみで使用
-- 初回のみ実行（migration_complete フラグで制御）
-- マイグレーション完了後は再実行不可
-
----
-
 ## 認証情報の保存
 
 ### Supabase Vault
@@ -196,36 +168,47 @@ GitHub連携はオプション機能です。基本的なサービス連携管�
 | 保存先 | `vault.secrets` テーブル |
 | 暗号化 | Supabase管理のマスターキーによる透過的暗号化 |
 | 読み取り | `vault.decrypted_secrets` ビュー経由で自動復号 |
+| アクセス方法 | 直接DB接続（`DIRECT_DATABASE_URL`）経由のみ |
 
 **メリット**:
 - 暗号化キーの管理不要
 - バックアップ・レプリケーション時も暗号化維持
 - フォーク後の設定作業ゼロ
 
+**注意**: PostgREST経由ではVaultにアクセスできないため、`psycopg2`（Python）または`postgres`（Node.js）で直接DB接続が必要。
+
 ### 保存形式
 
-```
-vault.secrets
-├── name: サービス識別子（例: "fitbit", "toggl", "github"）
-├── secret: JSON形式の認証情報（暗号化済み）
-└── description: サービス説明（任意）
+```json
+// vault.secrets.secret の構造
+{
+  "api_token": "xxx...",      // 認証情報
+  "client_id": "xxx...",
+  "_auth_type": "api_key",    // メタデータ: 認証方式
+  "_expires_at": null         // メタデータ: 有効期限
+}
 ```
 
 ---
 
 ## 認証方式一覧
 
-| サービス | 認証方式 | 保存する認証情報 |
-|---------|---------|----------------|
-| GitHub | Personal Access Token | pat |
-| Toggl | Basic Auth | api_token, workspace_id |
-| Google Calendar | OAuth 2.0 | client_id/secret, access/refresh_token, calendar_id |
-| Zaim | OAuth 1.0a | consumer_key/secret, access_token/secret |
-| Fitbit | OAuth 2.0 | client_id/secret, access/refresh_token |
-| Tanita | OAuth 2.0 | client_id/secret, access/refresh_token |
-| Trello | API Key + Token | api_key, api_token, board_id |
-| TickTick | OAuth 2.0 | client_id/secret, access/refresh_token |
-| Airtable | Personal Access Token | personal_access_token, base_id, table_ids |
+| サービス | 認証方式 | 保存する認証情報 | 必須フィールド |
+|---------|---------|----------------|--------------|
+| Toggl | Basic Auth | api_token | api_token |
+| Trello | API Key + Token | api_key, api_token | api_key, api_token |
+| Airtable | Personal Access Token | personal_access_token | personal_access_token |
+| Google Calendar | OAuth 2.0 | client_id/secret, access/refresh_token | - |
+| Zaim | OAuth 1.0a | consumer_key/secret, access_token/secret | - |
+| Fitbit | OAuth 2.0 | client_id/secret, access/refresh_token | - |
+| Tanita | OAuth 2.0 | client_id/secret, access/refresh_token | - |
+| TickTick | OAuth 2.0 | client_id/secret, access/refresh_token | - |
+| GitHub | Personal Access Token | pat | - |
+
+### API Key サービスの自動取得
+
+- **Toggl**: `workspace_id` は API（`/me`）から自動取得
+- **Trello**: 全ボードを自動取得（`board_id` の指定不要）
 
 ---
 
@@ -247,11 +230,26 @@ vault.secrets
 
 ## 環境変数
 
+### Vercel / サーバーレス関数
+
 ```bash
 # Supabase接続（必須）
 NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 SUPABASE_SERVICE_ROLE_KEY=eyJ...
+
+# Vault直接接続（必須）
+DIRECT_DATABASE_URL=postgresql://postgres.[ref]:[password]@db.[ref].supabase.co:5432/postgres
+```
+
+**注意**: `DIRECT_DATABASE_URL` はPooler（`pooler.supabase.com`）ではなく、直接接続（`db.[ref].supabase.co`）を使用すること。
+
+### GitHub Actions
+
+```bash
+SUPABASE_URL=https://xxx.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+DIRECT_DATABASE_URL=postgresql://...
 ```
 
 **Supabase Dashboard設定**: 追加設定不要（メール認証はデフォルト有効）
@@ -266,28 +264,38 @@ SUPABASE_SERVICE_ROLE_KEY=eyJ...
    - GitHub Secretsに保存
    - ローカル開発でも`.env`をgitignore
 
-2. **パスワード**:
+2. **DIRECT_DATABASE_URL**:
+   - Vault操作に必要な直接接続文字列
+   - パスワードを含むため厳重に管理
+   - GitHub Secrets / Vercel環境変数に保存
+
+3. **パスワード**:
    - Supabase Authが安全にハッシュ化して保存
    - 平文では保存されない
 
-3. **OAuth トークン**:
+4. **OAuth トークン**:
    - refresh_token は長期間有効
    - access_token 漏洩時はrefreshで無効化可能
 
-4. **Supabase Vault**:
+5. **Supabase Vault**:
    - マスターキーはSupabaseが管理
    - DBバックアップ時も暗号化維持
    - 復号には `vault.decrypted_secrets` ビューを使用
 
-5. **GitHub PAT**:
+6. **GitHub PAT**:
    - Fine-grained PATで最小権限を推奨
    - Vault内に暗号化保存
    - 期限切れ前に更新を促す通知（将来実装）
 
-6. **Magic Link**:
+7. **Magic Link**:
    - メール送信はSupabaseが管理
    - リンクの有効期限はSupabase設定に依存（デフォルト1時間）
    - 初回セットアップとパスワードリセット時のみ使用
+
+8. **Next.js Proxy（旧Middleware）**:
+   - Next.js 16でmiddleware → proxyに移行
+   - 認証チェックはServer ComponentまたはAPI Routesで行う
+   - proxyはセッション更新とリダイレクトのみに使用
 
 ---
 
