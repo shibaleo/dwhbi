@@ -1,18 +1,16 @@
 """Google Calendar API 同期
 
 Google Calendar API v3 を使用してイベントを取得し、raw.gcalendar_events に保存する。
-Service Account JWT 認証を使用（OAuth不要）。
+OAuth 2.0 認証を使用（リフレッシュトークンによる自動更新対応）。
 """
 
-import base64
-import json
 import time
-from datetime import date, timedelta
-from typing import Any, TypedDict
+from datetime import date, datetime, timedelta, timezone
+from typing import Any, TypedDict, Optional
 
 import httpx
 
-from pipelines.lib.credentials import get_credentials
+from pipelines.lib.credentials import get_credentials, update_credentials
 from pipelines.lib.db import get_supabase_client
 from pipelines.lib.logger import setup_logger
 
@@ -59,18 +57,22 @@ class GCalEventsListResponse(TypedDict):
     items: list[GCalEvent]
 
 
-class ServiceAccountCredentials(TypedDict):
-    """Google Service Account Credentials"""
-    type: str
-    project_id: str
-    private_key_id: str
-    private_key: str
-    client_email: str
+class OAuth2Credentials(TypedDict):
+    """OAuth 2.0 Credentials"""
     client_id: str
-    auth_uri: str
-    token_uri: str
-    auth_provider_x509_cert_url: str
-    client_x509_cert_url: str
+    client_secret: str
+    access_token: str
+    refresh_token: str
+    scope: Optional[str]
+    calendar_id: str
+
+
+class TokenResponse(TypedDict):
+    """Token refresh response"""
+    access_token: str
+    expires_in: int
+    token_type: str
+    scope: str
 
 
 class DbEvent(TypedDict):
@@ -116,7 +118,7 @@ class SyncResult(TypedDict):
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3"
 SCOPE = "https://www.googleapis.com/auth/calendar.readonly"
-TOKEN_EXPIRY_SECONDS = 3600  # 1 hour
+DEFAULT_THRESHOLD_MINUTES = 5  # トークン更新の閾値
 MAX_RESULTS_PER_PAGE = 2500
 JST_OFFSET = "+09:00"
 
@@ -124,154 +126,125 @@ JST_OFFSET = "+09:00"
 # Authentication Cache
 # =============================================================================
 
-_cached_access_token: dict[str, Any] | None = None
+_auth_cache: Optional[tuple[str, datetime]] = None
 _cached_calendar_id: str | None = None
-_cached_service_account: ServiceAccountCredentials | None = None
 
 
 def reset_cache() -> None:
     """キャッシュをリセット（テスト用）"""
-    global _cached_access_token, _cached_calendar_id, _cached_service_account
-    _cached_access_token = None
+    global _auth_cache, _cached_calendar_id
+    _auth_cache = None
     _cached_calendar_id = None
-    _cached_service_account = None
 
 
 # =============================================================================
-# JWT Authentication
+# OAuth 2.0 Authentication
 # =============================================================================
 
 
-def base64url_encode(data: bytes) -> str:
-    """Base64URL エンコード（パディングなし）"""
-    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+async def refresh_token_from_api(
+    client_id: str, client_secret: str, refresh_token: str
+) -> TokenResponse:
+    """リフレッシュトークンでアクセストークンを更新"""
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            GOOGLE_TOKEN_URL,
+            data={
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "refresh_token": refresh_token,
+                "grant_type": "refresh_token",
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        if not response.is_success:
+            raise httpx.HTTPStatusError(
+                f"Token refresh error: {response.status_code} - {response.text}",
+                request=response.request,
+                response=response,
+            )
+        return response.json()
 
 
-async def load_service_account() -> tuple[ServiceAccountCredentials, str | None]:
-    """credentials.services からサービスアカウント情報を取得（キャッシュ付き）"""
-    global _cached_service_account, _cached_calendar_id
+async def get_access_token(force_refresh: bool = False) -> str:
+    """アクセストークンを取得（キャッシュ＆自動更新対応）"""
+    global _auth_cache, _cached_calendar_id
 
-    if _cached_service_account is not None:
-        return _cached_service_account, _cached_calendar_id
+    # キャッシュが有効ならそれを使用
+    if not force_refresh and _auth_cache is not None:
+        token, expires_at = _auth_cache
+        minutes_until_expiry = (expires_at - datetime.now(timezone.utc)).total_seconds() / 60
+        if minutes_until_expiry > DEFAULT_THRESHOLD_MINUTES:
+            logger.info(f"Token valid ({minutes_until_expiry:.0f} min remaining)")
+            return token
 
+    # DBから認証情報を取得
     result = await get_credentials("gcalendar")
-    credentials = result["credentials"]
+    if not result:
+        raise ValueError("GCalendar credentials not found")
 
-    if "service_account_json" not in credentials:
-        raise ValueError("GCalendar credentials missing service_account_json")
+    credentials: OAuth2Credentials = result["credentials"]
+    expires_at = result.get("expires_at")
 
     # calendar_id をキャッシュ
     _cached_calendar_id = credentials.get("calendar_id")
 
-    # Base64デコードまたは生JSONをパース
-    json_data = credentials["service_account_json"]
-    if json_data.strip().startswith("{"):
-        json_str = json_data
-    else:
-        try:
-            json_str = base64.b64decode(json_data).decode("utf-8")
-        except Exception:
-            raise ValueError("Failed to decode service_account_json as Base64")
+    # 必須フィールドのチェック
+    if not credentials.get("client_id") or not credentials.get("client_secret"):
+        raise ValueError("Missing client_id or client_secret")
+    if not credentials.get("access_token") or not credentials.get("refresh_token"):
+        raise ValueError("Missing access_token or refresh_token. Run init_gcalendar_oauth.py first.")
 
-    try:
-        _cached_service_account = json.loads(json_str)
-    except json.JSONDecodeError:
-        raise ValueError("Failed to parse service_account_json as JSON")
+    # リフレッシュが必要かチェック
+    needs_refresh = force_refresh
+    if not needs_refresh and expires_at:
+        minutes_until_expiry = (expires_at - datetime.now(timezone.utc)).total_seconds() / 60
+        needs_refresh = minutes_until_expiry <= DEFAULT_THRESHOLD_MINUTES
 
-    if not _cached_service_account.get("client_email") or not _cached_service_account.get("private_key"):
-        raise ValueError("Invalid credentials: missing client_email or private_key")
+    # リフレッシュ不要ならキャッシュして返す
+    if not needs_refresh and expires_at:
+        logger.info(f"Token valid ({minutes_until_expiry:.0f} min remaining)")
+        _auth_cache = (credentials["access_token"], expires_at)
+        return credentials["access_token"]
 
-    return _cached_service_account, _cached_calendar_id
-
-
-def create_jwt_sync(credentials: ServiceAccountCredentials) -> str:
-    """JWTを生成（RS256署名）- 同期版"""
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import padding
-
-    now = int(time.time())
-
-    header = {"alg": "RS256", "typ": "JWT"}
-    payload = {
-        "iss": credentials["client_email"],
-        "scope": SCOPE,
-        "aud": GOOGLE_TOKEN_URL,
-        "iat": now,
-        "exp": now + TOKEN_EXPIRY_SECONDS,
-    }
-
-    header_b64 = base64url_encode(json.dumps(header).encode("utf-8"))
-    payload_b64 = base64url_encode(json.dumps(payload).encode("utf-8"))
-    signing_input = f"{header_b64}.{payload_b64}"
-
-    # 秘密鍵で署名
-    private_key = serialization.load_pem_private_key(
-        credentials["private_key"].encode("utf-8"),
-        password=None,
-    )
-    signature = private_key.sign(
-        signing_input.encode("utf-8"),
-        padding.PKCS1v15(),
-        hashes.SHA256(),
+    # トークンをリフレッシュ
+    logger.info("Refreshing access token...")
+    new_token = await refresh_token_from_api(
+        credentials["client_id"],
+        credentials["client_secret"],
+        credentials["refresh_token"],
     )
 
-    signature_b64 = base64url_encode(signature)
-    return f"{signing_input}.{signature_b64}"
+    new_expires_at = datetime.now(timezone.utc) + timedelta(seconds=new_token["expires_in"])
 
-
-async def get_access_token_with_client(client: httpx.AsyncClient) -> str:
-    """アクセストークンを取得（キャッシュ付き、クライアント共有版）"""
-    global _cached_access_token
-
-    now = time.time()
-
-    # キャッシュが有効なら再利用（5分のマージン）
-    if _cached_access_token and _cached_access_token["expires_at"] > now + 300:
-        return _cached_access_token["token"]
-
-    credentials, _ = await load_service_account()
-    jwt = create_jwt_sync(credentials)
-
-    # JWTをアクセストークンに交換
-    response = await client.post(
-        GOOGLE_TOKEN_URL,
-        data={
-            "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
-            "assertion": jwt,
+    # DBを更新（refresh_tokenは通常変わらないが、念のため保持）
+    await update_credentials(
+        "gcalendar",
+        {
+            "access_token": new_token["access_token"],
+            "scope": new_token.get("scope"),
         },
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        new_expires_at,
     )
-    response.raise_for_status()
-    token_data = response.json()
 
-    _cached_access_token = {
-        "token": token_data["access_token"],
-        "expires_at": now + token_data["expires_in"],
-    }
-
-    return _cached_access_token["token"]
-
-
-async def get_access_token() -> str:
-    """アクセストークンを取得（キャッシュ付き）- 単独使用版"""
-    global _cached_access_token
-
-    now = time.time()
-
-    # キャッシュが有効なら再利用（5分のマージン）
-    if _cached_access_token and _cached_access_token["expires_at"] > now + 300:
-        return _cached_access_token["token"]
-
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        return await get_access_token_with_client(client)
+    logger.info(f"Token refreshed (expires: {new_expires_at.isoformat()})")
+    _auth_cache = (new_token["access_token"], new_expires_at)
+    return new_token["access_token"]
 
 
 async def get_calendar_id() -> str:
     """カレンダーIDを取得"""
-    _, calendar_id = await load_service_account()
-    if not calendar_id:
+    global _cached_calendar_id
+
+    if _cached_calendar_id:
+        return _cached_calendar_id
+
+    # トークン取得時にcalendar_idもキャッシュされる
+    await get_access_token()
+
+    if not _cached_calendar_id:
         raise ValueError("GCalendar credentials missing calendar_id")
-    return calendar_id
+    return _cached_calendar_id
 
 
 # =============================================================================
@@ -296,10 +269,9 @@ async def fetch_all_events(
 
     start_time = time.perf_counter()
 
-    # 認証情報をロード
-    _, calendar_id = await load_service_account()
-    if not calendar_id:
-        raise ValueError("GCalendar credentials missing calendar_id")
+    # 認証情報を取得
+    access_token = await get_access_token()
+    calendar_id = await get_calendar_id()
 
     # ISO 8601 形式に変換
     time_min = f"{start_date}T00:00:00{JST_OFFSET}"
@@ -310,10 +282,6 @@ async def fetch_all_events(
     http_requests = 0
 
     async with httpx.AsyncClient(timeout=30.0) as client:
-        # トークン取得
-        access_token = await get_access_token_with_client(client)
-        http_requests += 1
-
         # イベント取得
         while True:
             params: dict[str, Any] = {
@@ -338,6 +306,12 @@ async def fetch_all_events(
             if response.status_code == 429:
                 retry_after = response.headers.get("Retry-After", "60")
                 raise Exception(f"Rate limited. Retry after {retry_after} seconds.")
+
+            if response.status_code == 401:
+                # トークンが無効な場合、リフレッシュして再試行
+                logger.warning("Token expired, refreshing...")
+                access_token = await get_access_token(force_refresh=True)
+                continue
 
             response.raise_for_status()
             data: GCalEventsListResponse = response.json()

@@ -27,7 +27,7 @@ credentials.services テーブル
 | サービス | 認証方式 | 保存する認証情報 |
 |---------|---------|----------------|
 | Toggl | Basic Auth | api_token, workspace_id |
-| Google Calendar | Service Account | service_account_json, calendar_id |
+| Google Calendar | OAuth 2.0 | client_id/secret, access/refresh_token, calendar_id |
 | Zaim | OAuth 1.0a | consumer_key/secret, access_token/secret |
 | Fitbit | OAuth 2.0 | client_id/secret, access/refresh_token |
 | Tanita | OAuth 2.0 | client_id/secret, access/refresh_token |
@@ -42,8 +42,8 @@ credentials.services テーブル
 | Fitbit | 8時間 | 60分前 | 自動リフレッシュ |
 | Tanita | 3時間 | 30分前 | 自動リフレッシュ |
 | TickTick | 6時間 | 30分前 | 自動リフレッシュ |
+| Google Calendar | 1時間 | 5分前 | 自動リフレッシュ |
 | Toggl | なし | - | 不要 |
-| Google Calendar | 1時間 | - | 毎回JWT生成 |
 | Zaim | なし | - | 不要（OAuth 1.0a） |
 | Trello | なし | - | 不要（永続トークン） |
 | Airtable | なし | - | 不要（PAT） |

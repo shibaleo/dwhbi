@@ -5,8 +5,8 @@ title: Google Calendar 同期モジュール詳細設計
 
 | 項目 | 内容 |
 |------|------|
-| ドキュメントバージョン | 1.1.0 |
-| 最終更新日 | 2025-12-01 |
+| ドキュメントバージョン | 2.0.0 |
+| 最終更新日 | 2025-12-02 |
 | 対象ファイル | `pipelines/services/gcalendar.py` |
 | ステータス | 実装完了・運用中 |
 
@@ -30,7 +30,7 @@ Google Calendar API v3 からイベントデータを取得し、Supabase の `r
 | 終日イベント | 時刻指定なしの予定（`start.date` を使用） |
 | 通常イベント | 時刻指定ありの予定（`start.dateTime` を使用） |
 | 繰り返しイベント | 定期的に発生するイベント（`singleEvents=true` で展開） |
-| Service Account | Google Cloud のサービスアカウント認証 |
+| OAuth 2.0 | ユーザー認証による認可フロー（リフレッシュトークン方式） |
 
 ## 2. 前提条件・制約
 
@@ -54,14 +54,13 @@ Google Calendar API v3 からイベントデータを取得し、Supabase の `r
 1. `.env` ファイルに環境変数が設定されていること
 2. `credentials.services` テーブルに GCalendar 認証情報が保存されていること
 3. `raw.gcalendar_events` テーブルが作成済みであること
-4. Google Cloud でサービスアカウントが作成済みであること
-5. カレンダーにサービスアカウントのメールアドレスが共有されていること
+4. Google Cloud で OAuth 2.0 クライアントID（デスクトップアプリ）が作成済みであること
+5. `scripts/init_gcalendar_oauth.py` で初期認証が完了していること
 
 ### 2.4 制限事項
 
 | 制限 | 説明 | 回避策 |
 |------|------|--------|
-| 読み取り専用 | イベントの作成・更新・削除は不可 | 現状は取得のみの運用 |
 | 単一カレンダー | 複数カレンダー非対応 | 現状は1カレンダーのみ運用 |
 | キャンセルイベント | 削除検出は未実装 | 将来対応予定 |
 
@@ -105,16 +104,15 @@ pipelines/
 ### 3.3 認証フロー
 
 ```
-1. load_service_account()
-   │  └─ credentials.services から service_account_json を取得
+1. get_access_token()
+   │  ├─ キャッシュ確認（有効期限5分以上なら再利用）
+   │  ├─ credentials.services から OAuth2 認証情報を取得
+   │  └─ 必要に応じてリフレッシュトークンでアクセストークンを更新
    │
-2. create_jwt_sync()
-   │  └─ RS256署名でJWTを生成
+2. refresh_token_from_api()
+   │  └─ POST /oauth2/token でアクセストークン取得
    │
-3. get_access_token_with_client()
-   │  └─ JWT → アクセストークン交換（OAuth 2.0）
-   │
-4. fetch_all_events()
+3. fetch_all_events()
       └─ Bearer トークンでAPI呼び出し
 ```
 
@@ -128,9 +126,8 @@ pipelines/
    ├─ 2. 日付範囲計算（today - days - 1 〜 today + 1）
    │
    ├─ 3. fetch_all_events() 実行
-   │   ├─ load_service_account() → 認証情報取得
-   │   ├─ create_jwt_sync() → JWT生成
-   │   ├─ POST /oauth2/token → アクセストークン取得
+   │   ├─ get_access_token() → 認証情報取得（キャッシュ or リフレッシュ）
+   │   ├─ 必要に応じて refresh_token_from_api() → アクセストークン更新
    │   └─ GET /calendars/{id}/events → イベント取得（ページネーション）
    │
    ├─ 4. 型変換（API型 → DB型）
@@ -159,22 +156,24 @@ pipelines/
 
 ## 5. 設計判断（ADR）
 
-### ADR-001: Service Account JWT 認証の採用
+### ADR-001: OAuth 2.0 Authorization Code Flow の採用
 
-**決定**: OAuth 2.0 ではなく Service Account JWT 認証を使用
+**決定**: Service Account JWT 認証ではなく OAuth 2.0 を使用
 
 **理由**:
-- ユーザー介入なしで自動実行可能
-- トークンリフレッシュ不要（毎回 JWT 生成）
-- サーバー間通信に最適
+- ユーザー個人のカレンダーに直接アクセス可能
+- プライマリカレンダー（`primary`）を含む全カレンダーにアクセス可能
+- 読み書き両方のスコープ（`calendar.events`）に対応可能
+- カレンダーへの共有設定が不要
 
 **代替案**:
-- OAuth 2.0 Authorization Code Flow → ユーザー介入必要
+- Service Account JWT 認証 → カレンダーへの共有設定が必要、個人カレンダーにアクセス不可
 
 **トレードオフ**:
-- OK: 自動化に最適
-- 注意: カレンダーへの共有設定が必要
-- 注意: ユーザー個人のカレンダーには直接アクセス不可
+- OK: 個人カレンダーに直接アクセス可能
+- OK: 将来的にイベント作成・更新も可能
+- 注意: 初回のみブラウザでの認証が必要
+- 注意: リフレッシュトークンの自動更新処理が必要
 
 ### ADR-002: 繰り返しイベントの展開
 
@@ -263,17 +262,13 @@ class GCalEventsListResponse(TypedDict):
 ### 6.2 認証情報型
 
 ```python
-class ServiceAccountCredentials(TypedDict):
-    type: str
-    project_id: str
-    private_key_id: str
-    private_key: str
-    client_email: str
+class OAuth2Credentials(TypedDict):
     client_id: str
-    auth_uri: str
-    token_uri: str
-    auth_provider_x509_cert_url: str
-    client_x509_cert_url: str
+    client_secret: str
+    access_token: str
+    refresh_token: str
+    scope: Optional[str]
+    calendar_id: str
 ```
 
 ### 6.3 DB型
@@ -321,11 +316,12 @@ class FetchResult(TypedDict):
 
 ### 7.2 認証
 
-**Service Account JWT → Bearer Token**
+**OAuth 2.0 リフレッシュトークンフロー**
 
-1. JWT生成（RS256署名）
-2. POST `https://oauth2.googleapis.com/token` でアクセストークン取得
-3. `Authorization: Bearer {token}` でAPI呼び出し
+1. `credentials.services` から OAuth2 認証情報を取得
+2. アクセストークンの有効期限を確認（閾値: 5分）
+3. 期限切れの場合、POST `https://oauth2.googleapis.com/token` でリフレッシュ
+4. `Authorization: Bearer {token}` でAPI呼び出し
 
 ### 7.3 リクエストパラメータ
 
@@ -397,8 +393,9 @@ CREATE INDEX idx_gcalendar_events_calendar_id ON raw.gcalendar_events(calendar_i
 
 | 例外 | 発生条件 | 対処法 |
 |------|---------|--------|
-| `ValueError` | service_account_json/calendar_id 未設定 | credentials.services を確認 |
-| `ValueError` | private_key/client_email 欠損 | サービスアカウントJSONを確認 |
+| `ValueError` | client_id/client_secret 未設定 | credentials.services を確認 |
+| `ValueError` | access_token/refresh_token 欠損 | `init_gcalendar_oauth.py` を実行 |
+| `ValueError` | calendar_id 未設定 | 認証情報にcalendar_idを追加 |
 | `httpx.HTTPStatusError` | APIエラー | ログを確認し原因を特定 |
 | `httpx.TimeoutException` | タイムアウト（30秒） | ネットワーク状況を確認 |
 
@@ -406,8 +403,10 @@ CREATE INDEX idx_gcalendar_events_calendar_id ON raw.gcalendar_events(calendar_i
 
 ```python
 # 必須フィールドの検証
-if not credentials.get("client_email") or not credentials.get("private_key"):
-    raise ValueError("Invalid credentials: missing client_email or private_key")
+if not credentials.get("client_id") or not credentials.get("client_secret"):
+    raise ValueError("Missing client_id or client_secret")
+if not credentials.get("access_token") or not credentials.get("refresh_token"):
+    raise ValueError("Missing access_token or refresh_token. Run init_gcalendar_oauth.py first.")
 ```
 
 ## 10. パフォーマンス
@@ -416,12 +415,11 @@ if not credentials.get("client_email") or not credentials.get("private_key"):
 
 | フェーズ | 処理時間 | リクエスト数 |
 |---------|---------|------------|
-| DB認証情報取得 | ~1.4秒 | 0 |
-| JWT→トークン交換 | ~0.2秒 | 1 |
-| events.list API | ~3.4秒 | 1 |
+| トークン取得/リフレッシュ | ~0.5秒 | 0〜1 |
+| events.list API | ~4.5秒 | 1 |
 | データ変換 | <1秒 | 0 |
-| DB保存 | ~0.5秒 | 1 |
-| **合計** | **~6秒** | **2** |
+| DB保存 | ~0.6秒 | 1 |
+| **合計** | **~5秒** | **1〜2** |
 
 ### 10.2 計測指標
 
@@ -457,15 +455,13 @@ if not credentials.get("client_email") or not credentials.get("private_key"):
 - `test_to_db_event_recurring`: 繰り返しイベント（展開後）の変換
 - `test_to_db_event_cancelled`: キャンセルイベントの変換
 
-**Authentication (8件)**:
+**Authentication (6件)**:
 - `test_get_calendar_id`: カレンダーID取得
 - `test_get_calendar_id_missing`: calendar_id欠損エラー
-- `test_load_service_account_success`: サービスアカウント読み込み正常系
-- `test_load_service_account_missing_json`: service_account_json欠損エラー
-- `test_load_service_account_missing_client_email`: client_email欠損エラー
-- `test_load_service_account_missing_private_key`: private_key欠損エラー
-- `test_load_service_account_invalid_base64`: 不正なBase64形式エラー
-- `test_load_service_account_invalid_json`: 不正なJSON形式エラー
+- `test_get_access_token_cached`: キャッシュからトークン取得
+- `test_get_access_token_refresh`: トークンリフレッシュ
+- `test_get_access_token_missing_credentials`: 認証情報欠損エラー
+- `test_refresh_token_from_api`: リフレッシュトークンAPI呼び出し
 
 **DB Operations (3件)**:
 - `test_upsert_events_success`: 正常系
@@ -499,7 +495,8 @@ pytest tests/pipelines/test_gcalendar.py --cov=pipelines.services.gcalendar
 | 関数/クラス | テスト | カバレッジ |
 |------------|--------|-----------|
 | `get_calendar_id` | `test_get_calendar_id_*` (2件) | 100% |
-| `load_service_account` | `test_load_service_account_*` (6件) | 100% |
+| `get_access_token` | `test_get_access_token_*` (3件) | 100% |
+| `refresh_token_from_api` | `test_refresh_token_from_api` (1件) | 100% |
 | `to_db_event` | `test_to_db_event_*` (5件) | 100% |
 | `upsert_events` | `test_upsert_events_*` (3件) | 100% |
 | `sync_gcalendar` | `test_sync_gcalendar_*` (4件) | 100% |
@@ -547,8 +544,12 @@ TOKEN_ENCRYPTION_KEY=...
 
 ```json
 {
-  "service_account_json": "{...Google Service Account JSON...}",
-  "calendar_id": "your_calendar_id@group.calendar.google.com"
+  "client_id": "xxxx.apps.googleusercontent.com",
+  "client_secret": "GOCSPX-xxxx",
+  "access_token": "ya29.xxxx",
+  "refresh_token": "1//xxxx",
+  "scope": "https://www.googleapis.com/auth/calendar.events",
+  "calendar_id": "primary"
 }
 ```
 
@@ -556,18 +557,21 @@ TOKEN_ENCRYPTION_KEY=...
 
 1. Google Cloud Console でプロジェクト作成
 2. Calendar API を有効化
-3. サービスアカウント作成、JSON キーをダウンロード
-4. カレンダーの共有設定でサービスアカウントのメールアドレスを追加（読み取り権限）
+3. OAuth 同意画面を設定（External / Testing）
+4. OAuth 2.0 クライアントIDを作成（デスクトップアプリ）
+5. クライアントIDとシークレットを `.env` に設定
+6. `python scripts/init_gcalendar_oauth.py` で認証フローを実行
 
 ### 12.5 ログ出力
 
 ```
-[2025-12-01 12:01:53] INFO [gcalendar] Starting Google Calendar sync (3 days)
-[2025-12-01 12:01:54] INFO [gcalendar] Fetching events (2025-11-28 to 2025-12-02)...
-[2025-12-01 12:01:59] INFO [gcalendar] Fetched 107 events (2 HTTP requests in 5.26s)
-[2025-12-01 12:01:59] INFO [gcalendar] Saving to database...
-[2025-12-01 12:02:00] INFO [gcalendar] Saved 107 events to raw.gcalendar_events
-[2025-12-01 12:02:00] INFO [gcalendar] Google Calendar sync completed in 5.77s: 107 fetched, 107 upserted
+[2025-12-02 14:21:46] INFO [gcalendar] Starting Google Calendar sync (3 days)
+[2025-12-02 14:21:46] INFO [gcalendar] Fetching events (2025-11-29 to 2025-12-03)...
+[2025-12-02 14:21:47] INFO [gcalendar] Token valid (60 min remaining)
+[2025-12-02 14:21:50] INFO [gcalendar] Fetched 107 events (1 HTTP requests in 4.57s)
+[2025-12-02 14:21:50] INFO [gcalendar] Saving to database...
+[2025-12-02 14:21:51] INFO [gcalendar] Saved 107 events to raw.gcalendar_events
+[2025-12-02 14:21:51] INFO [gcalendar] Google Calendar sync completed in 5.19s: 107 fetched, 107 upserted
 ```
 
 ### 12.6 モニタリング
@@ -645,6 +649,7 @@ GROUP BY DATE(g.start_time), g.description
 |-----------|------|---------|
 | 1.0.0 | 2025-12-01 | 初版作成。Deno版からPython版への移行完了 |
 | 1.1.0 | 2025-12-01 | フォーマット統一（ADR形式、セクション構成） |
+| 2.0.0 | 2025-12-02 | Service Account認証からOAuth 2.0へ移行 |
 
 ---
 
