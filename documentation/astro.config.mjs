@@ -4,6 +4,8 @@ import starlight from '@astrojs/starlight';
 
 // https://astro.build/config
 export default defineConfig({
+	site: 'https://shibaleo.github.io',
+	base: '/supabase-sync-jobs',
 	integrations: [
 		starlight({
 			title: 'LIFETRACER',
