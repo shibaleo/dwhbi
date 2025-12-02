@@ -184,11 +184,14 @@ async def get_auth_headers() -> dict[str, str]:
 async def get_workspace_id() -> int:
     """ワークスペースIDを取得（キャッシュ付き）
 
+    credentials に workspace_id がある場合はそれを使用。
+    ない場合は Toggl API の /me エンドポイントからデフォルトワークスペースを取得。
+
     Returns:
         ワークスペースID
 
     Raises:
-        ValueError: workspace_idが未設定
+        ValueError: ワークスペースの取得に失敗
     """
     global _cached_workspace_id
     if _cached_workspace_id is not None:
@@ -197,9 +200,25 @@ async def get_workspace_id() -> int:
     result = await get_credentials("toggl")
     credentials = result["credentials"]
 
+    # credentials に workspace_id がある場合はそれを使用
     workspace_id = credentials.get("workspace_id")
+    if workspace_id:
+        _cached_workspace_id = int(workspace_id)
+        return _cached_workspace_id
+
+    # なければ API から取得
+    headers = await get_auth_headers()
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            "https://api.track.toggl.com/api/v9/me",
+            headers=headers,
+        )
+        response.raise_for_status()
+        me_data = response.json()
+
+    workspace_id = me_data.get("default_workspace_id")
     if not workspace_id:
-        raise ValueError("Toggl credentials missing workspace_id")
+        raise ValueError("Failed to get default workspace from Toggl API")
 
     _cached_workspace_id = int(workspace_id)
     return _cached_workspace_id
