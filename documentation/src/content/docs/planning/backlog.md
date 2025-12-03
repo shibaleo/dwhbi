@@ -48,6 +48,8 @@ description: 将来の拡張予定
 | マスタテーブル編集UI | 中 | ⏳ | 管理画面からの編集機能 |
 | core層ビュー | 中 | ⏳ | ref + staging結合（2サービス以上必要） |
 | marts層ビュー | 中 | ⏳ | 分析用ビュー |
+| CLI化（typer） | 低 | ⏳ | workflow呼び出し簡素化、ローカルテスト容易化 |
+| Python内並列化 | 低 | ⏳ | asyncio.gatherで同期処理を並列実行 |
 | BIダッシュボード | 低 | ⏳ | Phase 3 |
 | アラート通知 | 低 | ⏳ | Slack/Discord |
 | Fitbit追加データ | 低 | ⏳ | Breathing Rate等 |
