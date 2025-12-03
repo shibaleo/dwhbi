@@ -1,0 +1,74 @@
+name: Toggl Reports Full Sync
+
+on:
+  # 手動実行のみ（初期ロード・データ修復用）
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: "開始日（YYYY-MM-DD、省略時は7日前）"
+        required: false
+        type: string
+      end_date:
+        description: "終了日（YYYY-MM-DD、省略時は明日）"
+        required: false
+        type: string
+      days:
+        description: "日数（start_date/end_date未指定時に使用）"
+        required: false
+        default: "7"
+        type: string
+
+jobs:
+  sync-toggl-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Toggl Reports sync
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DIRECT_DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
+          START_DATE: ${{ inputs.start_date }}
+          END_DATE: ${{ inputs.end_date }}
+          DAYS: ${{ inputs.days || '7' }}
+        run: |
+          python -c "
+          import asyncio
+          import os
+          from pipelines.services.toggl_track.sync_time_entries_report import sync_time_entries_report
+
+          start_date = os.environ.get('START_DATE') or None
+          end_date = os.environ.get('END_DATE') or None
+          days = int(os.environ.get('DAYS', '7')) if not (start_date and end_date) else None
+
+          result = asyncio.run(sync_time_entries_report(
+              start_date=start_date,
+              end_date=end_date,
+              days=days,
+          ))
+          print(result)
+          if not result.get('success'):
+              exit(1)
+          "
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ Toggl Reportsフル同期が失敗しました"
+          echo "タイムアウトの場合はローカルで実行してください："
+          echo "  python -c \"import asyncio; from pipelines.services.toggl_track.sync_time_entries_report import sync_time_entries_report; print(asyncio.run(sync_time_entries_report(days=365)))\""
+          echo "詳細は Actions ログを確認してください"

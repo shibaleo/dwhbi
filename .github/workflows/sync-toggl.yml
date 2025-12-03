@@ -13,6 +13,7 @@ on:
 jobs:
   sync-toggl:
     runs-on: ubuntu-latest
+    timeout-minutes: 1
 
     steps:
       - name: Checkout repository
@@ -50,4 +51,6 @@ jobs:
         if: failure()
         run: |
           echo "❌ Toggl日次同期が失敗しました"
+          echo "タイムアウトの場合はローカルで実行してください："
+          echo "  python -c \"import asyncio; from pipelines.services.toggl_track import sync_all; print(asyncio.run(sync_all()))\""
           echo "詳細は Actions ログを確認してください"
