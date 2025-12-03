@@ -34,19 +34,25 @@ description: 将来の拡張予定
 
 ## 機能追加
 
-| 機能 | 優先度 | 備考 |
-|------|:------:|------|
-| staging層ビュー | 高 | Phase 2（Toggl完了） |
-| Google Calendar staging層 | 高 | Togglとのクロスドメイン分析用 |
-| refスキーマ設計 | 高 | マスタテーブル（プロジェクト分類等） |
-| マスタテーブル編集UI | 高 | 管理画面からの編集機能 |
-| core層ビュー | 高 | ref + staging結合 |
-| marts層ビュー | 高 | 分析用ビュー |
-| BIダッシュボード | 中 | Phase 3 |
-| アラート通知 | 中 | Slack/Discord |
-| Fitbit追加データ | 低 | Breathing Rate等 |
-| Tanita Health Planet 歩数 | 低 | pedometer |
-| HL7 FHIR標準化 | 低 | 健康データの相互運用性 |
+| 機能 | 優先度 | ステータス | 備考 |
+|------|:------:|:----------:|------|
+| Toggl staging層 | 高 | ✅ | 9モデル + 47テスト |
+| GitHub PAT管理 | 高 | ✅ | Supabase Vault |
+| 同期実行ボタン | 高 | ✅ | workflow_dispatch API |
+| Actions使用量表示 | 中 | ✅ | 今月の使用時間 |
+| Composite Action共通化 | 中 | ✅ | python-setup |
+| Reports API効率化 | 中 | ✅ | page_size=1000 |
+| Google Calendar staging層 | 中 | ⏳ | Togglとのクロスドメイン分析用 |
+| Fitbit staging層 | 中 | ⏳ | 健康データ分析用 |
+| refスキーマ設計 | 中 | ⏳ | マスタテーブル（プロジェクト分類等） |
+| マスタテーブル編集UI | 中 | ⏳ | 管理画面からの編集機能 |
+| core層ビュー | 中 | ⏳ | ref + staging結合（2サービス以上必要） |
+| marts層ビュー | 中 | ⏳ | 分析用ビュー |
+| BIダッシュボード | 低 | ⏳ | Phase 3 |
+| アラート通知 | 低 | ⏳ | Slack/Discord |
+| Fitbit追加データ | 低 | ⏳ | Breathing Rate等 |
+| Tanita Health Planet 歩数 | 低 | ⏳ | pedometer |
+| HL7 FHIR標準化 | 低 | ⏳ | 健康データの相互運用性 |
 
 ## Inbox（未整理）
 
@@ -55,3 +61,18 @@ description: 将来の拡張予定
 - **Obsidian**: vault自体をGitHubにアップロードし、GitHub PAT経由で取得
 - **Coda**: 新規追加予定、用途未検討
 - **YouTube**: 休息管理として視聴履歴を取得予定
+
+## Phase 5 参考資料（ビジュアルETL）
+
+### スキーマ可視化
+- **Liam ERD**: Prisma/Rails/SQL対応のER図ツール。tbls JSONからインポート可能
+
+### ノードエディタOSS
+| ライブラリ | 特徴 | Blender風 |
+|-----------|------|:---------:|
+| **Rete.js** | 最もBlender風、プラグイン豊富、TypeScript対応 | ⭐⭐⭐ |
+| **ReactFlow** | React向け、シンプル、ドキュメント充実 | ⭐⭐ |
+| **Litegraph.js** | Comfy UI採用、グラフ実行エンジン内蔵 | ⭐⭐⭐ |
+| **Baklava.js** | Vue向け、計算グラフ対応 | ⭐⭐ |
+| **Flume** | React向け、ロジックビルダー特化 | ⭐ |
+| **Node-RED** | フルスタック、IoT/ETL実績多数 | ⭐⭐ |

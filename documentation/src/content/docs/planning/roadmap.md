@@ -10,7 +10,8 @@ description: 開発フェーズと進捗
 ```
 Phase 0: API Token系     ████████████████████ 100% ✅ 完了
 Phase 1: OAuth系         ████████████████████ 100% ✅ 完了
-Phase 2: DWH構築(staging)████████████████░░░░  80% 🔄 進行中
+Phase 2: DWH構築(staging)████████████████████ 100% ✅ 完了
+Phase 2.5: 管理画面強化  ████████████████████ 100% ✅ 完了
 Phase 3: 可視化          ░░░░░░░░░░░░░░░░░░░░   0% ⏳ 未着手
 Phase 4: 本番運用強化    ░░░░░░░░░░░░░░░░░░░░   0% ⏳ 未着手
 Phase 5: ビジュアルETL   ░░░░░░░░░░░░░░░░░░░░   0% ⏳ 未着手
@@ -34,7 +35,7 @@ Phase 5: ビジュアルETL   ░░░░░░░░░░░░░░░░�
 | v0.7.0 | TickTick | OAuth 2.0 | ✅ |
 | v0.8.0 | Zaim | OAuth 1.0a | ✅ |
 
-## Phase 2: DWH構築（staging層）🔄 進行中
+## Phase 2: DWH構築（staging層）✅ 完了
 
 **目標**: dbtによるstaging層の構築
 
@@ -46,12 +47,25 @@ Phase 5: ビジュアルETL   ░░░░░░░░░░░░░░░░�
 | staging層モデル（Toggl） | ✅ | 9モデル（stg_toggl_track__*） |
 | 型変換・正規化ロジック | ✅ | JSONB→型付きカラム、NULL処理 |
 | security_invoker設定 | ✅ | post-hook で自動設定 |
-| GitHub Actionsワークフロー | ✅ | dbt-run.yml, sync-daily.yml |
+| GitHub Actionsワークフロー | ✅ | Composite Action共通化 |
 | テスト・ドキュメント | ✅ | 47テスト全パス |
-| core層ビュー作成 | ⏳ | 必要に応じて |
-| marts層ビュー作成 | ⏳ | 必要に応じて |
+| Reports API全件同期 | ✅ | page_size=1000で効率化 |
 
 **完了条件**: `SELECT * FROM staging.stg_toggl_track__time_entries` が動作 ✅
+
+## Phase 2.5: 管理画面強化 ✅ 完了
+
+**目標**: GitHub Actions連携による運用効率化
+
+| タスク | ステータス | 備考 |
+|--------|:----------:|------|
+| GitHub PAT登録機能 | ✅ | Supabase Vault保存 |
+| PAT有効期限表示 | ✅ | YYYY-MM-DD形式、色分け警告 |
+| 同期実行ボタン | ✅ | workflow_dispatch API |
+| 実行状況表示 | ✅ | running/success/failure |
+| Actions使用量表示 | ✅ | 今月の使用時間、ワークフロー別 |
+
+**完了条件**: 管理画面からワークフローを実行し、使用量を確認できる ✅
 
 ## Phase 3: 可視化 ⏳ 未着手
 
@@ -105,25 +119,18 @@ Phase 5: ビジュアルETL   ░░░░░░░░░░░░░░░░�
 
 | # | タスク | 優先度 | ステータス | 備考 |
 |---|--------|:------:|:----------:|------|
-| 1 | dbtプロジェクト初期化 | 🔴 高 | ✅ | transform/ディレクトリ |
-| 2 | Toggl staging層モデル作成 | 🔴 高 | ✅ | 9モデル + 47テスト |
-| 3 | 他サービスのstaging層モデル | 🟡 中 | ⏳ | Fitbit, Zaim等 |
-| 4 | 管理画面にGitHub PAT登録機能 | 🟡 中 | ⏳ | Supabase Vaultに保存 |
-| 5 | 同期実行ボタン実装 | 🟡 中 | ⏳ | Vercel → GitHub Actions dispatch |
+| 1 | 他サービスのstaging層モデル | 🟡 中 | ⏳ | Google Calendar、Fitbit等 |
+| 2 | refスキーマ設計 | 🟡 中 | ⏳ | マスタテーブル（プロジェクト分類等） |
+| 3 | マスタテーブル編集UI | 🟡 中 | ⏳ | 管理画面からの編集機能 |
+| 4 | core層ビュー設計 | 🟢 低 | ⏳ | ref + staging結合（2サービス以上必要） |
+| 5 | marts層ビュー設計 | 🟢 低 | ⏳ | 分析用ビュー |
 
-### 同期実行ボタン詳細
+### 次のステップ
 
-管理画面から手動で同期を実行できる機能：
-
-```
-[管理画面] → [Vercel Serverless] → [GitHub Actions dispatch API] → [sync workflow]
-```
-
-**実装タスク**:
-1. GitHub PAT を Supabase Vault に保存するUI
-2. `/api/dispatch/toggl` エンドポイント作成
-3. `POST https://api.github.com/repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches`
-4. 管理画面に「同期実行」ボタン追加
+1. **staging層拡張**: Toggl以外のサービス（Google Calendar、Fitbit等）のstaging層を作成
+2. **refスキーマ**: プロジェクト分類やカテゴリマッピングのマスタテーブル設計
+3. **core層**: 複数サービスのデータを結合するビジネスエンティティ層
+4. **marts層**: KPIや分析用の集計ビュー
 
 ---
 

@@ -189,3 +189,119 @@ export async function deleteServiceCredentials(
     await sql.end();
   }
 }
+
+// ============================================
+// GitHub PAT 管理
+// ============================================
+
+export interface GitHubConfig {
+  pat: string;
+  owner: string;
+  repo: string;
+  expiresAt?: string | null;
+}
+
+const GITHUB_SECRET_NAME = "github";
+
+/**
+ * GitHub設定を取得
+ */
+export async function getGitHubConfig(): Promise<GitHubConfig | null> {
+  const sql = getDbConnection();
+
+  try {
+    const rows = await sql`
+      SELECT decrypted_secret
+      FROM vault.decrypted_secrets
+      WHERE name = ${GITHUB_SECRET_NAME}
+    `;
+
+    if (rows.length === 0) {
+      return null;
+    }
+
+    const secret = typeof rows[0].decrypted_secret === "string"
+      ? JSON.parse(rows[0].decrypted_secret)
+      : rows[0].decrypted_secret;
+
+    return {
+      pat: secret.pat || "",
+      owner: secret.owner || "",
+      repo: secret.repo || "",
+      expiresAt: secret.expiresAt || null,
+    };
+  } finally {
+    await sql.end();
+  }
+}
+
+/**
+ * GitHub設定を保存
+ */
+export async function saveGitHubConfig(config: GitHubConfig): Promise<void> {
+  const sql = getDbConnection();
+
+  try {
+    const secretJson = JSON.stringify(config);
+    const description = "GitHub PAT for Actions dispatch";
+
+    // 既存のシークレットがあるか確認
+    const existing = await sql`
+      SELECT id FROM vault.secrets WHERE name = ${GITHUB_SECRET_NAME}
+    `;
+
+    if (existing.length > 0) {
+      // 更新
+      await sql`
+        SELECT vault.update_secret(
+          ${existing[0].id}::uuid,
+          ${secretJson}::text,
+          ${GITHUB_SECRET_NAME}::text,
+          ${description}::text
+        )
+      `;
+    } else {
+      // 新規作成
+      await sql`
+        SELECT vault.create_secret(
+          ${secretJson}::text,
+          ${GITHUB_SECRET_NAME}::text,
+          ${description}::text
+        )
+      `;
+    }
+  } finally {
+    await sql.end();
+  }
+}
+
+/**
+ * GitHub設定を削除
+ */
+export async function deleteGitHubConfig(): Promise<void> {
+  const sql = getDbConnection();
+
+  try {
+    await sql`
+      DELETE FROM vault.secrets WHERE name = ${GITHUB_SECRET_NAME}
+    `;
+  } finally {
+    await sql.end();
+  }
+}
+
+/**
+ * GitHub設定が存在するかチェック
+ */
+export async function hasGitHubConfig(): Promise<boolean> {
+  const sql = getDbConnection();
+
+  try {
+    const rows = await sql`
+      SELECT 1 FROM vault.secrets WHERE name = ${GITHUB_SECRET_NAME}
+    `;
+    return rows.length > 0;
+  } finally {
+    await sql.end();
+  }
+}

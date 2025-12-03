@@ -302,7 +302,7 @@ async def fetch_detailed_report(
     start_date: str,
     end_date: str,
     first_row_number: int = 1,
-    page_size: int = 50,
+    page_size: int = 1000,
 ) -> dict[str, Any]:
     """詳細レポートを取得（Reports API v3）
 
@@ -310,7 +310,7 @@ async def fetch_detailed_report(
         start_date: 開始日（YYYY-MM-DD）
         end_date: 終了日（YYYY-MM-DD）
         first_row_number: 開始行番号（ページネーション用）
-        page_size: ページサイズ（最大50）
+        page_size: ページサイズ（最大1000、API制限を考慮し大きめに設定）
 
     Returns:
         レポートレスポンス（time_entries含む）
@@ -336,6 +336,9 @@ async def fetch_all_detailed_report(
 ) -> list[dict[str, Any]]:
     """詳細レポートを全件取得（ページネーション対応）
 
+    Reports API v3 のページサイズは最大1000件。
+    Free プランは30 requests/hour なので、1000件×30回 = 30,000件まで取得可能。
+
     Args:
         start_date: 開始日（YYYY-MM-DD）
         end_date: 終了日（YYYY-MM-DD）
@@ -345,7 +348,7 @@ async def fetch_all_detailed_report(
     """
     all_entries = []
     first_row = 1
-    page_size = 50
+    page_size = 1000  # Reports API v3 の最大値
 
     while True:
         result = await fetch_detailed_report(
