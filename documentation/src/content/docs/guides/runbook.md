@@ -1,7 +1,9 @@
 ---
 title: 運用手順書（Runbook）
+description: 日常運用とトラブルシューティング
 ---
 
+# 運用手順書（Runbook）
 
 ## 手動実行
 
@@ -53,7 +55,6 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          TOKEN_ENCRYPTION_KEY: ${{ secrets.TOKEN_ENCRYPTION_KEY }}
 ```
 
 ## テスト実行
@@ -63,12 +64,12 @@ jobs:
 pytest tests/pipelines/ -v
 
 # サービス別
-pytest tests/pipelines/test_toggl.py -v      # 12テスト
-pytest tests/pipelines/test_gcalendar.py -v  # 20テスト
-pytest tests/pipelines/test_zaim.py -v       # 26テスト
-pytest tests/pipelines/test_fitbit.py -v     # 23テスト
-pytest tests/pipelines/test_tanita.py -v     # 24テスト
-pytest tests/pipelines/test_trello.py -v     # 26テスト
+pytest tests/pipelines/test_toggl.py -v
+pytest tests/pipelines/test_gcalendar.py -v
+pytest tests/pipelines/test_zaim.py -v
+pytest tests/pipelines/test_fitbit.py -v
+pytest tests/pipelines/test_tanita.py -v
+pytest tests/pipelines/test_trello.py -v
 
 # カバレッジ
 pytest tests/pipelines/ --cov=pipelines
@@ -94,8 +95,8 @@ Error: Invalid credentials for service 'fitbit'
 **原因**: access_tokenの期限切れ、refresh失敗
 
 **対処**:
-1. Supabaseで `credentials.services` を確認
-2. `expires_at` が過去の場合、手動でOAuth再認証
+1. 管理ダッシュボードで認証状態を確認
+2. トークン期限切れの場合、再認証を実行
 3. refresh_tokenも無効な場合は完全再認証
 
 ### レート制限
@@ -131,7 +132,7 @@ Error: Connection refused to Supabase
 supabase db dump -f backup.sql
 ```
 
-### 自動バックアップ（将来）
+### 自動バックアップ
 
 - Supabase Pro プランで自動バックアップ有効化
 - Point-in-time recovery (PITR) の設定

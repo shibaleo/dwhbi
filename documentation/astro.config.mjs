@@ -9,7 +9,7 @@ export default defineConfig({
 	integrations: [
 		starlight({
 			title: 'LIFETRACER',
-			description: 'Personal Data Warehouse Platform - 60年運用を目指す個人データ基盤',
+			description: 'Personal Data Warehouse Platform - 個人ライフログ統合基盤',
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/your-repo/lifetracer' },
 			],
@@ -18,24 +18,50 @@ export default defineConfig({
 					label: 'はじめに',
 					items: [
 						{ label: '概要', link: '/' },
-						{ label: 'ロードマップ', slug: 'roadmap' },
+						{ label: '実装状況', slug: 'status/implementation' },
+						{ label: 'ロードマップ', slug: 'planning/roadmap' },
 					],
 				},
 				{
-					label: 'アーキテクチャ',
-					autogenerate: { directory: 'architecture' },
+					label: '要件定義',
+					autogenerate: { directory: 'requirements' },
 				},
 				{
-					label: 'データソース',
-					autogenerate: { directory: 'data-sources' },
+					label: '仕様書',
+					items: [
+						{ label: 'システム概要', slug: 'specifications/overview' },
+						{ label: 'DWH 4層設計', slug: 'specifications/dwh-layers' },
+						{ label: '管理ダッシュボード', slug: 'specifications/admin-dashboard' },
+						{ label: '認証・セキュリティ', slug: 'specifications/security' },
+						{
+							label: 'サービス仕様',
+							autogenerate: { directory: 'specifications/services' },
+						},
+					],
 				},
 				{
-					label: 'データベース',
-					autogenerate: { directory: 'database' },
+					label: '設計書',
+					items: [
+						{ label: 'システムアーキテクチャ', slug: 'design/architecture' },
+						{ label: 'データベーススキーマ', slug: 'design/database-schema' },
+						{
+							label: 'ADR',
+							autogenerate: { directory: 'design/decisions' },
+						},
+					],
 				},
 				{
-					label: '運用',
-					autogenerate: { directory: 'operations' },
+					label: 'ガイド',
+					autogenerate: { directory: 'guides' },
+				},
+				{
+					label: '状況・計画',
+					items: [
+						{ label: '実装状況', slug: 'status/implementation' },
+						{ label: '変更履歴', slug: 'status/changelog' },
+						{ label: 'ロードマップ', slug: 'planning/roadmap' },
+						{ label: 'バックログ', slug: 'planning/backlog' },
+					],
 				},
 			],
 			editLink: {
