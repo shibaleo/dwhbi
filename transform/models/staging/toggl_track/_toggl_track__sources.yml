@@ -1,0 +1,123 @@
+# Toggl Track Sources
+# =============================================================================
+# raw層テーブルの定義
+# =============================================================================
+
+version: 2
+
+sources:
+  - name: raw_toggl_track
+    description: "Toggl Track raw API responses"
+    schema: raw
+    tables:
+      - name: toggl_track__time_entries
+        description: "Toggl Track API v9 time entries (日次同期用)"
+        columns:
+          - name: id
+            description: "Primary key (UUID)"
+          - name: source_id
+            description: "Toggl Track time entry ID"
+          - name: data
+            description: "Raw JSON response from Toggl Track API"
+          - name: synced_at
+            description: "同期日時"
+          - name: api_version
+            description: "API version (v9)"
+
+      - name: toggl_track__time_entries_report
+        description: "Toggl Reports API v3 time entries (全件取得用)"
+        columns:
+          - name: id
+            description: "Primary key (UUID)"
+          - name: source_id
+            description: "Toggl Track time entry ID"
+          - name: data
+            description: "Raw JSON response from Toggl Reports API"
+          - name: synced_at
+            description: "同期日時"
+          - name: api_version
+            description: "API version (v3)"
+
+      - name: toggl_track__projects
+        description: "Toggl Track projects"
+        columns:
+          - name: id
+            description: "Primary key (UUID)"
+          - name: source_id
+            description: "Toggl Track project ID"
+          - name: data
+            description: "Raw JSON response"
+          - name: synced_at
+            description: "同期日時"
+
+      - name: toggl_track__clients
+        description: "Toggl Track clients"
+        columns:
+          - name: id
+            description: "Primary key (UUID)"
+          - name: source_id
+            description: "Toggl Track client ID"
+          - name: data
+            description: "Raw JSON response"
+          - name: synced_at
+            description: "同期日時"
+
+      - name: toggl_track__tags
+        description: "Toggl Track tags"
+        columns:
+          - name: id
+            description: "Primary key (UUID)"
+          - name: source_id
+            description: "Toggl Track tag ID"
+          - name: data
+            description: "Raw JSON response"
+          - name: synced_at
+            description: "同期日時"
+
+      - name: toggl_track__workspaces
+        description: "Toggl Track workspaces"
+        columns:
+          - name: id
+            description: "Primary key (UUID)"
+          - name: source_id
+            description: "Toggl Track workspace ID"
+          - name: data
+            description: "Raw JSON response"
+          - name: synced_at
+            description: "同期日時"
+
+      - name: toggl_track__users
+        description: "Toggl Track workspace users/members"
+        columns:
+          - name: id
+            description: "Primary key (UUID)"
+          - name: source_id
+            description: "Toggl Track user ID"
+          - name: data
+            description: "Raw JSON response"
+          - name: synced_at
+            description: "同期日時"
+
+      - name: toggl_track__me
+        description: "Toggl Track current user profile"
+        columns:
+          - name: id
+            description: "Primary key (UUID)"
+          - name: source_id
+            description: "Toggl Track user ID"
+          - name: data
+            description: "Raw JSON response"
+          - name: synced_at
+            description: "同期日時"
+
+      - name: toggl_track__groups
+        description: "Toggl Track workspace groups"
+        columns:
+          - name: id
+            description: "Primary key (UUID)"
+          - name: source_id
+            description: "Toggl Track group ID"
+          - name: data
+            description: "Raw JSON response"
+          - name: synced_at
+            description: "同期日時"

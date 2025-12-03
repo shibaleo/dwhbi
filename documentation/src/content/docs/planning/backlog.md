@@ -36,9 +36,12 @@ description: 将来の拡張予定
 
 | 機能 | 優先度 | 備考 |
 |------|:------:|------|
-| staging層ビュー | 高 | Phase 2 |
-| core層ビュー | 高 | Phase 2 |
-| marts層ビュー | 高 | Phase 2 |
+| staging層ビュー | 高 | Phase 2（Toggl完了） |
+| Google Calendar staging層 | 高 | Togglとのクロスドメイン分析用 |
+| refスキーマ設計 | 高 | マスタテーブル（プロジェクト分類等） |
+| マスタテーブル編集UI | 高 | 管理画面からの編集機能 |
+| core層ビュー | 高 | ref + staging結合 |
+| marts層ビュー | 高 | 分析用ビュー |
 | BIダッシュボード | 中 | Phase 3 |
 | アラート通知 | 中 | Slack/Discord |
 | Fitbit追加データ | 低 | Breathing Rate等 |

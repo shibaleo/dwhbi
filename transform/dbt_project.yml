@@ -1,0 +1,54 @@
+# dbt Project Configuration
+# =============================================================================
+# supabase-sync-jobs DWH transformation layer
+# =============================================================================
+
+name: 'supabase_sync_dwh'
+version: '1.0.0'
+config-version: 2
+
+# プロジェクト構成
+profile: 'supabase_sync_dwh'
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# モデル設定
+# Note: profiles.ymlで schema: staging を指定しているため、
+#       +schema を指定するとサフィックスとして追加される
+#       staging層はデフォルトの staging スキーマを使用
+models:
+  supabase_sync_dwh:
+    # staging層: raw → staging変換（デフォルトスキーマ使用）
+    staging:
+      +materialized: view
+      +post-hook:
+        - "ALTER VIEW {{ this }} SET (security_invoker = on)"
+        - "GRANT SELECT ON {{ this }} TO authenticated"
+        - "GRANT SELECT ON {{ this }} TO service_role"
+      toggl_track:
+        +tags: ['toggl', 'time_tracking']
+
+    # core層: ビジネスエンティティ（将来用）
+    # Note: モデル追加時にコメント解除
+    # core:
+    #   +materialized: view
+    #   +schema: core
+
+    # marts層: 分析用ビュー（将来用）
+    # Note: モデル追加時にコメント解除
+    # marts:
+    #   +materialized: view
+    #   +schema: marts
+
+# 変数設定
+vars:
+  # タイムゾーン設定（Asia/Tokyo）
+  local_timezone: 'Asia/Tokyo'

@@ -10,7 +10,7 @@ description: 開発フェーズと進捗
 ```
 Phase 0: API Token系     ████████████████████ 100% ✅ 完了
 Phase 1: OAuth系         ████████████████████ 100% ✅ 完了
-Phase 2: DWH構築(staging)████░░░░░░░░░░░░░░░░  20% 🔄 進行中
+Phase 2: DWH構築(staging)████████████████░░░░  80% 🔄 進行中
 Phase 3: 可視化          ░░░░░░░░░░░░░░░░░░░░   0% ⏳ 未着手
 Phase 4: 本番運用強化    ░░░░░░░░░░░░░░░░░░░░   0% ⏳ 未着手
 Phase 5: ビジュアルETL   ░░░░░░░░░░░░░░░░░░░░   0% ⏳ 未着手
@@ -42,14 +42,16 @@ Phase 5: ビジュアルETL   ░░░░░░░░░░░░░░░░�
 |--------|:----------:|------|
 | raw層テーブル作成（Toggl） | ✅ | 9テーブル + RLS |
 | raw層パイプライン（Toggl） | ✅ | api_client, sync_*, orchestrator |
-| dbtプロジェクト初期化 | ⏳ | transform/ |
-| staging層モデル | ⏳ | stg_{service}__{entity} |
-| 型変換・正規化ロジック | ⏳ | タイムゾーン、NULL処理 |
-| core層ビュー作成 | ⏳ | |
-| marts層ビュー作成 | ⏳ | |
-| テスト・ドキュメント | ⏳ | dbt test, dbt docs |
+| dbtプロジェクト初期化 | ✅ | transform/, profiles.yml, packages.yml |
+| staging層モデル（Toggl） | ✅ | 9モデル（stg_toggl_track__*） |
+| 型変換・正規化ロジック | ✅ | JSONB→型付きカラム、NULL処理 |
+| security_invoker設定 | ✅ | post-hook で自動設定 |
+| GitHub Actionsワークフロー | ✅ | dbt-run.yml, sync-daily.yml |
+| テスト・ドキュメント | ✅ | 47テスト全パス |
+| core層ビュー作成 | ⏳ | 必要に応じて |
+| marts層ビュー作成 | ⏳ | 必要に応じて |
 
-**完了条件**: `SELECT * FROM staging.stg_toggl__time_entries` が動作
+**完了条件**: `SELECT * FROM staging.stg_toggl_track__time_entries` が動作 ✅
 
 ## Phase 3: 可視化 ⏳ 未着手
 
@@ -103,10 +105,11 @@ Phase 5: ビジュアルETL   ░░░░░░░░░░░░░░░░�
 
 | # | タスク | 優先度 | ステータス | 備考 |
 |---|--------|:------:|:----------:|------|
-| 1 | dbtプロジェクト初期化 | 🔴 高 | ⏳ | transform/ディレクトリ |
-| 2 | Toggl staging層モデル作成 | 🔴 高 | ⏳ | stg_toggl__time_entries等 |
-| 3 | 管理画面にGitHub PAT登録機能 | 🟡 中 | ⏳ | Supabase Vaultに保存 |
-| 4 | 同期実行ボタン実装 | 🟡 中 | ⏳ | Vercel → GitHub Actions dispatch |
+| 1 | dbtプロジェクト初期化 | 🔴 高 | ✅ | transform/ディレクトリ |
+| 2 | Toggl staging層モデル作成 | 🔴 高 | ✅ | 9モデル + 47テスト |
+| 3 | 他サービスのstaging層モデル | 🟡 中 | ⏳ | Fitbit, Zaim等 |
+| 4 | 管理画面にGitHub PAT登録機能 | 🟡 中 | ⏳ | Supabase Vaultに保存 |
+| 5 | 同期実行ボタン実装 | 🟡 中 | ⏳ | Vercel → GitHub Actions dispatch |
 
 ### 同期実行ボタン詳細
 

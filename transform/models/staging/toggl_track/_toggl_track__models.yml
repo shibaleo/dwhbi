@@ -1,0 +1,225 @@
+# Toggl Track Staging Models
+# =============================================================================
+# staging層モデルのスキーマ定義とテスト
+# =============================================================================
+
+version: 2
+
+models:
+  - name: stg_toggl_track__time_entries
+    description: "Toggl Track time entries (API v9)"
+    columns:
+      - name: id
+        description: "Primary key (UUID)"
+        data_tests:
+          - unique
+          - not_null
+      - name: time_entry_id
+        description: "Toggl Track time entry ID"
+        data_tests:
+          - unique
+          - not_null
+      - name: workspace_id
+        description: "Workspace ID"
+        data_tests:
+          - not_null
+      - name: project_id
+        description: "Project ID (nullable)"
+      - name: task_id
+        description: "Task ID (nullable)"
+      - name: user_id
+        description: "User ID"
+        data_tests:
+          - not_null
+      - name: description
+        description: "Entry description"
+      - name: is_billable
+        description: "Whether the entry is billable"
+      - name: tags
+        description: "Array of tag names"
+      - name: started_at
+        description: "Start timestamp"
+        data_tests:
+          - not_null
+      - name: stopped_at
+        description: "Stop timestamp (null if running)"
+      - name: duration_seconds
+        description: "Duration in seconds (null if running)"
+      - name: is_running
+        description: "Whether the entry is currently running"
+      - name: updated_at
+        description: "Last updated timestamp"
+      - name: synced_at
+        description: "Sync timestamp"
+        data_tests:
+          - not_null
+
+  - name: stg_toggl_track__time_entries_report
+    description: "Toggl Track time entries from Reports API v3"
+    columns:
+      - name: id
+        description: "Primary key (UUID)"
+        data_tests:
+          - unique
+          - not_null
+      - name: time_entry_id
+        description: "Toggl Track time entry ID"
+        data_tests:
+          - unique
+          - not_null
+      - name: billable_amount
+        description: "Billable amount (Reports API only)"
+      - name: currency
+        description: "Currency code"
+
+  - name: stg_toggl_track__projects
+    description: "Toggl Track projects"
+    columns:
+      - name: id
+        description: "Primary key (UUID)"
+        data_tests:
+          - unique
+          - not_null
+      - name: project_id
+        description: "Toggl Track project ID"
+        data_tests:
+          - unique
+          - not_null
+      - name: workspace_id
+        description: "Workspace ID"
+        data_tests:
+          - not_null
+      - name: client_id
+        description: "Client ID (nullable)"
+      - name: project_name
+        description: "Project name"
+        data_tests:
+          - not_null
+      - name: color
+        description: "Color hex code"
+      - name: is_private
+        description: "Whether the project is private"
+      - name: is_active
+        description: "Whether the project is active"
+      - name: is_billable
+        description: "Whether the project is billable"
+
+  - name: stg_toggl_track__clients
+    description: "Toggl Track clients"
+    columns:
+      - name: id
+        description: "Primary key (UUID)"
+        data_tests:
+          - unique
+          - not_null
+      - name: client_id
+        description: "Toggl Track client ID"
+        data_tests:
+          - unique
+          - not_null
+      - name: workspace_id
+        description: "Workspace ID"
+        data_tests:
+          - not_null
+      - name: client_name
+        description: "Client name"
+        data_tests:
+          - not_null
+      - name: is_archived
+        description: "Whether the client is archived"
+
+  - name: stg_toggl_track__tags
+    description: "Toggl Track tags"
+    columns:
+      - name: id
+        description: "Primary key (UUID)"
+        data_tests:
+          - unique
+          - not_null
+      - name: tag_id
+        description: "Toggl Track tag ID"
+        data_tests:
+          - unique
+          - not_null
+      - name: workspace_id
+        description: "Workspace ID"
+        data_tests:
+          - not_null
+      - name: tag_name
+        description: "Tag name"
+        data_tests:
+          - not_null
+
+  - name: stg_toggl_track__workspaces
+    description: "Toggl Track workspaces"
+    columns:
+      - name: id
+        description: "Primary key (UUID)"
+        data_tests:
+          - unique
+          - not_null
+      - name: workspace_id
+        description: "Toggl Track workspace ID"
+        data_tests:
+          - unique
+          - not_null
+      - name: workspace_name
+        description: "Workspace name"
+
+  - name: stg_toggl_track__users
+    description: "Toggl Track workspace users"
+    columns:
+      - name: id
+        description: "Primary key (UUID)"
+        data_tests:
+          - unique
+          - not_null
+      - name: user_id
+        description: "Toggl Track user ID"
+        data_tests:
+          - unique
+          - not_null
+      - name: email
+        description: "User email"
+      - name: full_name
+        description: "User full name"
+
+  - name: stg_toggl_track__me
+    description: "Toggl Track current user profile"
+    columns:
+      - name: id
+        description: "Primary key (UUID)"
+        data_tests:
+          - unique
+          - not_null
+      - name: user_id
+        description: "Toggl Track user ID"
+        data_tests:
+          - unique
+          - not_null
+      - name: email
+        description: "User email"
+      - name: full_name
+        description: "User full name"
+      - name: default_workspace_id
+        description: "Default workspace ID"
+
+  - name: stg_toggl_track__groups
+    description: "Toggl Track workspace groups"
+    columns:
+      - name: id
+        description: "Primary key (UUID)"
+        data_tests:
+          - unique
+          - not_null
+      - name: group_id
+        description: "Toggl Track group ID"
+        data_tests:
+          - unique
+          - not_null
+      - name: workspace_id
+        description: "Workspace ID"
+        data_tests:
+          - not_null
+      - name: group_name
+        description: "Group name"

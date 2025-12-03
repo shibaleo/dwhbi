@@ -43,6 +43,11 @@ on:
         required: false
         default: "7"
         type: string
+      skip_dbt:
+        description: "dbt実行をスキップ"
+        required: false
+        default: "false"
+        type: string
 
 jobs:
   sync-all:
@@ -171,8 +176,45 @@ jobs:
           asyncio.run(run_all())
           "
 
+      - name: Setup dbt environment
+        if: inputs.skip_dbt != 'true'
+        env:
+          DIRECT_DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
+        run: |
+          python -c "
+          import os
+          from urllib.parse import urlparse
+
+          url = os.environ['DIRECT_DATABASE_URL']
+          parsed = urlparse(url)
+
+          with open(os.environ['GITHUB_ENV'], 'a') as f:
+              f.write(f'DBT_SUPABASE_HOST={parsed.hostname}\n')
+              f.write(f'DBT_SUPABASE_PORT={parsed.port or 5432}\n')
+              f.write(f'DBT_SUPABASE_USER={parsed.username}\n')
+              f.write(f'DBT_SUPABASE_PASSWORD={parsed.password}\n')
+              f.write(f'DBT_SUPABASE_DB={parsed.path.lstrip(\"/\")}\n')
+
+          print(f'✅ dbt environment configured for {parsed.hostname}')
+          "
+
+      - name: Install dbt packages
+        if: inputs.skip_dbt != 'true'
+        working-directory: transform
+        run: dbt deps
+
+      - name: Run dbt models
+        if: inputs.skip_dbt != 'true'
+        working-directory: transform
+        run: dbt run
+
+      - name: Run dbt tests
+        if: inputs.skip_dbt != 'true'
+        working-directory: transform
+        run: dbt test
+
       - name: Notify on failure
         if: failure()
         run: |
-          echo "❌ 同期が失敗しました"
+          echo "❌ 同期またはdbt実行が失敗しました"
           echo "詳細は上記ログを確認してください"

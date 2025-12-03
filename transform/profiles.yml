@@ -1,0 +1,33 @@
+# dbt Profiles Configuration
+# =============================================================================
+# Supabase PostgreSQL connection settings
+#
+# 使用方法:
+#   1. 環境変数 DIRECT_DATABASE_URL を設定
+#   2. scripts/setup_dbt_env.py を実行して環境変数を展開
+#   3. dbt run を実行
+#
+# 必要な環境変数:
+#   - DBT_SUPABASE_HOST: Database host
+#   - DBT_SUPABASE_PORT: Database port
+#   - DBT_SUPABASE_USER: Database user
+#   - DBT_SUPABASE_PASSWORD: Database password
+#   - DBT_SUPABASE_DB: Database name
+#
+# Note: DIRECT_DATABASE_URL から自動設定する場合は setup_dbt_env.py を使用
+# =============================================================================
+
+supabase_sync_dwh:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('DBT_SUPABASE_HOST') }}"
+      port: "{{ env_var('DBT_SUPABASE_PORT', '5432') | int }}"
+      user: "{{ env_var('DBT_SUPABASE_USER', 'postgres') }}"
+      password: "{{ env_var('DBT_SUPABASE_PASSWORD') }}"
+      dbname: "{{ env_var('DBT_SUPABASE_DB', 'postgres') }}"
+      schema: staging
+      threads: 4
+      keepalives_idle: 0
+      connect_timeout: 30

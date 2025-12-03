@@ -1,0 +1,13 @@
+# dbt Packages
+# =============================================================================
+# 依存パッケージの定義
+# =============================================================================
+
+packages:
+  # dbt utilities
+  - package: dbt-labs/dbt_utils
+    version: ">=1.0.0"
+
+  # Code quality
+  - package: dbt-labs/codegen
+    version: ">=0.12.0"
