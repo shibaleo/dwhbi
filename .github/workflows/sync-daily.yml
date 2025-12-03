@@ -66,7 +66,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          TOKEN_ENCRYPTION_KEY: ${{ secrets.TOKEN_ENCRYPTION_KEY }}
+          DIRECT_DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
           TOGGL_SYNC_DAYS: ${{ inputs.toggl_sync_days || '3' }}
           TANITA_SYNC_DAYS: ${{ inputs.tanita_sync_days || '3' }}
           ZAIM_SYNC_DAYS: ${{ inputs.zaim_sync_days || '7' }}
