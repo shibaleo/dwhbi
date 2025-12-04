@@ -5,6 +5,22 @@ description: バージョンごとの変更内容
 
 # 変更履歴
 
+## v0.9.0 (2025-12-05)
+
+### 追加
+- Google Calendar staging層（4モデル + 29テスト）
+  - stg_google_calendar__events（event_id 重複排除対応）
+  - stg_google_calendar__colors
+  - stg_google_calendar__calendar_list
+  - stg_google_calendar__calendars
+- dbt seeds スキーマ（google_calendar_event_color_names）
+- dbt generate_schema_name マクロ（カスタムスキーマ対応）
+
+### 変更
+- Google Calendar 同期モジュールをリファクタリング（gcalendar.py → google_calendar/）
+- Admin Console の OAuth フロー改善
+- dbt-run.yml を run_dbt.py ラッパー経由に変更
+
 ## v0.8.0 (2025-12-XX)
 
 ### 追加

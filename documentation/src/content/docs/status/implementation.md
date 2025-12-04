@@ -23,7 +23,8 @@ description: 各機能の実装状況
 | レイヤー | 実装状況 | 説明 |
 |---------|:-------:|------|
 | raw | ✅ | 全サービスのテーブル作成済み |
-| staging | - | 未実装 |
+| staging | 🚧 | Toggl Track、Google Calendar 完了 |
+| seeds | ✅ | google_calendar_event_color_names |
 | core | - | 未実装 |
 | marts | - | 未実装 |
 

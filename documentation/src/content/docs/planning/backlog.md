@@ -37,21 +37,22 @@ description: 将来の拡張予定
 | 機能 | 優先度 | ステータス | 備考 |
 |------|:------:|:----------:|------|
 | Toggl staging層 | 高 | ✅ | 9モデル + 47テスト |
+| Google Calendar staging層 | 高 | ✅ | 4モデル + 29テスト + seed |
 | GitHub PAT管理 | 高 | ✅ | Supabase Vault |
 | 同期実行ボタン | 高 | ✅ | workflow_dispatch API |
 | Actions使用量表示 | 中 | ✅ | 今月の使用時間 |
 | Composite Action共通化 | 中 | ✅ | python-setup |
 | Reports API効率化 | 中 | ✅ | page_size=1000 |
-| Google Calendar staging層 | 高 | ⏳ | Togglとの予実比較用 |
+| dbt generate_schema_name マクロ | 中 | ✅ | カスタムスキーマ対応 |
 | Fitbit staging層 | 高 | ⏳ | 健康データ分析用 |
 | Zaim staging層 | 中 | ⏳ | 支出分析用 |
 | Tanita staging層 | 中 | ⏳ | 体組成データ分析用 |
 | Trello staging層 | 中 | ⏳ | プロジェクト管理分析用 |
 | TickTick staging層 | 中 | ⏳ | タスク管理分析用 |
 | Airtable staging層 | 低 | ⏳ | マスタ管理用 |
-| refスキーマ設計 | 中 | ⏳ | マスタテーブル（プロジェクト分類等） |
+| seedsスキーマ拡張 | 中 | ⏳ | マスタテーブル（プロジェクト分類等） |
 | マスタテーブル編集UI | 中 | ⏳ | 管理画面からの編集機能 |
-| core層ビュー | 中 | ⏳ | ref + staging結合（2サービス以上必要） |
+| core層ビュー | 中 | ⏳ | seeds + staging結合（2サービス以上必要） |
 | marts層ビュー | 中 | ⏳ | 分析用ビュー |
 | CLI化（typer） | 低 | ⏳ | workflow呼び出し簡素化、ローカルテスト容易化 |
 | Python内並列化 | 低 | ⏳ | asyncio.gatherで同期処理を並列実行 |
