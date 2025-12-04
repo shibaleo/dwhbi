@@ -5,72 +5,54 @@ description: バージョンごとの変更内容
 
 # 変更履歴
 
-## v0.9.0 (2025-12-05)
+## v0.1.0 (開発中)
+
+**目標**: MVP - 最低限の可視化とLLMによる分析を可能にする
 
 ### 追加
-- Google Calendar staging層（4モデル + 29テスト）
-  - stg_google_calendar__events（event_id 重複排除対応）
-  - stg_google_calendar__colors
-  - stg_google_calendar__calendar_list
-  - stg_google_calendar__calendars
-- dbt seeds スキーマ（google_calendar_event_color_names）
-- dbt generate_schema_name マクロ（カスタムスキーマ対応）
+- 8サービスの同期対応（raw層）
+  - Toggl Track、Google Calendar、Fitbit、Zaim
+  - Tanita Health Planet、Trello、TickTick、Airtable
+- 管理コンソール
+  - OAuth認証フロー
+  - Supabase Vault連携
+  - GitHub Actions連携（同期実行、使用量表示）
+- dbt staging層
+  - Toggl Track（9モデル + 47テスト）
+  - Google Calendar（4モデル + 29テスト + seed）
+  - Fitbit（予定）
+  - Zaim（予定）
+  - Tanita（予定）
+- Grafana ダッシュボード（staging確認用）（予定）
+- dbt基盤
+  - generate_schema_name マクロ（カスタムスキーマ対応）
+  - seeds スキーマ
+  - security_invoker 自動設定
 
 ### 変更
 - Google Calendar 同期モジュールをリファクタリング（gcalendar.py → google_calendar/）
-- Admin Console の OAuth フロー改善
 - dbt-run.yml を run_dbt.py ラッパー経由に変更
 
-## v0.8.0 (2025-12-XX)
+---
 
-### 追加
-- Airtable 同期対応
-- TickTick 同期対応
+## 開発履歴（詳細）
 
-### 変更
-- ドキュメント構成の再編成
+### 2025-12-05
 
-## v0.7.0 (2025-12-XX)
+- Google Calendar staging層完成（4モデル + 29テスト）
+- dbt seeds スキーマ追加（google_calendar_event_color_names）
+- dbt generate_schema_name マクロ追加
+- Admin Console の OAuth フロー改善
+- リリース戦略を改訂
 
-### 追加
-- Trello 同期対応（ボード、リスト、カード、アクション、チェックリスト）
-- 差分同期機能（アクション）
+### 2025-12-04
 
-## v0.6.0 (2025-12-XX)
+- Toggl Track staging層完成（9モデル + 47テスト）
+- dbt プロジェクト初期化
 
-### 追加
-- Tanita Health Planet 同期対応
-- 体組成データ、血圧データの取得
+### 2025-12-XX（過去）
 
-## v0.5.0 (2025-12-XX)
-
-### 追加
-- Fitbit 同期対応
-- 睡眠、心拍数、HRV、活動、SpO2データの取得
-
-## v0.4.0 (2025-12-XX)
-
-### 追加
-- Google Calendar 同期対応
-- サービスアカウント認証
-
-## v0.3.0 (2025-12-XX)
-
-### 追加
-- Zaim 同期対応
-- OAuth 1.0a 認証フロー
-
-## v0.2.0 (2025-12-XX)
-
-### 追加
-- 管理ダッシュボード
-- Supabase Vault 連携
-- 認証情報の暗号化保管
-
-## v0.1.0 (2025-11-XX)
-
-### 追加
-- Toggl Track 同期対応
-- 基本的なパイプライン構造
-- GitHub Actions ワークフロー
-- Supabase セットアップ
+- 8サービスの同期実装完了
+- 管理コンソール実装
+- GitHub Actions ワークフロー整備
+- ドキュメント整備
