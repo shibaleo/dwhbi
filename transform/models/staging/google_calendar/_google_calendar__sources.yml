@@ -1,0 +1,67 @@
+# Google Calendar Sources
+# =============================================================================
+# raw層テーブルの定義
+# =============================================================================
+
+version: 2
+
+sources:
+  - name: raw_google_calendar
+    description: "Google Calendar API v3 raw responses"
+    schema: raw
+    tables:
+      - name: google_calendar__events
+        description: "Google Calendar events"
+        columns:
+          - name: id
+            description: "Primary key (UUID)"
+          - name: source_id
+            description: "Calendar ID : Event ID (composite key)"
+          - name: data
+            description: "Raw JSON response from Google Calendar Events API"
+          - name: synced_at
+            description: "Sync timestamp"
+          - name: api_version
+            description: "API version (v3)"
+
+      - name: google_calendar__calendars
+        description: "Google Calendar metadata"
+        columns:
+          - name: id
+            description: "Primary key (UUID)"
+          - name: source_id
+            description: "Calendar ID"
+          - name: data
+            description: "Raw JSON response from Google Calendar Calendars API"
+          - name: synced_at
+            description: "Sync timestamp"
+          - name: api_version
+            description: "API version (v3)"
+
+      - name: google_calendar__calendar_list
+        description: "Google Calendar list entries (user's calendar subscriptions)"
+        columns:
+          - name: id
+            description: "Primary key (UUID)"
+          - name: source_id
+            description: "Calendar ID"
+          - name: data
+            description: "Raw JSON response from Google Calendar CalendarList API"
+          - name: synced_at
+            description: "Sync timestamp"
+          - name: api_version
+            description: "API version (v3)"
+
+      - name: google_calendar__colors
+        description: "Google Calendar color palette (event/calendar colors)"
+        columns:
+          - name: id
+            description: "Primary key (UUID)"
+          - name: source_id
+            description: "Color kind (event or calendar)"
+          - name: data
+            description: "Raw JSON response with color definitions"
+          - name: synced_at
+            description: "Sync timestamp"
+          - name: api_version
+            description: "API version (v3)"

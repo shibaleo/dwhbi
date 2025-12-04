@@ -1,14 +1,20 @@
 import { redirect, notFound } from "next/navigation";
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { SERVICES, SERVICE_DISPLAY_NAMES, SERVICE_AUTH_TYPES, type ServiceName } from "@/lib/vault";
 import { ServiceForm } from "./service-form";
 
 type Params = Promise<{ service: string }>;
 
+// OAuthコールバックURLのパス定義
+const OAUTH_CALLBACK_PATHS: Partial<Record<ServiceName, string>> = {
+  google_calendar: "/api/oauth/google_calendar/callback",
+};
+
 // サービスごとの入力フィールド定義
 // required: true の場合、更新時も必ず入力が必要（セットで更新するフィールド）
 const SERVICE_FIELDS: Record<ServiceName, { key: string; label: string; type?: string; placeholder?: string; required?: boolean }[]> = {
-  toggl: [
+  toggl_track: [
     { key: "api_token", label: "API Token", placeholder: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", required: true },
   ],
   trello: [
@@ -27,10 +33,10 @@ const SERVICE_FIELDS: Record<ServiceName, { key: string; label: string; type?: s
     { key: "consumer_key", label: "Consumer Key" },
     { key: "consumer_secret", label: "Consumer Secret", type: "password" },
   ],
-  gcalendar: [
+  google_calendar: [
     { key: "client_id", label: "Client ID", placeholder: "xxxxx.apps.googleusercontent.com" },
     { key: "client_secret", label: "Client Secret", type: "password" },
-    { key: "calendar_id", label: "Calendar ID (オプション)", placeholder: "primary" },
+    { key: "calendar_id", label: "Calendar ID (オプション)", placeholder: "自動検出されます" },
   ],
   tanita: [
     { key: "client_id", label: "Client ID" },
@@ -62,6 +68,16 @@ export default async function ServicePage({ params }: { params: Params }) {
   const displayName = SERVICE_DISPLAY_NAMES[serviceName];
   const authType = SERVICE_AUTH_TYPES[serviceName];
   const fields = SERVICE_FIELDS[serviceName];
+
+  // OAuthコールバックURLを生成
+  let oauthCallbackUrl: string | undefined;
+  const callbackPath = OAUTH_CALLBACK_PATHS[serviceName];
+  if (callbackPath) {
+    const headersList = await headers();
+    const host = headersList.get("host") || "localhost:3000";
+    const protocol = headersList.get("x-forwarded-proto") || (host.includes("localhost") ? "http" : "https");
+    oauthCallbackUrl = `${protocol}://${host}${callbackPath}`;
+  }
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900">
@@ -101,6 +117,7 @@ export default async function ServicePage({ params }: { params: Params }) {
           service={serviceName}
           fields={fields}
           authType={authType}
+          oauthCallbackUrl={oauthCallbackUrl}
         />
       </main>
     </div>

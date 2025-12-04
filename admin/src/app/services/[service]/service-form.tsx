@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { ServiceName } from "@/lib/vault";
 
 interface Field {
@@ -16,18 +16,36 @@ interface ServiceFormProps {
   service: ServiceName;
   fields: Field[];
   authType: "api_key" | "oauth";
+  oauthCallbackUrl?: string;
 }
 
-export function ServiceForm({ service, fields, authType }: ServiceFormProps) {
+// OAuthをサポートするサービス
+const OAUTH_SERVICES: ServiceName[] = ["google_calendar"];
+
+export function ServiceForm({ service, fields, authType, oauthCallbackUrl }: ServiceFormProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [maskedData, setMaskedData] = useState<Record<string, string> | null>(null);
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // URLパラメータからエラー/成功メッセージを取得
+  useEffect(() => {
+    const errorParam = searchParams.get("error");
+    const successParam = searchParams.get("success");
+    if (errorParam) {
+      setError(decodeURIComponent(errorParam));
+    }
+    if (successParam) {
+      setSuccess(decodeURIComponent(successParam));
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     async function fetchCredentials() {
@@ -136,6 +154,32 @@ export function ServiceForm({ service, fields, authType }: ServiceFormProps) {
     }
   };
 
+  // OAuth認証を開始
+  const handleOAuthStart = async () => {
+    setOauthLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`/api/oauth/${service}`);
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "OAuth認証の開始に失敗しました");
+      }
+
+      // 認証URLにリダイレクト
+      window.location.href = data.authUrl;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "OAuth認証の開始に失敗しました");
+      setOauthLoading(false);
+    }
+  };
+
+  // OAuth認証済みかどうかを判定
+  const hasOAuthToken = maskedData && maskedData.access_token;
+  const hasClientCredentials = maskedData && maskedData.client_id && maskedData.client_secret;
+  const supportsOAuth = OAUTH_SERVICES.includes(service);
+
   if (loading) {
     return (
       <div className="bg-white dark:bg-zinc-950 rounded-lg border border-zinc-200 dark:border-zinc-800 p-6">
@@ -214,11 +258,50 @@ export function ServiceForm({ service, fields, authType }: ServiceFormProps) {
         </div>
       </form>
 
-      {authType === "oauth" && !connected && (
+      {/* OAuth認証セクション */}
+      {supportsOAuth && (
         <div className="mt-6 pt-6 border-t border-zinc-200 dark:border-zinc-800">
-          <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-            OAuth認証を開始するには、まず Client ID と Client Secret を保存してください。
-          </p>
+          <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">
+            OAuth認証
+          </h3>
+
+          {/* コールバックURL表示 */}
+          {oauthCallbackUrl && (
+            <div className="mb-4 p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
+                Google Cloud Consoleに登録するコールバックURL:
+              </p>
+              <code className="text-sm text-zinc-800 dark:text-zinc-200 break-all select-all">
+                {oauthCallbackUrl}
+              </code>
+            </div>
+          )}
+
+          {hasOAuthToken ? (
+            <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+              <p className="text-sm text-green-700 dark:text-green-300">
+                OAuth認証済み
+              </p>
+            </div>
+          ) : hasClientCredentials ? (
+            <div className="space-y-3">
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                Client ID と Client Secret が保存されています。OAuth認証を開始してください。
+              </p>
+              <button
+                type="button"
+                onClick={handleOAuthStart}
+                disabled={oauthLoading}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {oauthLoading ? "認証中..." : "OAuth認証を開始"}
+              </button>
+            </div>
+          ) : (
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              OAuth認証を開始するには、まず Client ID と Client Secret を保存してください。
+            </p>
+          )}
         </div>
       )}
     </div>

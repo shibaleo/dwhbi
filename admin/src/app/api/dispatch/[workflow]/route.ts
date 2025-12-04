@@ -4,10 +4,10 @@ import { getGitHubConfig } from "@/lib/vault";
 
 // ワークフロー名とファイル名のマッピング
 const WORKFLOW_FILES: Record<string, string> = {
-  toggl: "sync-toggl.yml",
+  toggl_track: "sync-toggl.yml",
   fitbit: "sync-fitbit.yml",
   zaim: "sync-zaim.yml",
-  gcalendar: "sync-gcalendar.yml",
+  google_calendar: "sync-gcalendar.yml",
   tanita: "sync-tanita.yml",
   trello: "sync-trello.yml",
   ticktick: "sync-ticktick.yml",

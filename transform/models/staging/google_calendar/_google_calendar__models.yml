@@ -1,0 +1,174 @@
+# Google Calendar Staging Models
+# =============================================================================
+# staging層モデルのスキーマ定義とテスト
+# =============================================================================
+
+version: 2
+
+models:
+  - name: stg_google_calendar__events
+    description: |
+      Google Calendar events staging model.
+
+      Features:
+      - Extracts all event fields from raw JSON
+      - Handles both all-day events (date) and timed events (dateTime)
+      - Extracts creator, organizer, and conference information
+      - Deduplicates by event_id (keeps latest synced record)
+    columns:
+      - name: id
+        description: "Primary key (UUID from raw layer)"
+        data_tests:
+          - unique
+          - not_null
+      - name: source_id
+        description: "Source ID: {calendar_id}:{event_id}"
+        data_tests:
+          - unique
+          - not_null
+      - name: event_id
+        description: "Google Calendar event ID (unique after deduplication)"
+        data_tests:
+          - unique
+          - not_null
+      - name: calendar_id
+        description: "Calendar ID this event belongs to"
+        data_tests:
+          - not_null
+      - name: ical_uid
+        description: "iCalendar UID for cross-calendar identification"
+      - name: recurring_event_id
+        description: "Parent recurring event ID (if this is an instance)"
+      - name: status
+        description: "Event status: confirmed, tentative, cancelled"
+      - name: event_type
+        description: "Event type: default, outOfOffice, focusTime, workingLocation"
+      - name: summary
+        description: "Event title/summary"
+      - name: description
+        description: "Event description (may contain HTML)"
+      - name: location
+        description: "Event location"
+      - name: start_at
+        description: "Start timestamp (unified from date or dateTime)"
+        data_tests:
+          - not_null
+      - name: end_at
+        description: "End timestamp (unified from date or dateTime)"
+      - name: is_all_day
+        description: "Whether this is an all-day event"
+      - name: creator_email
+        description: "Creator's email address"
+      - name: organizer_email
+        description: "Organizer's email address"
+      - name: attendees_count
+        description: "Number of attendees"
+      - name: color_id
+        description: "Color ID (references stg_google_calendar__colors)"
+      - name: conference_id
+        description: "Conference ID (Google Meet, etc.)"
+      - name: created_at
+        description: "Event creation timestamp"
+      - name: updated_at
+        description: "Event last update timestamp"
+      - name: synced_at
+        description: "Sync timestamp"
+        data_tests:
+          - not_null
+
+  - name: stg_google_calendar__calendars
+    description: |
+      Google Calendar metadata staging model.
+
+      Contains calendar-level settings like timezone and description.
+    columns:
+      - name: id
+        description: "Primary key (UUID)"
+        data_tests:
+          - unique
+          - not_null
+      - name: calendar_id
+        description: "Google Calendar ID"
+        data_tests:
+          - unique
+          - not_null
+      - name: summary
+        description: "Calendar name/title"
+      - name: description
+        description: "Calendar description"
+      - name: timezone
+        description: "Calendar timezone (e.g., Asia/Tokyo)"
+      - name: synced_at
+        description: "Sync timestamp"
+        data_tests:
+          - not_null
+
+  - name: stg_google_calendar__calendar_list
+    description: |
+      Google Calendar list entries staging model.
+
+      Represents the user's calendar subscriptions with display settings.
+    columns:
+      - name: id
+        description: "Primary key (UUID)"
+        data_tests:
+          - unique
+          - not_null
+      - name: calendar_id
+        description: "Google Calendar ID"
+        data_tests:
+          - unique
+          - not_null
+      - name: summary
+        description: "Calendar name/title"
+      - name: summary_override
+        description: "User's custom name for this calendar"
+      - name: access_role
+        description: "Access role: freeBusyReader, reader, writer, owner"
+      - name: color_id
+        description: "Color ID for this calendar"
+      - name: background_color
+        description: "Background color hex code"
+      - name: foreground_color
+        description: "Foreground color hex code"
+      - name: is_selected
+        description: "Whether calendar is shown in UI"
+      - name: is_hidden
+        description: "Whether calendar is hidden"
+      - name: is_primary
+        description: "Whether this is the user's primary calendar"
+      - name: synced_at
+        description: "Sync timestamp"
+        data_tests:
+          - not_null
+
+  - name: stg_google_calendar__colors
+    description: |
+      Google Calendar colors staging model.
+
+      Unnested color palette for events and calendars.
+    columns:
+      - name: id
+        description: "Source record UUID"
+      - name: color_kind
+        description: "Color kind: event or calendar"
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['event', 'calendar']
+      - name: color_id
+        description: "Color ID (1-11 for events, 1-24 for calendars)"
+        data_tests:
+          - not_null
+      - name: background_color
+        description: "Background color hex code"
+        data_tests:
+          - not_null
+      - name: foreground_color
+        description: "Foreground color hex code"
+        data_tests:
+          - not_null
+      - name: synced_at
+        description: "Sync timestamp"
+        data_tests:
+          - not_null

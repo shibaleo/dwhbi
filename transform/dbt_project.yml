@@ -35,6 +35,8 @@ models:
         - "GRANT SELECT ON {{ this }} TO service_role"
       toggl_track:
         +tags: ['toggl', 'time_tracking']
+      google_calendar:
+        +tags: ['google', 'calendar']
 
     # core層: ビジネスエンティティ（将来用）
     # Note: モデル追加時にコメント解除
@@ -47,6 +49,14 @@ models:
     # marts:
     #   +materialized: view
     #   +schema: marts
+
+# Seed設定
+seeds:
+  supabase_sync_dwh:
+    +schema: seeds
+    +post-hook:
+      - "GRANT SELECT ON {{ this }} TO authenticated"
+      - "GRANT SELECT ON {{ this }} TO service_role"
 
 # 変数設定
 vars:

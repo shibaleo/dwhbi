@@ -56,37 +56,19 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Setup dbt environment
+      - name: Install dbt packages
         env:
           DIRECT_DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
-        run: |
-          python -c "
-          import os
-          from urllib.parse import urlparse
-
-          url = os.environ['DIRECT_DATABASE_URL']
-          parsed = urlparse(url)
-
-          with open(os.environ['GITHUB_ENV'], 'a') as f:
-              f.write(f'DBT_SUPABASE_HOST={parsed.hostname}\n')
-              f.write(f'DBT_SUPABASE_PORT={parsed.port or 5432}\n')
-              f.write(f'DBT_SUPABASE_USER={parsed.username}\n')
-              f.write(f'DBT_SUPABASE_PASSWORD={parsed.password}\n')
-              f.write(f'DBT_SUPABASE_DB={parsed.path.lstrip(\"/\")}\n')
-
-          print(f'✅ dbt environment configured for {parsed.hostname}')
-          "
-
-      - name: Install dbt packages
-        working-directory: transform
-        run: dbt deps
+        run: python scripts/run_dbt.py deps
 
       - name: Run dbt debug
-        working-directory: transform
-        run: dbt debug
+        env:
+          DIRECT_DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
+        run: python scripts/run_dbt.py debug
 
       - name: Run dbt command
-        working-directory: transform
+        env:
+          DIRECT_DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
         run: |
           COMMAND="${{ inputs.command || 'run' }}"
           FULL_REFRESH="${{ inputs.full_refresh }}"
@@ -94,19 +76,21 @@ jobs:
           echo "Running: dbt $COMMAND"
 
           if [ "$FULL_REFRESH" = "true" ]; then
-            dbt $COMMAND --full-refresh
+            python scripts/run_dbt.py $COMMAND --full-refresh
           else
-            dbt $COMMAND
+            python scripts/run_dbt.py $COMMAND
           fi
 
       - name: Run dbt tests
         if: inputs.run_tests == true || inputs.run_tests == 'true'
-        working-directory: transform
-        run: dbt test
+        env:
+          DIRECT_DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
+        run: python scripts/run_dbt.py test
 
       - name: Generate dbt docs
-        working-directory: transform
-        run: dbt docs generate
+        env:
+          DIRECT_DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
+        run: python scripts/run_dbt.py docs generate
 
       - name: Notify on failure
         if: failure()

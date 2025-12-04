@@ -123,6 +123,34 @@ async def _request_with_retry(
 # OAuth 2.0 Authentication
 # =============================================================================
 
+async def _fetch_primary_calendar_id(access_token: str) -> str:
+    """CalendarListからprimaryカレンダーのIDを取得
+
+    Args:
+        access_token: アクセストークン
+
+    Returns:
+        プライマリカレンダーのID（メールアドレス形式）
+
+    Raises:
+        ValueError: プライマリカレンダーが見つからない場合
+    """
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        headers = {"Authorization": f"Bearer {access_token}"}
+        url = f"{CALENDAR_API_BASE}/users/me/calendarList"
+
+        response = await client.get(url, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+
+        for item in data.get("items", []):
+            if item.get("primary"):
+                logger.info(f"Auto-detected primary calendar: {item['id']}")
+                return item["id"]
+
+        raise ValueError("Primary calendar not found in CalendarList")
+
+
 async def _refresh_token_from_api(
     client_id: str,
     client_secret: str,
@@ -173,8 +201,11 @@ async def get_auth_info(force_refresh: bool = False) -> AuthInfo:
         raise ValueError("Missing client_id or client_secret")
     if not credentials.get("access_token") or not credentials.get("refresh_token"):
         raise ValueError("Missing access_token or refresh_token. Run OAuth flow first.")
-    if not credentials.get("calendar_id"):
-        raise ValueError("Missing calendar_id in gcalendar credentials")
+
+    # calendar_idが未設定の場合、CalendarListからprimaryカレンダーを自動取得
+    calendar_id = credentials.get("calendar_id")
+    if not calendar_id:
+        calendar_id = await _fetch_primary_calendar_id(credentials["access_token"])
 
     # リフレッシュが必要かチェック
     needs_refresh = force_refresh
@@ -186,7 +217,7 @@ async def get_auth_info(force_refresh: bool = False) -> AuthInfo:
     if not needs_refresh and expires_at:
         _cached_auth = AuthInfo(
             access_token=credentials["access_token"],
-            calendar_id=credentials["calendar_id"],
+            calendar_id=calendar_id,
         )
         _cached_expires_at = expires_at
         return _cached_auth
@@ -215,7 +246,7 @@ async def get_auth_info(force_refresh: bool = False) -> AuthInfo:
 
     _cached_auth = AuthInfo(
         access_token=new_token["access_token"],
-        calendar_id=credentials["calendar_id"],
+        calendar_id=calendar_id,
     )
     _cached_expires_at = new_expires_at
     return _cached_auth
