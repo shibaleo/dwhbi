@@ -10,7 +10,7 @@ description: テーブル定義とスキーマ設計
 | スキーマ | 役割 | 形式 | 実装状況 |
 |---------|------|------|---------|
 | `raw` | 外部APIからの生データ | テーブル | 実装済み |
-| `staging` | クリーニング・正規化 | ビュー | 未実装 |
+| `staging` | クリーニング・正規化 | ビュー | 一部実装（Togglのみ） |
 | `core` | サービス統合 | ビュー | 未実装 |
 | `marts` | 分析集計・LLM向け | ビュー | 未実装 |
 
@@ -288,7 +288,7 @@ description: テーブル定義とスキーマ設計
 | model | TEXT | YES | 測定機器モデル |
 | synced_at | TIMESTAMPTZ | YES | 同期日時 |
 
-## staging層設計（未実装）
+## staging層設計
 
 ### 命名規則
 
@@ -296,16 +296,29 @@ description: テーブル定義とスキーマ設計
 stg_{service}__{entity}
 ```
 
-### 予定ビュー
+### 実装済みビュー（Toggl Track）
 
-| ビュー | 元テーブル | 主な変換 |
-|--------|----------|---------|
-| `stg_toggl__entries` | raw.toggl_entries | タグ配列の正規化 |
-| `stg_gcalendar__events` | raw.gcalendar_events | duration_ms の補完 |
-| `stg_zaim__transactions` | raw.zaim_transactions | category/genre名の結合 |
-| `stg_fitbit__sleep` | raw.fitbit_sleep | levels JSONの展開 |
-| `stg_fitbit__daily_health` | 複数Fitbitテーブル | 日次健康指標の統合 |
-| `stg_tanita__body_metrics` | raw.tanita_* | 体組成+血圧の統合 |
+| ビュー | 元テーブル | 主な変換 | 実装状況 |
+|--------|----------|---------|:--------:|
+| `stg_toggl_track__clients` | raw.toggl_clients | 型正規化 | ✅ |
+| `stg_toggl_track__projects` | raw.toggl_projects | 型正規化 | ✅ |
+| `stg_toggl_track__tags` | raw.toggl_tags | 型正規化 | ✅ |
+| `stg_toggl_track__time_entries` | raw.toggl_entries | タグ配列の正規化 | ✅ |
+| `stg_toggl_track__workspaces` | raw.toggl_workspaces | 型正規化 | ✅ |
+| 他4モデル | - | - | ✅ |
+
+### 未実装ビュー
+
+| ビュー | 元テーブル | 主な変換 | 実装状況 |
+|--------|----------|---------|:--------:|
+| `stg_gcalendar__events` | raw.gcalendar_events | duration_ms の補完 | ⏳ |
+| `stg_zaim__transactions` | raw.zaim_transactions | category/genre名の結合 | ⏳ |
+| `stg_fitbit__sleep` | raw.fitbit_sleep | levels JSONの展開 | ⏳ |
+| `stg_fitbit__daily_health` | 複数Fitbitテーブル | 日次健康指標の統合 | ⏳ |
+| `stg_tanita__body_metrics` | raw.tanita_* | 体組成+血圧の統合 | ⏳ |
+| `stg_trello__*` | raw.trello_* | 型正規化 | ⏳ |
+| `stg_ticktick__*` | raw.ticktick_* | 型正規化 | ⏳ |
+| `stg_airtable__*` | raw.airtable_* | 型正規化 | ⏳ |
 
 ## core層設計（未実装）
 
@@ -356,3 +369,4 @@ agg_{granularity}_{domain}
 |------|---------|
 | 2025-12-01 | 初版作成 |
 | 2025-12-03 | Trello, TickTick, Airtable テーブル追加 |
+| 2025-12-04 | staging層実装状況を更新（Togglのみ完了） |

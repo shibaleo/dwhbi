@@ -7,7 +7,11 @@
 ```
 pipelines/
 ├── services/          # API同期スクリプト
-│   └── toggl.py      # Toggl Track API同期
+│   └── toggl_track/  # Toggl Track API同期
+│       ├── api_client.py           # API通信
+│       ├── orchestrator.py         # オーケストレーター
+│       ├── sync_time_entries.py    # Track API v9
+│       └── sync_time_entries_report.py  # Reports API v3
 ├── lib/              # 共通ライブラリ
 │   ├── credentials.py # 認証情報取得・復号
 │   ├── db.py         # Supabase client
@@ -34,11 +38,11 @@ cp .env.example .env
 ## 使用方法
 
 ```python
-from pipelines.services.toggl import sync_toggl
+from pipelines.services.toggl_track.orchestrator import sync_all
 
 # Toggl データを3日分同期
-result = await sync_toggl(days=3)
-print(f"Synced {result['entries']} entries")
+result = await sync_all(days=3)
+print(f"Synced {result['count']} entries")
 ```
 
 ## テスト

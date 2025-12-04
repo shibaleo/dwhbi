@@ -7,13 +7,15 @@ version: 2
 
 models:
   - name: stg_toggl_track__time_entries
-    description: "Toggl Track time entries (API v9)"
+    description: |
+      Toggl Track time entries (Unified from Track API v9 and Reports API v3)
+
+      Design decisions:
+      - Reports API is primary source (complete historical data)
+      - Track API supplements running entries (is_running = true)
+      - tag_ids unified to bigint[] (Track API tags converted via stg_tags)
+      - is_running is NULL for report entries (cannot determine from Reports API)
     columns:
-      - name: id
-        description: "Primary key (UUID)"
-        data_tests:
-          - unique
-          - not_null
       - name: time_entry_id
         description: "Toggl Track time entry ID"
         data_tests:
@@ -35,8 +37,8 @@ models:
         description: "Entry description"
       - name: is_billable
         description: "Whether the entry is billable"
-      - name: tags
-        description: "Array of tag names"
+      - name: tag_ids
+        description: "Array of tag IDs (bigint[])"
       - name: started_at
         description: "Start timestamp"
         data_tests:
@@ -46,31 +48,17 @@ models:
       - name: duration_seconds
         description: "Duration in seconds (null if running)"
       - name: is_running
-        description: "Whether the entry is currently running"
+        description: "Whether the entry is currently running (NULL for report entries)"
       - name: updated_at
         description: "Last updated timestamp"
       - name: synced_at
         description: "Sync timestamp"
         data_tests:
           - not_null
-
-  - name: stg_toggl_track__time_entries_report
-    description: "Toggl Track time entries from Reports API v3"
-    columns:
-      - name: id
-        description: "Primary key (UUID)"
-        data_tests:
-          - unique
-          - not_null
-      - name: time_entry_id
-        description: "Toggl Track time entry ID"
-        data_tests:
-          - unique
-          - not_null
-      - name: billable_amount
-        description: "Billable amount (Reports API only)"
-      - name: currency
-        description: "Currency code"
+      - name: api_version
+        description: "API version used (v9 or v3)"
+      - name: data_source
+        description: "Source of data: 'report' (Reports API) or 'track' (Track API)"
 
   - name: stg_toggl_track__projects
     description: "Toggl Track projects"

@@ -10,7 +10,7 @@ description: 開発フェーズと進捗
 ```
 Phase 0: API Token系     ████████████████████ 100% ✅ 完了
 Phase 1: OAuth系         ████████████████████ 100% ✅ 完了
-Phase 2: DWH構築(staging)████████████████████ 100% ✅ 完了
+Phase 2: DWH構築(staging)██░░░░░░░░░░░░░░░░░░  12% 🔄 進行中（Togglのみ完了）
 Phase 2.5: 管理画面強化  ████████████████████ 100% ✅ 完了
 Phase 3: 可視化          ░░░░░░░░░░░░░░░░░░░░   0% ⏳ 未着手
 Phase 4: 本番運用強化    ░░░░░░░░░░░░░░░░░░░░   0% ⏳ 未着手
@@ -35,23 +35,32 @@ Phase 5: ビジュアルETL   ░░░░░░░░░░░░░░░░�
 | v0.7.0 | TickTick | OAuth 2.0 | ✅ |
 | v0.8.0 | Zaim | OAuth 1.0a | ✅ |
 
-## Phase 2: DWH構築（staging層）✅ 完了
+## Phase 2: DWH構築（staging層）🔄 進行中
 
 **目標**: dbtによるstaging層の構築
 
+### 共通基盤 ✅ 完了
+
 | タスク | ステータス | 備考 |
 |--------|:----------:|------|
-| raw層テーブル作成（Toggl） | ✅ | 9テーブル + RLS |
-| raw層パイプライン（Toggl） | ✅ | api_client, sync_*, orchestrator |
 | dbtプロジェクト初期化 | ✅ | transform/, profiles.yml, packages.yml |
-| staging層モデル（Toggl） | ✅ | 9モデル（stg_toggl_track__*） |
-| 型変換・正規化ロジック | ✅ | JSONB→型付きカラム、NULL処理 |
 | security_invoker設定 | ✅ | post-hook で自動設定 |
 | GitHub Actionsワークフロー | ✅ | Composite Action共通化 |
-| テスト・ドキュメント | ✅ | 47テスト全パス |
-| Reports API全件同期 | ✅ | page_size=1000で効率化 |
 
-**完了条件**: `SELECT * FROM staging.stg_toggl_track__time_entries` が動作 ✅
+### サービス別進捗
+
+| サービス | raw層 | staging層 | ステータス |
+|---------|:-----:|:---------:|:----------:|
+| Toggl Track | ✅ | ✅ | 完了（9モデル + 47テスト） |
+| Google Calendar | ✅ | ⏳ | raw完了、staging未実装 |
+| Zaim | ✅ | ⏳ | raw完了、staging未実装 |
+| Fitbit | ✅ | ⏳ | raw完了、staging未実装 |
+| Tanita | ✅ | ⏳ | raw完了、staging未実装 |
+| Trello | ✅ | ⏳ | raw完了、staging未実装 |
+| TickTick | ✅ | ⏳ | raw完了、staging未実装 |
+| Airtable | ✅ | ⏳ | raw完了、staging未実装 |
+
+**完了条件**: 全サービスのstaging層モデルが動作
 
 ## Phase 2.5: 管理画面強化 ✅ 完了
 
@@ -119,19 +128,24 @@ Phase 5: ビジュアルETL   ░░░░░░░░░░░░░░░░�
 
 | # | タスク | 優先度 | ステータス | 備考 |
 |---|--------|:------:|:----------:|------|
-| 1 | 他サービスのstaging層モデル | 🟡 中 | ⏳ | Google Calendar、Fitbit等 |
-| 2 | refスキーマ設計 | 🟡 中 | ⏳ | マスタテーブル（プロジェクト分類等） |
-| 3 | マスタテーブル編集UI | 🟡 中 | ⏳ | 管理画面からの編集機能 |
-| 4 | core層ビュー設計 | 🟢 低 | ⏳ | ref + staging結合（2サービス以上必要） |
-| 5 | marts層ビュー設計 | 🟢 低 | ⏳ | 分析用ビュー |
+| 1 | Google Calendar staging層 | 🔴 高 | ⏳ | Togglとの予実比較に必要 |
+| 2 | Fitbit staging層 | 🔴 高 | ⏳ | 健康データ分析の基盤 |
+| 3 | Zaim staging層 | 🟡 中 | ⏳ | 支出分析の基盤 |
+| 4 | Tanita staging層 | 🟡 中 | ⏳ | 体組成データ分析 |
+| 5 | Trello staging層 | 🟡 中 | ⏳ | プロジェクト管理分析 |
+| 6 | TickTick staging層 | 🟡 中 | ⏳ | タスク管理分析 |
+| 7 | Airtable staging層 | 🟢 低 | ⏳ | マスタ管理 |
+| 8 | refスキーマ設計 | 🟢 低 | ⏳ | マスタテーブル（プロジェクト分類等） |
+| 9 | core層ビュー設計 | 🟢 低 | ⏳ | ref + staging結合（2サービス以上必要） |
 
 ### 次のステップ
 
-1. **staging層拡張**: Toggl以外のサービス（Google Calendar、Fitbit等）のstaging層を作成
+1. **staging層拡張（Phase 2継続）**: 残り7サービスのstaging層を作成
+   - 優先: Google Calendar（予実比較）、Fitbit（健康データ）
 2. **refスキーマ**: プロジェクト分類やカテゴリマッピングのマスタテーブル設計
 3. **core層**: 複数サービスのデータを結合するビジネスエンティティ層
 4. **marts層**: KPIや分析用の集計ビュー
 
 ---
 
-*最終更新: 2025-12-03*
+*最終更新: 2025-12-04*

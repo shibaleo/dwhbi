@@ -2,8 +2,8 @@ name: All Services Daily Sync
 
 on:
   # 毎日 JST 00:00 に実行（UTC 15:00）
-  schedule:
-    - cron: "0 15 * * *"
+  #schedule:
+  #  - cron: "0 15 * * *"
 
   # 手動実行を許可
   workflow_dispatch:
@@ -76,7 +76,7 @@ jobs:
           python -c "
           import asyncio
           import os
-          from pipelines.services.toggl import sync_toggl
+          from pipelines.services.toggl_track.orchestrator import sync_all as sync_toggl
           from pipelines.services.tanita import sync_tanita
           from pipelines.services.zaim import sync_zaim
           from pipelines.services.gcalendar import sync_gcalendar
