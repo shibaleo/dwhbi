@@ -4,7 +4,7 @@ OAuth 2.0 認証（リフレッシュトークン）とAPI呼び出しを担当�
 データ取得のみを行い、DB操作は行わない。
 
 認証情報:
-- Supabase Vault から取得（get_credentials("gcalendar")）
+- Supabase Vault から取得（get_credentials("google_calendar")）
 - access_token は自動更新
 """
 
@@ -164,7 +164,7 @@ async def get_auth_info(force_refresh: bool = False) -> AuthInfo:
             return _cached_auth
 
     # DBから認証情報を取得
-    result = await get_credentials("gcalendar")
+    result = await get_credentials("google_calendar")
     credentials = result["credentials"]
     expires_at = result.get("expires_at")
 
@@ -203,7 +203,7 @@ async def get_auth_info(force_refresh: bool = False) -> AuthInfo:
 
     # DBを更新
     await update_credentials(
-        "gcalendar",
+        "google_calendar",
         {
             "access_token": new_token["access_token"],
             "scope": new_token.get("scope"),
@@ -260,7 +260,7 @@ async def fetch_events(
             if page_token:
                 params["pageToken"] = page_token
 
-            url = f"{CALENDAR_API_BASE}/calendars/{auth['calendar_id']}/events"
+            url = f"{CALENDAR_API_BASE}/calendars/{quote(auth['calendar_id'], safe='')}/events"
 
             try:
                 response = await _request_with_retry(client, "GET", url, params=params, headers=headers)
@@ -365,7 +365,7 @@ async def fetch_calendar(calendar_id: str) -> dict[str, Any]:
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         headers = {"Authorization": f"Bearer {auth['access_token']}"}
-        url = f"{CALENDAR_API_BASE}/calendars/{calendar_id}"
+        url = f"{CALENDAR_API_BASE}/calendars/{quote(calendar_id, safe='')}"
 
         response = await _request_with_retry(client, "GET", url, headers=headers)
         return response.json()

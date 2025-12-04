@@ -2,10 +2,10 @@ import postgres from "postgres";
 
 // サービス一覧
 export const SERVICES = [
-  "toggl",
+  "toggl_track",
   "fitbit",
   "zaim",
-  "gcalendar",
+  "google_calendar",
   "tanita",
   "trello",
   "ticktick",
@@ -16,10 +16,10 @@ export type ServiceName = (typeof SERVICES)[number];
 
 // サービス表示名
 export const SERVICE_DISPLAY_NAMES: Record<ServiceName, string> = {
-  toggl: "Toggl",
+  toggl_track: "Toggl Track",
   fitbit: "Fitbit",
   zaim: "Zaim",
-  gcalendar: "Google Calendar",
+  google_calendar: "Google Calendar",
   tanita: "Tanita",
   trello: "Trello",
   ticktick: "TickTick",
@@ -28,10 +28,10 @@ export const SERVICE_DISPLAY_NAMES: Record<ServiceName, string> = {
 
 // 認証タイプ
 export const SERVICE_AUTH_TYPES: Record<ServiceName, "api_key" | "oauth"> = {
-  toggl: "api_key",
+  toggl_track: "api_key",
   fitbit: "oauth",
   zaim: "oauth",
-  gcalendar: "oauth",
+  google_calendar: "oauth",
   tanita: "oauth",
   trello: "api_key",
   ticktick: "oauth",

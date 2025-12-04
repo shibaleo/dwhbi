@@ -156,7 +156,7 @@ async def get_auth_info() -> AuthInfo:
     if _cached_auth is not None:
         return _cached_auth
 
-    result = await get_credentials("toggl")
+    result = await get_credentials("toggl_track")
     credentials = result["credentials"]
 
     api_token = credentials.get("api_token")

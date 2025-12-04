@@ -28,11 +28,11 @@ interface Props {
 
 // ワークフロー名とサービス名のマッピング
 const WORKFLOW_TO_SERVICE: Record<string, string> = {
-  "Toggl Daily Sync": "toggl",
-  "Toggl Report Sync": "toggl",
+  "Toggl Daily Sync": "toggl_track",
+  "Toggl Report Sync": "toggl_track",
   "Fitbit Daily Sync": "fitbit",
   "Zaim Daily Sync": "zaim",
-  "Google Calendar Sync": "gcalendar",
+  "Google Calendar Sync": "google_calendar",
   "Tanita Daily Sync": "tanita",
   "Trello Daily Sync": "trello",
   "TickTick Daily Sync": "ticktick",
