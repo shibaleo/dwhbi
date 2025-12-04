@@ -11,8 +11,9 @@ on:
         type: string
 
 jobs:
-  sync-gcalendar:
+  sync-google-calendar:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: Checkout repository
@@ -31,9 +32,9 @@ jobs:
           python -c "
           import asyncio
           import os
-          from pipelines.services.gcalendar import sync_gcalendar
+          from pipelines.services.google_calendar.orchestrator import sync_all
           days = int(os.environ.get('SYNC_DAYS', '3'))
-          result = asyncio.run(sync_gcalendar(days=days))
+          result = asyncio.run(sync_all(days=days))
           print(result)
           if not result.get('success'):
               exit(1)
@@ -42,5 +43,7 @@ jobs:
       - name: Notify on failure
         if: failure()
         run: |
-          echo "❌ Google Calendar同期が失敗しました"
+          echo "❌ Google Calendar日次同期が失敗しました"
+          echo "タイムアウトの場合はローカルで実行してください："
+          echo "  python -c \"import asyncio; from pipelines.services.google_calendar.orchestrator import sync_all; print(asyncio.run(sync_all()))\""
           echo "詳細は Actions ログを確認してください"

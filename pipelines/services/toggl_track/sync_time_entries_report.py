@@ -3,6 +3,7 @@
 全件取得用。Reports APIを使用して指定期間の全タイムエントリーを取得。
 billable_amount等の追加情報も取得可能。
 初期ロードやデータ修復時に使用。
+終了日から開始日に向かって遡りながら取得。
 """
 
 import time
@@ -87,24 +88,24 @@ def _to_raw_record(entry: dict[str, Any]) -> RawRecord:
     )
 
 
-def _split_date_range(start_d: date, end_d: date) -> list[tuple[date, date]]:
-    """日付範囲を1年以内のチャンクに分割
+def _split_date_range_reverse(start_d: date, end_d: date) -> list[tuple[date, date]]:
+    """日付範囲を1年以内のチャンクに分割（終了日から遡る）
 
     Args:
         start_d: 開始日
         end_d: 終了日
 
     Returns:
-        (開始日, 終了日)のタプルのリスト
+        (開始日, 終了日)のタプルのリスト（新しい順）
     """
     chunks = []
-    current_start = start_d
+    current_end = end_d
 
-    while current_start < end_d:
-        # 1年後または終了日のいずれか早い方
-        current_end = min(current_start + timedelta(days=MAX_DAYS_PER_REQUEST), end_d)
+    while current_end > start_d:
+        # 1年前または開始日のいずれか遅い方
+        current_start = max(current_end - timedelta(days=MAX_DAYS_PER_REQUEST), start_d)
         chunks.append((current_start, current_end))
-        current_start = current_end
+        current_end = current_start
 
     return chunks
 
@@ -117,6 +118,7 @@ async def sync_time_entries_report(
     """タイムエントリーを同期（Reports API v3）
 
     1年以上の期間を指定した場合、自動的に1年ごとに分割して取得。
+    終了日から開始日に向かって遡りながら取得。
 
     Args:
         start_date: 開始日（YYYY-MM-DD）
@@ -142,10 +144,10 @@ async def sync_time_entries_report(
 
     logger.info(f"Starting Toggl time entries report sync ({start_d} to {end_d})")
 
-    # 1年以上の場合は分割
-    date_chunks = _split_date_range(start_d, end_d)
+    # 1年以上の場合は分割（終了日から遡る）
+    date_chunks = _split_date_range_reverse(start_d, end_d)
     if len(date_chunks) > 1:
-        logger.info(f"Period exceeds 1 year, splitting into {len(date_chunks)} chunks")
+        logger.info(f"Period exceeds 1 year, splitting into {len(date_chunks)} chunks (newest first)")
 
     total_count = 0
 

@@ -43,7 +43,7 @@ from pipelines.lib.credentials_vault import save_credentials
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 REDIRECT_URI = "http://localhost:3000/callback"
-SCOPES = "https://www.googleapis.com/auth/calendar.events"
+SCOPES = "https://www.googleapis.com/auth/calendar.readonly"
 
 
 class OAuthCallbackHandler(BaseHTTPRequestHandler):
