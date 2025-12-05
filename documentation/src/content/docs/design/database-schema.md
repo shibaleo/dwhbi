@@ -10,9 +10,20 @@ description: テーブル定義とスキーマ設計
 | スキーマ | 役割 | 形式 | 実装状況 |
 |---------|------|------|---------|
 | `raw` | 外部APIからの生データ | テーブル | 実装済み |
-| `staging` | クリーニング・正規化 | ビュー | 一部実装（Togglのみ） |
+| `ref` | マスタ・マッピング | テーブル | 一部実装 |
+| `staging` | クリーニング・正規化 | ビュー | 一部実装（Toggl, Google Calendar） |
 | `core` | サービス統合 | ビュー | 未実装 |
 | `marts` | 分析集計・LLM向け | ビュー | 未実装 |
+
+## ref スキーマ テーブル一覧
+
+マスタデータとマッピングテーブル。詳細は [ADR-002 refスキーマ設計](/design/decisions/ref-schema-design) を参照。
+
+| テーブル | 用途 | 実装状況 |
+|---------|------|---------|
+| `ref.mst_time_categories` | 時間カテゴリマスタ | 未実装 |
+| `ref.mst_time_qualities` | 時間の質マスタ | 未実装 |
+| `ref.map_gcalendar_categories` | Calendar → カテゴリ | 未実装 |
 
 ## raw スキーマ テーブル一覧
 
@@ -307,11 +318,19 @@ stg_{service}__{entity}
 | `stg_toggl_track__workspaces` | raw.toggl_workspaces | 型正規化 | ✅ |
 | 他4モデル | - | - | ✅ |
 
+### 実装済みビュー（Google Calendar）
+
+| ビュー | 元テーブル | 主な変換 | 実装状況 |
+|--------|----------|---------|:--------:|
+| `stg_google_calendar__colors` | raw.gcalendar_colors | 型正規化 | ✅ |
+| `stg_google_calendar__calendar_list` | raw.gcalendar_calendar_list | 型正規化 | ✅ |
+| `stg_google_calendar__calendars` | raw.gcalendar_calendars | 型正規化 | ✅ |
+| `stg_google_calendar__events` | raw.gcalendar_events | duration_ms 補完 | ✅ |
+
 ### 未実装ビュー
 
 | ビュー | 元テーブル | 主な変換 | 実装状況 |
 |--------|----------|---------|:--------:|
-| `stg_gcalendar__events` | raw.gcalendar_events | duration_ms の補完 | ⏳ |
 | `stg_zaim__transactions` | raw.zaim_transactions | category/genre名の結合 | ⏳ |
 | `stg_fitbit__sleep` | raw.fitbit_sleep | levels JSONの展開 | ⏳ |
 | `stg_fitbit__daily_health` | 複数Fitbitテーブル | 日次健康指標の統合 | ⏳ |
@@ -335,13 +354,14 @@ dim_{entity}  -- ディメンションテーブル（マスタ）
 
 | ビュー | 元staging | 説明 |
 |--------|----------|------|
-| `fct_time_entries` | stg_toggl__entries | 時間記録（実績） |
-| `fct_scheduled_events` | stg_gcalendar__events | 予定 |
+| `fct_time_actual` | stg_toggl_track__* | 時間記録（実績） |
+| `fct_time_planned` | stg_google_calendar__* | 予定 |
 | `fct_transactions` | stg_zaim__transactions | 支出/収入 |
 | `fct_sleep_logs` | stg_fitbit__sleep | 睡眠記録 |
 | `fct_daily_health` | stg_fitbit__*, stg_tanita__* | 日次健康指標 |
-| `dim_projects` | stg_toggl__projects | プロジェクトマスタ |
-| `dim_categories` | stg_zaim__* | カテゴリマスタ |
+| `dim_date` | - | 日付ディメンション |
+| `dim_time_categories` | ref.mst_time_categories | 時間カテゴリ |
+| `dim_time_qualities` | ref.mst_time_qualities | 時間の質 |
 
 ## marts層設計（未実装）
 
@@ -358,8 +378,8 @@ agg_{granularity}_{domain}
 | ビュー | 粒度 | ドメイン | 用途 |
 |--------|------|---------|------|
 | `agg_daily_health` | 日次 | 健康 | 健康指標サマリー |
-| `agg_daily_productivity` | 日次 | 時間 | 作業時間サマリー |
-| `agg_weekly_productivity` | 週次 | 時間 | 週次振り返り |
+| `agg_daily_time` | 日次 | 時間 | 作業時間サマリー |
+| `agg_weekly_time` | 週次 | 時間 | 週次振り返り |
 | `agg_monthly_expense` | 月次 | 支出 | 月次支出集計 |
 | `plan_vs_actual_daily` | 日次 | 時間 | 予実比較 |
 
@@ -370,3 +390,4 @@ agg_{granularity}_{domain}
 | 2025-12-01 | 初版作成 |
 | 2025-12-03 | Trello, TickTick, Airtable テーブル追加 |
 | 2025-12-04 | staging層実装状況を更新（Togglのみ完了） |
+| 2025-12-05 | refスキーマ追加、Google Calendar staging完了、core層設計更新 |
