@@ -1,4 +1,4 @@
-name: Toggl Daily Sync
+name: Toggl Track Fetch
 
 on:
   # 手動実行のみ（定期実行は sync-daily.yml に統合）

@@ -1,4 +1,4 @@
-name: Zaim Daily Sync
+name: Zaim Fetch
 
 on:
   # 手動実行のみ（定期実行は sync-daily.yml に統合）

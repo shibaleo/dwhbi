@@ -28,15 +28,15 @@ interface Props {
 
 // ワークフロー名とサービス名のマッピング
 const WORKFLOW_TO_SERVICE: Record<string, string> = {
-  "Toggl Daily Sync": "toggl_track",
+  "Toggl Track Fetch": "toggl_track",
   "Toggl Report Sync": "toggl_track",
-  "Fitbit Daily Sync": "fitbit",
-  "Zaim Daily Sync": "zaim",
-  "Google Calendar Sync": "google_calendar",
-  "Tanita Daily Sync": "tanita",
-  "Trello Daily Sync": "trello",
-  "TickTick Daily Sync": "ticktick",
-  "Airtable Daily Sync": "airtable",
+  "Fitbit Fetch": "fitbit",
+  "Zaim Fetch": "zaim",
+  "Google Calendar Fetch": "google_calendar",
+  "Tanita Fetch": "tanita",
+  "Trello Fetch": "trello",
+  "TickTick Fetch": "ticktick",
+  "Airtable Fetch": "airtable",
 };
 
 function formatDuration(startedAt: string | null, updatedAt: string): string {

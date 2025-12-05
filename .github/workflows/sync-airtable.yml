@@ -1,4 +1,4 @@
-name: Sync Airtable
+name: Airtable Fetch
 
 on:
   workflow_dispatch:
