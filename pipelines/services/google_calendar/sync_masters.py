@@ -103,6 +103,9 @@ async def sync_masters() -> MasterSyncResult:
     logger.info("Starting Google Calendar masters sync")
 
     try:
+        # 並列実行前にキャッシュを温める（リフレッシュの重複を防ぐ）
+        await get_auth_info()
+
         # 全マスタを並列取得・保存
         results = await asyncio.gather(
             _sync_colors(),

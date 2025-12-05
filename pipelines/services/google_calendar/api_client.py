@@ -202,53 +202,55 @@ async def get_auth_info(force_refresh: bool = False) -> AuthInfo:
     if not credentials.get("access_token") or not credentials.get("refresh_token"):
         raise ValueError("Missing access_token or refresh_token. Run OAuth flow first.")
 
+    # リフレッシュが必要かチェック（calendar_id取得の前に行う）
+    needs_refresh = force_refresh
+    if not needs_refresh:
+        if expires_at is None:
+            # expires_atがない場合は安全のためリフレッシュ
+            needs_refresh = True
+        else:
+            minutes_until_expiry = (expires_at - datetime.now(timezone.utc)).total_seconds() / 60
+            needs_refresh = minutes_until_expiry <= DEFAULT_THRESHOLD_MINUTES
+
+    # リフレッシュが必要な場合、先にトークンを更新
+    access_token = credentials["access_token"]
+    current_expires_at = expires_at
+
+    if needs_refresh:
+        logger.info("Refreshing access token...")
+        new_token = await _refresh_token_from_api(
+            credentials["client_id"],
+            credentials["client_secret"],
+            credentials["refresh_token"],
+        )
+
+        access_token = new_token["access_token"]
+        current_expires_at = datetime.now(timezone.utc) + timedelta(seconds=new_token["expires_in"])
+
+        # DBを更新
+        await update_credentials(
+            "google_calendar",
+            {
+                "access_token": access_token,
+                "scope": new_token.get("scope"),
+            },
+            current_expires_at,
+        )
+
+        logger.info(f"Token refreshed (expires: {current_expires_at.isoformat()})")
+
     # calendar_idが未設定の場合、CalendarListからprimaryカレンダーを自動取得
+    # （リフレッシュ後の有効なトークンを使用）
     calendar_id = credentials.get("calendar_id")
     if not calendar_id:
-        calendar_id = await _fetch_primary_calendar_id(credentials["access_token"])
+        calendar_id = await _fetch_primary_calendar_id(access_token)
 
-    # リフレッシュが必要かチェック
-    needs_refresh = force_refresh
-    if not needs_refresh and expires_at:
-        minutes_until_expiry = (expires_at - datetime.now(timezone.utc)).total_seconds() / 60
-        needs_refresh = minutes_until_expiry <= DEFAULT_THRESHOLD_MINUTES
-
-    # リフレッシュ不要ならキャッシュして返す
-    if not needs_refresh and expires_at:
-        _cached_auth = AuthInfo(
-            access_token=credentials["access_token"],
-            calendar_id=calendar_id,
-        )
-        _cached_expires_at = expires_at
-        return _cached_auth
-
-    # トークンをリフレッシュ
-    logger.info("Refreshing access token...")
-    new_token = await _refresh_token_from_api(
-        credentials["client_id"],
-        credentials["client_secret"],
-        credentials["refresh_token"],
-    )
-
-    new_expires_at = datetime.now(timezone.utc) + timedelta(seconds=new_token["expires_in"])
-
-    # DBを更新
-    await update_credentials(
-        "google_calendar",
-        {
-            "access_token": new_token["access_token"],
-            "scope": new_token.get("scope"),
-        },
-        new_expires_at,
-    )
-
-    logger.info(f"Token refreshed (expires: {new_expires_at.isoformat()})")
-
+    # キャッシュして返す
     _cached_auth = AuthInfo(
-        access_token=new_token["access_token"],
+        access_token=access_token,
         calendar_id=calendar_id,
     )
-    _cached_expires_at = new_expires_at
+    _cached_expires_at = current_expires_at
     return _cached_auth
 
 

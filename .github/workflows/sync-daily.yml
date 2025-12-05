@@ -79,7 +79,7 @@ jobs:
           from pipelines.services.toggl_track.orchestrator import sync_all as sync_toggl
           from pipelines.services.tanita import sync_tanita
           from pipelines.services.zaim import sync_zaim
-          from pipelines.services.gcalendar import sync_gcalendar
+          from pipelines.services.google_calendar.orchestrator import sync_all as sync_gcalendar
           from pipelines.services.fitbit import sync_fitbit
           from pipelines.services.trello import sync_trello
           from pipelines.services.ticktick import sync_ticktick
