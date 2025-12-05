@@ -39,15 +39,30 @@ const WORKFLOW_TO_SERVICE: Record<string, string> = {
   "Airtable Fetch": "airtable",
 };
 
-function formatDuration(startedAt: string | null, updatedAt: string): string {
-  if (!startedAt) return "";
-  const start = new Date(startedAt);
-  const end = new Date(updatedAt);
-  const seconds = Math.floor((end.getTime() - start.getTime()) / 1000);
+function formatDuration(seconds: number): string {
   if (seconds < 60) return `${seconds}秒`;
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
   return `${minutes}分${remainingSeconds}秒`;
+}
+
+// 実行中の経過時間を1秒ごとに更新するコンポーネント
+function ElapsedTime({ startedAt }: { startedAt: string }) {
+  const [elapsed, setElapsed] = useState(() => {
+    const start = new Date(startedAt);
+    return Math.floor((Date.now() - start.getTime()) / 1000);
+  });
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const start = new Date(startedAt);
+      setElapsed(Math.floor((Date.now() - start.getTime()) / 1000));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [startedAt]);
+
+  return <>{formatDuration(elapsed)}</>;
 }
 
 function formatTimeAgo(dateStr: string): string {
@@ -296,7 +311,7 @@ export function ServiceList({ githubConfigured }: Props) {
                     {isRunning ? (
                       <span className="text-blue-600 dark:text-blue-400 flex items-center gap-1">
                         <span className="inline-block w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                        実行中 {formatDuration(latestRun.run_started_at, new Date().toISOString())}
+                        実行中 {latestRun.run_started_at && <ElapsedTime startedAt={latestRun.run_started_at} />}
                       </span>
                     ) : latestRun.conclusion === "success" ? (
                       <span className="text-green-600 dark:text-green-400">

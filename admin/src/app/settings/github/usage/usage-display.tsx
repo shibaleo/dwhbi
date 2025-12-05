@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 interface WorkflowUsage {
   name: string;
   totalMs: number;
+  billableMs: number;
   runCount: number;
 }
 
@@ -14,29 +15,33 @@ interface ActionsUsage {
   percentUsed: number;
   workflows: WorkflowUsage[];
   billingPeriod: {
-    start: string;
-    end: string;
+    year: number;
+    month: number;
   };
 }
 
 function formatDuration(ms: number): string {
-  const totalSeconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-
-  if (minutes === 0) {
-    return `${seconds}秒`;
+  const totalMinutes = Math.ceil(ms / 1000 / 60);
+  if (totalMinutes < 60) {
+    return `${totalMinutes}分`;
   }
-  return `${minutes}分${seconds}秒`;
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
+  return `${hours}時間${mins}分`;
 }
 
-function formatMinutes(minutes: number): string {
-  if (minutes < 60) {
-    return `${minutes}分`;
-  }
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  return `${hours}時間${mins}分`;
+function formatBillingPeriod(year: number, month: number): string {
+  // ユーザーのローカルタイムゾーンで月初・月末を生成
+  const startOfMonth = new Date(year, month - 1, 1);
+  const endOfMonth = new Date(year, month, 0);
+  
+  const formatDate = (d: Date) => d.toLocaleDateString("ja-JP", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).replace(/\//g, "-");
+  
+  return `${formatDate(startOfMonth)} 〜 ${formatDate(endOfMonth)}`;
 }
 
 export function UsageDisplay() {
@@ -127,17 +132,17 @@ export function UsageDisplay() {
             今月の使用量
           </h2>
           <span className="text-sm text-zinc-500 dark:text-zinc-400">
-            {usage.billingPeriod.start} 〜 {usage.billingPeriod.end}
+            {formatBillingPeriod(usage.billingPeriod.year, usage.billingPeriod.month)}
           </span>
         </div>
 
         <div className="mb-4">
           <div className="flex items-end gap-2 mb-2">
             <span className="text-3xl font-bold text-zinc-900 dark:text-zinc-100">
-              {formatMinutes(usage.totalMinutesUsed)}
+              {usage.totalMinutesUsed.toLocaleString()}分
             </span>
             <span className="text-zinc-500 dark:text-zinc-400 mb-1">
-              / {formatMinutes(usage.includedMinutes)}
+              / {usage.includedMinutes.toLocaleString()}分
             </span>
           </div>
           <div className="w-full bg-zinc-200 dark:bg-zinc-700 rounded-full h-3">
@@ -152,7 +157,7 @@ export function UsageDisplay() {
         </div>
 
         <p className="text-xs text-zinc-400 dark:text-zinc-500">
-          ※ GitHub Free プランは月2,000分の無料枠があります
+          ※ GitHub Free プランは月2,000分の無料枠があります（OS乗数適用後）
         </p>
       </div>
 
@@ -182,12 +187,16 @@ export function UsageDisplay() {
                   </p>
                 </div>
                 <span className="text-zinc-700 dark:text-zinc-300 font-mono text-sm">
-                  {formatDuration(workflow.totalMs)}
+                  {formatDuration(workflow.billableMs)}
                 </span>
               </div>
             ))}
           </div>
         )}
+
+        <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-4">
+          ※ Windows: ×2、macOS: ×10 の乗数が適用されています
+        </p>
       </div>
 
       {/* 更新ボタン */}
