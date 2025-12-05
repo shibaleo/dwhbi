@@ -38,7 +38,7 @@ PATCH: バグ修正、ドキュメント更新
 | 主要サービスの同期実装 | ✅ | 8サービス完了 |
 | 管理コンソール | ✅ | OAuth、Vault連携 |
 | Toggl Track staging層 | ✅ | 9モデル + 47テスト |
-| Google Calendar staging層 | ✅ | 4モデル + 29テスト + seed |
+| Google Calendar staging層 | ✅ | 4モデル + 25テスト + seed |
 | Fitbit staging層 | ⏳ | 健康データ分析に必須 |
 | Zaim staging層 | ⏳ | 支出分析に必須 |
 | Tanita staging層 | ⏳ | 体組成データ分析に必須 |

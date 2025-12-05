@@ -19,7 +19,7 @@ description: バージョンごとの変更内容
   - GitHub Actions連携（同期実行、使用量表示）
 - dbt staging層
   - Toggl Track（9モデル + 47テスト）
-  - Google Calendar（4モデル + 29テスト + seed）
+  - Google Calendar（4モデル + 25テスト + seed）
   - Fitbit（予定）
   - Zaim（予定）
   - Tanita（予定）
@@ -39,11 +39,29 @@ description: バージョンごとの変更内容
 
 ### 2025-12-05
 
-- Google Calendar staging層完成（4モデル + 29テスト）
-- dbt seeds スキーマ追加（google_calendar_event_color_names）
-- dbt generate_schema_name マクロ追加
-- Admin Console の OAuth フロー改善
-- リリース戦略を改訂
+**Google Calendar staging層完成**
+- dbtモデル 4件 + 25テストパス
+- seedsスキーマ追加（google_calendar_event_color_names）
+- generate_schema_nameマクロ追加
+
+**バグ修正**
+- OAuth 2.0トークンリフレッシュの処理順序修正（calendar_id取得前にリフレッシュ実行）
+- 並列実行時のリフレッシュ重複防止（キャッシュウォーム）
+
+**GitHub Actions**
+- ワークフロー名を統一（[Service] Fetch形式）
+- sync-daily.ymlのインポートパス修正
+
+**管理画面改善**
+- 実行中時間の滑らかな表示（1秒更新、ElapsedTimeコンポーネント）
+- GitHub Actions使用量表示改善
+  - timing APIで正確な実行時間取得
+  - 分表示に統一（2,000分）
+  - タイムゾーン対応（クライアント側でローカルTZ計算）
+- ワークフローマッピング修正
+
+**バックログ追加**
+- 同期処理のServerless移行検討（UX改善のため）
 
 ### 2025-12-04
 
