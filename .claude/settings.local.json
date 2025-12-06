@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dbt seed:*)",
+      "Bash(poetry run dbt seed:*)",
+      "Bash(.venv/Scripts/python:*)",
+      "Bash(PYTHONUTF8=1 ../.venv/Scripts/dbt seed:*)",
+      "Bash(PYTHONUTF8=1 ../.venv/Scripts/dbt test:*)",
+      "Bash(...venvScriptsdbt seed --select mst_time_personal_categories)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

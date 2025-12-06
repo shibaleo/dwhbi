@@ -50,8 +50,9 @@ description: 将来の拡張予定
 | Trello staging層 | 中 | ⏳ | プロジェクト管理分析用 |
 | TickTick staging層 | 中 | ⏳ | タスク管理分析用 |
 | Airtable staging層 | 低 | ⏳ | マスタ管理用 |
-| seedsスキーマ拡張 | 中 | ⏳ | マスタテーブル（プロジェクト分類等） |
-| マスタテーブル編集UI | 中 | ⏳ | 管理画面からの編集機能 |
+| seedsスキーマ拡張 | 中 | ✅ | 時間分類マスタ・マッピング6テーブル実装済み |
+| マスタテーブル編集UI | 中 | ⏳ | GitHub API経由でCSV編集→workflow_dispatchでdbt seed実行 |
+| 分析軸プレビュー機能 | 低 | ⏳ | 軸変更時の影響をリアルタイムでグラフィカルに表示 |
 | core層ビュー | 中 | ⏳ | seeds + staging結合（2サービス以上必要） |
 | marts層ビュー | 中 | ⏳ | 分析用ビュー |
 | CLI化（typer） | 低 | ⏳ | workflow呼び出し簡素化、ローカルテスト容易化 |

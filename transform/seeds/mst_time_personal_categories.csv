@@ -1,0 +1,12 @@
+name,name_ja,description,sort_order,is_day_type_eligible
+Sleep,睡眠,Sleep and rest for recovery,1,false
+Essential,必須,Physiological and hygiene necessities,2,false
+Household,用事,Socially required activities and errands,3,true
+Work,仕事,Professional work,4,true
+Leisure,余暇,Free time for pleasure and social activities,5,true
+Education,学習,Formal learning for school or certifications,6,true
+Learning,知的探求,Self-driven study from intellectual curiosity,7,true
+Exercise,運動,Physical activities,8,false
+Manage,管理,Review and planning for self-management,9,true
+Drift,漂流,Unproductive or wasted time,10,true
+Unused,未使用,Reserved for future categorization,11,false

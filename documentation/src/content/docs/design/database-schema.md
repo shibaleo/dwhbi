@@ -10,294 +10,133 @@ description: テーブル定義とスキーマ設計
 | スキーマ | 役割 | 形式 | 実装状況 |
 |---------|------|------|---------|
 | `raw` | 外部APIからの生データ | テーブル | 実装済み |
-| `ref` | マスタ・マッピング | テーブル | 一部実装 |
+| `seeds` | マスタ・マッピング | dbt seeds | 未実装 |
 | `staging` | クリーニング・正規化 | ビュー | 一部実装（Toggl, Google Calendar） |
 | `core` | サービス統合 | ビュー | 未実装 |
 | `marts` | 分析集計・LLM向け | ビュー | 未実装 |
 
-## ref スキーマ テーブル一覧
+## seeds スキーマ（dbt seeds）
 
-マスタデータとマッピングテーブル。詳細は [ADR-002 refスキーマ設計](/design/decisions/ref-schema-design) を参照。
+**dbt seedsがDWHの分析軸を定義する中核**である。
 
-| テーブル | 用途 | 実装状況 |
-|---------|------|---------|
-| `ref.mst_time_categories` | 時間カテゴリマスタ | 未実装 |
-| `ref.mst_time_qualities` | 時間の質マスタ | 未実装 |
-| `ref.map_gcalendar_categories` | Calendar → カテゴリ | 未実装 |
+詳細は [ADR-002 分析軸マスタ設計](/design/decisions/ref-schema-design) を参照。
 
-## raw スキーマ テーブル一覧
+### dbt seedsの役割
 
-| テーブル | 主キー | データソース | 実装状況 |
-|---------|--------|------------|---------|
-| `raw.toggl_clients` | id | Toggl Track | 実装済み |
-| `raw.toggl_projects` | id | Toggl Track | 実装済み |
-| `raw.toggl_tags` | id | Toggl Track | 実装済み |
-| `raw.toggl_entries` | id | Toggl Track | 実装済み |
-| `raw.gcalendar_events` | id | Google Calendar | 実装済み |
-| `raw.zaim_categories` | (zaim_user_id, id) | Zaim | 実装済み |
-| `raw.zaim_genres` | (zaim_user_id, id) | Zaim | 実装済み |
-| `raw.zaim_accounts` | (zaim_user_id, id) | Zaim | 実装済み |
-| `raw.zaim_transactions` | (zaim_user_id, zaim_id) | Zaim | 実装済み |
-| `raw.fitbit_sleep` | log_id | Fitbit | 実装済み |
-| `raw.fitbit_heart_rate_daily` | date | Fitbit | 実装済み |
-| `raw.fitbit_hrv_daily` | date | Fitbit | 実装済み |
-| `raw.fitbit_activity_daily` | date | Fitbit | 実装済み |
-| `raw.fitbit_spo2_daily` | date | Fitbit | 実装済み |
-| `raw.fitbit_breathing_rate_daily` | date | Fitbit | 実装済み |
-| `raw.fitbit_cardio_score_daily` | date | Fitbit | 実装済み |
-| `raw.fitbit_temperature_skin_daily` | date | Fitbit | 実装済み |
-| `raw.tanita_body_composition` | measured_at | Tanita Health Planet | 実装済み |
-| `raw.tanita_blood_pressure` | measured_at | Tanita Health Planet | 実装済み |
-| `raw.trello_boards` | id | Trello | 実装済み |
-| `raw.trello_lists` | id | Trello | 実装済み |
-| `raw.trello_cards` | id | Trello | 実装済み |
-| `raw.trello_labels` | id | Trello | 実装済み |
-| `raw.trello_actions` | id | Trello | 実装済み |
-| `raw.trello_checklists` | id | Trello | 実装済み |
-| `raw.trello_checkitems` | id | Trello | 実装済み |
-| `raw.ticktick_projects` | id | TickTick | 実装済み |
-| `raw.ticktick_tasks` | id | TickTick | 実装済み |
-| `raw.ticktick_completed_tasks` | id | TickTick | 実装済み |
-| `raw.airtable_bases` | id | Airtable | 実装済み |
-| `raw.airtable_tables` | id | Airtable | 実装済み |
-| `raw.airtable_records` | id | Airtable | 実装済み |
+```
+seeds (分析軸の定義・変換ルール)
+├── mst_* : ドメインの分析軸を定義（サービス非依存）
+└── map_* : サービス固有値 → 分析軸への変換ルール
 
-## Toggl Track テーブル
+staging → core への変換時に seeds.map_* を適用
+```
 
-### raw.toggl_clients
+### マスタテーブル（サービス非依存）
 
-| カラム | 型 | NULL | 説明 |
-|--------|-----|------|------|
-| id | BIGINT | NO | PK |
-| workspace_id | BIGINT | NO | ワークスペースID |
-| name | TEXT | NO | クライアント名 |
-| is_archived | BOOLEAN | YES | アーカイブ済みか |
-| created_at | TIMESTAMPTZ | NO | 作成日時 |
-| synced_at | TIMESTAMPTZ | YES | 同期日時 |
+| テーブル | 用途 |
+|---------|------|
+| `seeds.mst_time_social_categories` | 時間social分類（対外的分類） |
+| `seeds.mst_time_personal_categories` | 時間personal分類（内省的分類） |
 
-### raw.toggl_projects
+### マッピングテーブル（サービス依存）
 
-| カラム | 型 | NULL | 説明 |
-|--------|-----|------|------|
-| id | BIGINT | NO | PK |
-| workspace_id | BIGINT | NO | ワークスペースID |
-| client_id | BIGINT | YES | FK → toggl_clients.id |
-| name | TEXT | NO | プロジェクト名 |
-| color | TEXT | YES | カラーコード |
-| is_private | BOOLEAN | YES | プライベートか |
-| is_active | BOOLEAN | YES | アクティブか |
-| is_billable | BOOLEAN | YES | 課金対象か |
-| created_at | TIMESTAMPTZ | NO | 作成日時 |
-| archived_at | TIMESTAMPTZ | YES | アーカイブ日時 |
-| synced_at | TIMESTAMPTZ | YES | 同期日時 |
+| テーブル | 用途 |
+|---------|------|
+| `seeds.map_toggl_client_to_time_social` | Toggl client → social |
+| `seeds.map_toggl_color_to_time_personal` | Toggl色 → personal（色名・HEX含む） |
+| `seeds.map_gcal_desc_to_time_social` | Calendar description → social |
+| `seeds.map_gcal_color_to_time_personal` | Calendar色 → personal（色名・HEX含む） |
 
-### raw.toggl_tags
+### seeds ファイル構成
 
-| カラム | 型 | NULL | 説明 |
-|--------|-----|------|------|
-| id | BIGINT | NO | PK |
-| workspace_id | BIGINT | NO | ワークスペースID |
-| name | TEXT | NO | タグ名 |
-| created_at | TIMESTAMPTZ | NO | 作成日時 |
-| synced_at | TIMESTAMPTZ | YES | 同期日時 |
+```
+dbt/seeds/
+├── mst_time_social_categories.csv
+├── mst_time_personal_categories.csv
+├── map_toggl_client_to_time_social.csv
+├── map_toggl_color_to_time_personal.csv
+├── map_gcal_desc_to_time_social.csv
+└── map_gcal_color_to_time_personal.csv
+```
 
-### raw.toggl_entries
+配置先: `seeds.*`（seedsスキーマ）
 
-| カラム | 型 | NULL | 説明 |
-|--------|-----|------|------|
-| id | BIGINT | NO | PK |
-| workspace_id | BIGINT | NO | ワークスペースID |
-| project_id | BIGINT | YES | FK → toggl_projects.id |
-| task_id | BIGINT | YES | タスクID |
-| user_id | BIGINT | YES | ユーザーID |
-| description | TEXT | YES | 説明 |
-| start | TIMESTAMPTZ | NO | 開始時刻 |
-| end | TIMESTAMPTZ | NO | 終了時刻 |
-| duration_ms | BIGINT | NO | 期間ミリ秒 |
-| is_billable | BOOLEAN | YES | 課金対象か |
-| tags | TEXT[] | YES | タグ配列 |
-| updated_at | TIMESTAMPTZ | YES | 更新日時 |
-| synced_at | TIMESTAMPTZ | YES | 同期日時 |
+## raw スキーマ
 
-## Google Calendar テーブル
+詳細は [DWH 4層アーキテクチャ](/specifications/dwh-layers) を参照。
 
-### raw.gcalendar_events
+- 命名規則: `raw.{service}__{entity}`（ダブルアンダースコア区切り）
+- 共通カラム: `id`, `source_id`, `data` (JSONB), `synced_at`, `api_version`
+- 実装済み: Toggl Track（9テーブル）、Google Calendar（4テーブル）
 
-| カラム | 型 | NULL | 説明 |
-|--------|-----|------|------|
-| id | TEXT | NO | PK |
-| calendar_id | TEXT | NO | カレンダーID |
-| summary | TEXT | YES | イベント名 |
-| description | TEXT | YES | イベント詳細 |
-| start_time | TIMESTAMPTZ | NO | 開始日時 |
-| end_time | TIMESTAMPTZ | NO | 終了日時 |
-| duration_ms | BIGINT | - | 期間ミリ秒（自動計算） |
-| is_all_day | BOOLEAN | YES | 終日イベントフラグ |
-| color_id | TEXT | YES | カラーID |
-| status | TEXT | YES | ステータス |
-| recurring_event_id | TEXT | YES | 繰り返しイベントの親ID |
-| etag | TEXT | YES | 変更検出用ETag |
-| updated | TIMESTAMPTZ | YES | イベント更新日時 |
-| synced_at | TIMESTAMPTZ | YES | 同期日時 |
+## seeds スキーマ テーブル詳細
 
-## Zaim テーブル
+時間は **social（対外的・共有可能な分類）** と **personal（内省的・個人的分類）** の2軸で分類する。マスタはサービス非依存、マッピングでサービス固有値を変換。詳細は [ADR-002](/design/decisions/ref-schema-design) を参照。
 
-### raw.zaim_categories
+### seeds.mst_time_social_categories
 
-| カラム | 型 | NULL | 説明 |
-|--------|-----|------|------|
-| id | INTEGER | NO | 複合PK |
-| zaim_user_id | BIGINT | NO | 複合PK |
-| name | VARCHAR | NO | カテゴリ名 |
-| sort_order | INTEGER | YES | 表示順 |
-| mode | VARCHAR | YES | "payment" or "income" |
-| is_active | BOOLEAN | YES | アクティブか |
-| synced_at | TIMESTAMPTZ | YES | 同期日時 |
+時間social分類のマスタ。サービス非依存。
 
-### raw.zaim_genres
+| カラム | 型 | 説明 |
+|--------|-----|------|
+| name | TEXT | PK, カテゴリ名（VITALS, WORK等） |
+| name_ja | TEXT | 日本語名（生命維持、仕事等） |
+| description | TEXT | 説明（英語） |
+| sort_order | INTEGER | 表示順 |
 
-| カラム | 型 | NULL | 説明 |
-|--------|-----|------|------|
-| id | INTEGER | NO | 複合PK |
-| zaim_user_id | BIGINT | NO | 複合PK |
-| category_id | INTEGER | NO | FK → zaim_categories.id |
-| name | VARCHAR | NO | ジャンル名 |
-| sort_order | INTEGER | YES | 表示順 |
-| is_active | BOOLEAN | YES | アクティブか |
-| synced_at | TIMESTAMPTZ | YES | 同期日時 |
+**初期データ:** VITALS, HOUSEHOLD, WORK, LEISURE, GROWTH
 
-### raw.zaim_accounts
+### seeds.mst_time_personal_categories
 
-| カラム | 型 | NULL | 説明 |
-|--------|-----|------|------|
-| id | INTEGER | NO | 複合PK |
-| zaim_user_id | BIGINT | NO | 複合PK |
-| name | VARCHAR | NO | 口座名 |
-| sort_order | INTEGER | YES | 表示順 |
-| is_active | BOOLEAN | YES | アクティブか |
-| synced_at | TIMESTAMPTZ | YES | 同期日時 |
+時間personal分類のマスタ。サービス非依存。
 
-### raw.zaim_transactions
+| カラム | 型 | 説明 |
+|--------|-----|------|
+| name | TEXT | PK, カテゴリ名（sleep, work等） |
+| name_ja | TEXT | 日本語名（睡眠、仕事等） |
+| description | TEXT | 説明（英語） |
+| sort_order | INTEGER | 表示順 |
 
-| カラム | 型 | NULL | 説明 |
-|--------|-----|------|------|
-| zaim_user_id | BIGINT | NO | 複合PK |
-| zaim_id | BIGINT | NO | 複合PK |
-| transaction_type | VARCHAR | NO | "payment", "income", "transfer" |
-| amount | INTEGER | NO | 金額 |
-| date | DATE | NO | 取引日 |
-| created_at | TIMESTAMPTZ | NO | 作成日時（UTC） |
-| modified_at | TIMESTAMPTZ | YES | 更新日時（UTC） |
-| category_id | INTEGER | YES | FK |
-| genre_id | INTEGER | YES | FK |
-| from_account_id | INTEGER | YES | FK（振替元） |
-| to_account_id | INTEGER | YES | FK（振替先） |
-| place | TEXT | YES | 店舗・場所 |
-| name | TEXT | YES | 品目名 |
-| comment | TEXT | YES | コメント |
-| is_active | BOOLEAN | YES | アクティブか |
-| synced_at | TIMESTAMPTZ | YES | 同期日時 |
+**初期データ:** sleep, essential, errand, work, leisure, study, academic, exercise, manage, drift, unused
 
-## Fitbit テーブル
+### seeds.map_toggl_client_to_time_social
 
-### raw.fitbit_sleep
+Toggl clientから時間socialへのマッピング。
 
-| カラム | 型 | NULL | 説明 |
-|--------|-----|------|------|
-| id | UUID | NO | PK |
-| date | DATE | NO | 睡眠日 |
-| start_time | TIMESTAMPTZ | NO | 開始時刻（UTC） |
-| end_time | TIMESTAMPTZ | NO | 終了時刻（UTC） |
-| duration_ms | INTEGER | YES | 期間ミリ秒 |
-| efficiency | INTEGER | YES | 睡眠効率（%） |
-| is_main_sleep | BOOLEAN | YES | メイン睡眠か |
-| minutes_asleep | INTEGER | YES | 睡眠時間（分） |
-| minutes_awake | INTEGER | YES | 覚醒時間（分） |
-| time_in_bed | INTEGER | YES | 就床時間（分） |
-| sleep_type | TEXT | YES | "stages" or "classic" |
-| levels | JSONB | YES | 睡眠段階詳細 |
-| log_id | BIGINT | NO | UNIQUE |
-| synced_at | TIMESTAMPTZ | YES | 同期日時 |
+| カラム | 型 | 説明 |
+|--------|-----|------|
+| toggl_client_name | TEXT | PK, Toggl client名 |
+| time_category_social | TEXT | FK → mst_time_social_categories.name |
 
-### raw.fitbit_heart_rate_daily
+### seeds.map_toggl_color_to_time_personal
 
-| カラム | 型 | NULL | 説明 |
-|--------|-----|------|------|
-| id | UUID | NO | PK |
-| date | DATE | NO | UNIQUE |
-| resting_heart_rate | INTEGER | YES | 安静時心拍数 |
-| heart_rate_zones | JSONB | YES | 心拍ゾーン配列 |
-| synced_at | TIMESTAMPTZ | YES | 同期日時 |
+Toggl色から時間personalへのマッピング（API色情報も統合）。
 
-### raw.fitbit_hrv_daily
+| カラム | 型 | 説明 |
+|--------|-----|------|
+| toggl_color_hex | TEXT | PK, Toggl色HEX（#0b83d9等） |
+| toggl_color_name | TEXT | Toggl色名（Blue等） |
+| time_category_personal | TEXT | FK → mst_time_personal_categories.name |
 
-| カラム | 型 | NULL | 説明 |
-|--------|-----|------|------|
-| id | UUID | NO | PK |
-| date | DATE | NO | UNIQUE |
-| daily_rmssd | NUMERIC | YES | 日次RMSSD（ms） |
-| deep_rmssd | NUMERIC | YES | 深睡眠時RMSSD |
-| synced_at | TIMESTAMPTZ | YES | 同期日時 |
+### seeds.map_gcal_desc_to_time_social
 
-### raw.fitbit_activity_daily
+Calendar descriptionから時間socialへのマッピング。
 
-| カラム | 型 | NULL | 説明 |
-|--------|-----|------|------|
-| id | UUID | NO | PK |
-| date | DATE | NO | UNIQUE |
-| steps | INTEGER | YES | 歩数 |
-| distance_km | NUMERIC | YES | 移動距離（km） |
-| floors | INTEGER | YES | 階数 |
-| calories_total | INTEGER | YES | 総消費カロリー |
-| calories_bmr | INTEGER | YES | 基礎代謝カロリー |
-| calories_activity | INTEGER | YES | 活動カロリー |
-| sedentary_minutes | INTEGER | YES | 座位時間（分） |
-| lightly_active_minutes | INTEGER | YES | 軽活動時間（分） |
-| fairly_active_minutes | INTEGER | YES | 中活動時間（分） |
-| very_active_minutes | INTEGER | YES | 高活動時間（分） |
-| synced_at | TIMESTAMPTZ | YES | 同期日時 |
+| カラム | 型 | 説明 |
+|--------|-----|------|
+| gcal_description_first_line | TEXT | PK, description 1行目 |
+| time_category_social | TEXT | FK → mst_time_social_categories.name |
 
-### raw.fitbit_spo2_daily
+### seeds.map_gcal_color_to_time_personal
 
-| カラム | 型 | NULL | 説明 |
-|--------|-----|------|------|
-| id | UUID | NO | PK |
-| date | DATE | NO | UNIQUE |
-| avg_spo2 | NUMERIC | YES | 平均SpO2（%） |
-| min_spo2 | NUMERIC | YES | 最小SpO2（%） |
-| max_spo2 | NUMERIC | YES | 最大SpO2（%） |
-| synced_at | TIMESTAMPTZ | YES | 同期日時 |
+Calendar色から時間personalへのマッピング（API色情報も統合）。
 
-### その他 Fitbit テーブル
-
-- `raw.fitbit_breathing_rate_daily` - 呼吸数
-- `raw.fitbit_cardio_score_daily` - VO2Max
-- `raw.fitbit_temperature_skin_daily` - 皮膚温度
-
-## Tanita テーブル
-
-### raw.tanita_body_composition
-
-| カラム | 型 | NULL | 説明 |
-|--------|-----|------|------|
-| id | UUID | NO | PK |
-| measured_at | TIMESTAMPTZ | NO | UNIQUE, 測定日時（UTC） |
-| weight | NUMERIC | YES | 体重（kg） |
-| body_fat_percent | NUMERIC | YES | 体脂肪率（%） |
-| model | TEXT | YES | 測定機器モデル |
-| synced_at | TIMESTAMPTZ | YES | 同期日時 |
-
-### raw.tanita_blood_pressure
-
-| カラム | 型 | NULL | 説明 |
-|--------|-----|------|------|
-| id | UUID | NO | PK |
-| measured_at | TIMESTAMPTZ | NO | UNIQUE, 測定日時（UTC） |
-| systolic | INTEGER | YES | 最高血圧（mmHg） |
-| diastolic | INTEGER | YES | 最低血圧（mmHg） |
-| pulse | INTEGER | YES | 脈拍（bpm） |
-| model | TEXT | YES | 測定機器モデル |
-| synced_at | TIMESTAMPTZ | YES | 同期日時 |
+| カラム | 型 | 説明 |
+|--------|-----|------|
+| gcal_color_id | TEXT | PK, Calendar API色ID（1〜11） |
+| gcal_color_name | TEXT | 色名（Lavender等） |
+| gcal_color_hex | TEXT | HEX値（参考用） |
+| time_category_personal | TEXT | FK → mst_time_personal_categories.name |
 
 ## staging層設計
 
@@ -311,21 +150,24 @@ stg_{service}__{entity}
 
 | ビュー | 元テーブル | 主な変換 | 実装状況 |
 |--------|----------|---------|:--------:|
-| `stg_toggl_track__clients` | raw.toggl_clients | 型正規化 | ✅ |
-| `stg_toggl_track__projects` | raw.toggl_projects | 型正規化 | ✅ |
-| `stg_toggl_track__tags` | raw.toggl_tags | 型正規化 | ✅ |
-| `stg_toggl_track__time_entries` | raw.toggl_entries | タグ配列の正規化 | ✅ |
-| `stg_toggl_track__workspaces` | raw.toggl_workspaces | 型正規化 | ✅ |
-| 他4モデル | - | - | ✅ |
+| `stg_toggl_track__clients` | raw.toggl_track__clients | JSONB展開 | ✅ |
+| `stg_toggl_track__projects` | raw.toggl_track__projects | JSONB展開 | ✅ |
+| `stg_toggl_track__tags` | raw.toggl_track__tags | JSONB展開 | ✅ |
+| `stg_toggl_track__time_entries` | raw.toggl_track__time_entries | JSONB展開、タグ配列正規化 | ✅ |
+| `stg_toggl_track__workspaces` | raw.toggl_track__workspaces | JSONB展開 | ✅ |
+| `stg_toggl_track__me` | raw.toggl_track__me | JSONB展開 | ✅ |
+| `stg_toggl_track__users` | raw.toggl_track__users | JSONB展開 | ✅ |
+| `stg_toggl_track__groups` | raw.toggl_track__groups | JSONB展開 | ✅ |
+| `stg_toggl_track__time_entries_report` | raw.toggl_track__time_entries_report | JSONB展開 | ✅ |
 
 ### 実装済みビュー（Google Calendar）
 
 | ビュー | 元テーブル | 主な変換 | 実装状況 |
 |--------|----------|---------|:--------:|
-| `stg_google_calendar__colors` | raw.gcalendar_colors | 型正規化 | ✅ |
-| `stg_google_calendar__calendar_list` | raw.gcalendar_calendar_list | 型正規化 | ✅ |
-| `stg_google_calendar__calendars` | raw.gcalendar_calendars | 型正規化 | ✅ |
-| `stg_google_calendar__events` | raw.gcalendar_events | duration_ms 補完 | ✅ |
+| `stg_google_calendar__colors` | raw.google_calendar__colors | JSONB展開 | ✅ |
+| `stg_google_calendar__calendar_list` | raw.google_calendar__calendar_list | JSONB展開 | ✅ |
+| `stg_google_calendar__calendars` | raw.google_calendar__calendars | JSONB展開 | ✅ |
+| `stg_google_calendar__events` | raw.google_calendar__events | JSONB展開、duration_ms算出 | ✅ |
 
 ### 未実装ビュー
 
@@ -360,8 +202,8 @@ dim_{entity}  -- ディメンションテーブル（マスタ）
 | `fct_sleep_logs` | stg_fitbit__sleep | 睡眠記録 |
 | `fct_daily_health` | stg_fitbit__*, stg_tanita__* | 日次健康指標 |
 | `dim_date` | - | 日付ディメンション |
-| `dim_time_categories` | ref.mst_time_categories | 時間カテゴリ |
-| `dim_time_qualities` | ref.mst_time_qualities | 時間の質 |
+| `dim_time_social_categories` | seeds.mst_time_social_categories | 時間social |
+| `dim_time_personal_categories` | seeds.mst_time_personal_categories | 時間personal |
 
 ## marts層設計（未実装）
 
@@ -391,3 +233,9 @@ agg_{granularity}_{domain}
 | 2025-12-03 | Trello, TickTick, Airtable テーブル追加 |
 | 2025-12-04 | staging層実装状況を更新（Togglのみ完了） |
 | 2025-12-05 | refスキーマ追加、Google Calendar staging完了、core層設計更新 |
+| 2025-12-05 | raw層をJSONB形式に更新、refスキーマ詳細追加、staging層更新 |
+| 2025-12-05 | raw層詳細をdwh-layers.mdに統合、レガシーテーブル詳細削除 |
+| 2025-12-05 | 色テーブルをseedsに移行、map_gcalendar_time_categoriesにリネーム |
+| 2025-12-06 | マスタ/マッピング分離設計に変更（サービス非依存化） |
+| 2025-12-06 | dbt seeds方式に変更、seedsスキーマに統一、API色情報をmapに統合 |
+| 2025-12-06 | seeds実装完了: 6テーブル（mst_*×2, map_*×4）、dbt seed/test通過 |
