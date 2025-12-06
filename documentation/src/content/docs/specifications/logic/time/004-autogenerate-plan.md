@@ -20,7 +20,7 @@ estimate（推定）と target（目標）の差分を埋める plan（計画）
 
 | 情報 | 形式 | 理由 |
 |------|------|------|
-| actual | レコード | 実績（Google Calendar から取得） |
+| actual | レコード | 実績（Toggl Track から取得） |
 | estimate | 集計 | 日次予測値（ML で計算） |
 | target | 集計 | 目標値（seeds で定義） |
 | plan | レコード | 自動生成スケジュール（Google Calendar へ書き戻し可能） |
