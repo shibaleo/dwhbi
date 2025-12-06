@@ -53,7 +53,8 @@ description: 将来の拡張予定
 | seedsスキーマ拡張 | 中 | ✅ | 時間分類マスタ・マッピング6テーブル実装済み |
 | マスタテーブル編集UI | 中 | ⏳ | GitHub API経由でCSV編集→workflow_dispatchでdbt seed実行 |
 | 分析軸プレビュー機能 | 低 | ⏳ | 軸変更時の影響をリアルタイムでグラフィカルに表示 |
-| core層ビュー | 中 | ⏳ | seeds + staging結合（2サービス以上必要） |
+| core層ビュー（時間管理） | 高 | ✅ | fct_time_records_actual/plan/unified + dim_day_types（43テスト） |
+| core層ビュー（他ドメイン） | 中 | ⏳ | 必要に応じて |
 | marts層ビュー | 中 | ⏳ | 分析用ビュー |
 | CLI化（typer） | 低 | ⏳ | workflow呼び出し簡素化、ローカルテスト容易化 |
 | Python内並列化 | 低 | ⏳ | asyncio.gatherで同期処理を並列実行 |

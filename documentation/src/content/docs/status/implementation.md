@@ -24,8 +24,8 @@ description: 各機能の実装状況
 |---------|:-------:|------|
 | raw | ✅ | 全サービスのテーブル作成済み |
 | staging | 🚧 | Toggl Track、Google Calendar 完了 |
-| seeds | ✅ | google_calendar_event_color_names |
-| core | - | 未実装 |
+| seeds | ✅ | カテゴリマスタ・マッピング6テーブル |
+| core | 🚧 | 時間統合ビュー実装済み |
 | marts | - | 未実装 |
 
 ### staging層詳細
@@ -40,6 +40,15 @@ description: 各機能の実装状況
 | Trello | - | - | - |
 | TickTick | - | - | - |
 | Airtable | - | - | - |
+
+### core層詳細
+
+| モデル | テスト数 | 説明 |
+|--------|:-------:|------|
+| fct_time_records_actual | 11 | Toggl実績（日跨ぎ分割・カテゴリマッピング済み） |
+| fct_time_records_plan | 11 | Google Calendar計画（日跨ぎ分割・カテゴリマッピング済み） |
+| fct_time_records_unified | 12 | actual/planをCURRENT_TIMESTAMP境界で統合 |
+| dim_day_types | 9 | 日タイプ導出（ADR-004ハイブリッドロジック） |
 
 ## 管理ダッシュボード
 

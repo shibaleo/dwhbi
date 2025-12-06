@@ -23,6 +23,10 @@ description: バージョンごとの変更内容
   - Fitbit（予定）
   - Zaim（予定）
   - Tanita（予定）
+- dbt core層
+  - fct_time_records_actual/plan/unified（時間統合ビュー）
+  - dim_day_types（日タイプ導出）
+  - 43テスト
 - Grafana ダッシュボード（staging確認用）（予定）
 - dbt基盤
   - generate_schema_name マクロ（カスタムスキーマ対応）
@@ -36,6 +40,31 @@ description: バージョンごとの変更内容
 ---
 
 ## 開発履歴（詳細）
+
+### 2025-12-06
+
+**core層 時間統合ビュー実装**
+- fct_time_records_actual: Toggl実績（日跨ぎ分割・カテゴリマッピング）
+- fct_time_records_plan: Google Calendar計画（日跨ぎ分割・カテゴリマッピング）
+- fct_time_records_unified: actual/planをCURRENT_TIMESTAMP境界で統合
+- dim_day_types: ADR-004ハイブリッドロジックでday_type導出
+- 全43テストパス
+
+**仕様ドキュメント整備**
+- ADR-007をシンプル化（決定事項のみ）
+- specifications/schema/core/ に実装詳細を分離
+  - 001-time-records-actual.md
+  - 002-time-records-plan.md
+  - 003-time-records-unified.md
+
+**用語統一**
+- イベント/エントリー → レコード（record）に統一
+- planned → plan に統一（actual/plan対称性）
+
+**dbt設定**
+- dbt_project.yml: core層設定追加（+schema: core）
+- WITH RECURSIVE対応（再帰CTE）
+- duration_seconds > 0 フィルター追加
 
 ### 2025-12-05
 

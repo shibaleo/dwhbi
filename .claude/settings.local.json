@@ -6,7 +6,11 @@
       "Bash(.venv/Scripts/python:*)",
       "Bash(PYTHONUTF8=1 ../.venv/Scripts/dbt seed:*)",
       "Bash(PYTHONUTF8=1 ../.venv/Scripts/dbt test:*)",
-      "Bash(...venvScriptsdbt seed --select mst_time_personal_categories)"
+      "Bash(...venvScriptsdbt seed --select mst_time_personal_categories)",
+      "Bash(PYTHONUTF8=1 ../.venv/Scripts/dbt run:*)",
+      "Bash(PYTHONUTF8=1 ../.venv/Scripts/dbt compile:*)",
+      "Bash(cat:*)",
+      "Bash(PYTHONUTF8=1 ../.venv/Scripts/dbt run-operation:*)"
     ],
     "deny": [],
     "ask": []

@@ -140,3 +140,102 @@ seeds:
           - relationships:
               to: ref('mst_time_personal_categories')
               field: name
+
+  # =============================================================================
+  # Target Tables (Goal Management)
+  # =============================================================================
+  - name: mst_time_target_groups
+    description: "目標グループ定義（何を・どの日に・どの方向で達成したいか）"
+    config:
+      column_types:
+        id: integer
+        name: text
+        time_category_personal: text
+        day_type: text
+        direction: text
+        valid_from: date
+        valid_until: date
+        description: text
+    columns:
+      - name: id
+        description: "PK"
+        data_tests:
+          - unique
+          - not_null
+      - name: name
+        description: "グループ識別子（edu_dec, sleep_daily等）"
+        data_tests:
+          - unique
+          - not_null
+      - name: time_category_personal
+        description: "FK → mst_time_personal_categories.name"
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('mst_time_personal_categories')
+              field: name
+      - name: day_type
+        description: "対象日タイプ（all/Work/Leisure/Education等）"
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['all', 'Work', 'Leisure', 'Education', 'Rest']
+      - name: direction
+        description: "達成方向（more=以上, less=以下, neutral=参考値）"
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['more', 'less', 'neutral']
+      - name: valid_from
+        description: "有効開始日"
+      - name: valid_until
+        description: "有効終了日（NULL=無期限）"
+      - name: description
+        description: "説明"
+
+  - name: mst_time_targets
+    description: "目標値（グループに対する具体的な数値目標）"
+    config:
+      column_types:
+        id: integer
+        group_id: integer
+        version: text
+        scope_start: date
+        scope_end: date
+        target_min: integer
+        valid_from: date
+        valid_until: date
+        description: text
+    columns:
+      - name: id
+        description: "PK"
+        data_tests:
+          - unique
+          - not_null
+      - name: group_id
+        description: "FK → mst_time_target_groups.id"
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('mst_time_target_groups')
+              field: id
+      - name: version
+        description: "セマンティックバージョン（1.0.0等）"
+      - name: scope_start
+        description: "目標期間開始"
+        data_tests:
+          - not_null
+      - name: scope_end
+        description: "目標期間終了"
+        data_tests:
+          - not_null
+      - name: target_min
+        description: "目標時間（分）"
+        data_tests:
+          - not_null
+      - name: valid_from
+        description: "この目標値の有効開始日"
+      - name: valid_until
+        description: "有効終了日（NULL=無期限）"
+      - name: description
+        description: "説明"

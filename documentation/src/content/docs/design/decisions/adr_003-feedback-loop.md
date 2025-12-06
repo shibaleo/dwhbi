@@ -1,5 +1,5 @@
 ---
-title: ADR-003 時間管理フィードバックループ
+title: ADR-003 フィードバックループ
 description: 4 Information × 4 Practices による時間管理サイクルの設計
 ---
 
@@ -60,16 +60,19 @@ description: 4 Information × 4 Practices による時間管理サイクルの�
 
 | 情報 | DWHレイヤー | テーブル/ビュー | 備考 |
 |------|-------------|----------------|------|
-| actual | core | `fct_time_actual` | Togglから取得 |
-| estimate | core | `fct_time_estimate_snapshots` | actual + アルゴリズムから計算 |
-| target | seeds + core | `mst_time_targets` → `fct_time_target` | 目標値 |
-| plan | core | `fct_time_planned` | Google Calendarから取得 |
+| actual | core | `fct_time_records_actual` | Togglから取得 |
+| estimate | marts | 集計ビュー | actual + plan から計算 |
+| target | seeds | `mst_time_targets` | 目標値 |
+| plan | core | `fct_time_records_plan` | Google Calendarから取得 |
 
 ## 関連ADR
 
 - [ADR-004 day_type設計](/design/decisions/adr_004-day-type-design) - 日タイプの導出ロジック
-- [ADR-005 target設計](/design/decisions/adr_005-target-design) - 目標管理の設計
-- [ADR-006 estimate設計](/design/decisions/adr_006-estimate-design) - 推定値の設計
+
+## 関連仕様
+
+- [004 目標管理（target）](/specifications/schema/core/004-target) - 目標管理の設計
+- [005 推定値（estimate）](/specifications/schema/core/005-estimate) - 推定値の設計
 
 ## 関連
 

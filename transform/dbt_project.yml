@@ -38,11 +38,14 @@ models:
       google_calendar:
         +tags: ['google', 'calendar']
 
-    # core層: ビジネスエンティティ（将来用）
-    # Note: モデル追加時にコメント解除
-    # core:
-    #   +materialized: view
-    #   +schema: core
+    # core層: ビジネスエンティティ
+    core:
+      +materialized: view
+      +schema: core
+      +post-hook:
+        - "ALTER VIEW {{ this }} SET (security_invoker = on)"
+        - "GRANT SELECT ON {{ this }} TO authenticated"
+        - "GRANT SELECT ON {{ this }} TO service_role"
 
     # marts層: 分析用ビュー（将来用）
     # Note: モデル追加時にコメント解除

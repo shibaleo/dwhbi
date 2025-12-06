@@ -1,0 +1,203 @@
+# Core Layer Models
+# =============================================================================
+# ビジネスエンティティのスキーマ定義とテスト
+# =============================================================================
+
+version: 2
+
+models:
+  - name: fct_time_records_actual
+    description: |
+      Togglからの実績時間レコード
+
+      Features:
+      - JST 00:00:00 境界での日跨ぎ分割
+      - 進行中レコード: end_at = CURRENT_TIMESTAMP (NOT NULL保証)
+      - プロジェクト色・クライアントからのカテゴリマッピング
+    columns:
+      - name: id
+        description: "ユニークID（{source_id}_{split_index}）"
+        data_tests:
+          - unique
+          - not_null
+      - name: source_id
+        description: "元のToggl time_entry_id"
+        data_tests:
+          - not_null
+      - name: start_at
+        description: "開始時刻（JST、分割後）"
+        data_tests:
+          - not_null
+      - name: end_at
+        description: "終了時刻（JST、分割後）"
+        data_tests:
+          - not_null
+      - name: duration_seconds
+        description: "時間（秒）"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: description
+        description: "Togglのdescription"
+      - name: time_category_social
+        description: "社会的分類（WORK, LEISURE等）"
+        data_tests:
+          - not_null
+      - name: time_category_personal
+        description: "個人的分類（Work, Study等）"
+        data_tests:
+          - not_null
+      - name: source
+        description: "データソース"
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['toggl_track']
+
+  - name: fct_time_records_plan
+    description: |
+      Google Calendarからの計画時間レコード
+
+      Features:
+      - JST 00:00:00 境界での日跨ぎ分割
+      - イベント色・説明1行目からのカテゴリマッピング
+      - キャンセル済みイベント除外
+    columns:
+      - name: id
+        description: "ユニークID（{source_id}_{split_index}）"
+        data_tests:
+          - unique
+          - not_null
+      - name: source_id
+        description: "元のGCal event_id"
+        data_tests:
+          - not_null
+      - name: start_at
+        description: "開始時刻（JST、分割後）"
+        data_tests:
+          - not_null
+      - name: end_at
+        description: "終了時刻（JST、分割後）"
+        data_tests:
+          - not_null
+      - name: duration_seconds
+        description: "時間（秒）"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: description
+        description: "GCalのsummary"
+      - name: time_category_social
+        description: "社会的分類（WORK, LEISURE等）"
+        data_tests:
+          - not_null
+      - name: time_category_personal
+        description: "個人的分類（Work, Study等）"
+        data_tests:
+          - not_null
+      - name: source
+        description: "データソース"
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['google_calendar']
+
+  - name: fct_time_records_unified
+    description: |
+      actual（実績）とplan（計画）をCURRENT_TIMESTAMP境界で統合
+
+      Boundary rules:
+      - end_at <= now: actual（そのまま）
+      - start_at < now < end_at: actual（end_at を now に調整）
+      - start_at >= now: plan（そのまま）
+      - start_at < now < end_at: plan（start_at を now に調整）
+    columns:
+      - name: id
+        description: "ユニークID"
+        data_tests:
+          - not_null
+      - name: source_id
+        description: "元のレコードID"
+        data_tests:
+          - not_null
+      - name: start_at
+        description: "開始時刻（JST）"
+        data_tests:
+          - not_null
+      - name: end_at
+        description: "終了時刻（JST）"
+        data_tests:
+          - not_null
+      - name: duration_seconds
+        description: "時間（秒）"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: description
+        description: "説明/タイトル"
+      - name: time_category_social
+        description: "社会的分類"
+        data_tests:
+          - not_null
+      - name: time_category_personal
+        description: "個人的分類"
+        data_tests:
+          - not_null
+      - name: source
+        description: "データソース"
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['toggl_track', 'google_calendar']
+      - name: record_type
+        description: "レコードタイプ（actual/plan）"
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['actual', 'plan']
+
+  - name: dim_day_types
+    description: |
+      日タイプディメンション（day_typeを動的導出）
+
+      day_type導出ロジック（ADR-004）:
+      - Work >= 5h → Work
+      - Drift >= 2h → Drift
+      - それ以外: eligible内で最大時間のカテゴリ
+    columns:
+      - name: date_day
+        description: "日付"
+        data_tests:
+          - unique
+          - not_null
+      - name: day_of_week
+        description: "曜日（0=日曜, 6=土曜）"
+        data_tests:
+          - not_null
+      - name: year
+        description: "年"
+        data_tests:
+          - not_null
+      - name: month
+        description: "月"
+        data_tests:
+          - not_null
+      - name: day
+        description: "日"
+        data_tests:
+          - not_null
+      - name: week_of_year
+        description: "ISO週番号"
+        data_tests:
+          - not_null
+      - name: day_type
+        description: "日タイプ（Work, Leisure, Education等）"
+        data_tests:
+          - not_null
+      - name: total_hours_recorded
+        description: "記録された合計時間"
+        data_tests:
+          - not_null
