@@ -10,7 +10,10 @@
       "Bash(PYTHONUTF8=1 ../.venv/Scripts/dbt run:*)",
       "Bash(PYTHONUTF8=1 ../.venv/Scripts/dbt compile:*)",
       "Bash(cat:*)",
-      "Bash(PYTHONUTF8=1 ../.venv/Scripts/dbt run-operation:*)"
+      "Bash(PYTHONUTF8=1 ../.venv/Scripts/dbt run-operation:*)",
+      "Bash(npm run build:*)",
+      "Bash(powershell:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

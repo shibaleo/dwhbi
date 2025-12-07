@@ -8,64 +8,125 @@ export default defineConfig({
 	base: '/supabase-sync-jobs',
 	integrations: [
 		starlight({
-			title: 'LIFETRACER',
-			description: 'Personal Data Warehouse Platform - 個人ライフログ統合基盤',
+			title: 'DWH+BI',
+			description: '個人データ統合基盤',
 			social: [
-				{ icon: 'github', label: 'GitHub', href: 'https://github.com/your-repo/lifetracer' },
+				{ icon: 'github', label: 'GitHub', href: 'https://github.com/shibaleo/supabase-sync-jobs' },
 			],
 			sidebar: [
 				{
 					label: 'はじめに',
 					items: [
 						{ label: '概要', link: '/' },
-						{ label: '実装状況', slug: 'status/implementation' },
-						{ label: 'ロードマップ', slug: 'planning/roadmap' },
+						{ label: '実装状況', slug: '300-management/310-status/implementation' },
+						{ label: 'ロードマップ', slug: '300-management/310-status/roadmap' },
 					],
 				},
 				{
-					label: '要件定義',
-					autogenerate: { directory: 'requirements' },
+					label: '000 背景・基礎',
+					autogenerate: { directory: '000-foundations' },
 				},
 				{
-					label: '仕様書',
+					label: '100 開発',
 					items: [
-						{ label: 'システム概要', slug: 'specifications/overview' },
-						{ label: 'DWH 4層設計', slug: 'specifications/dwh-layers' },
-						{ label: '管理ダッシュボード', slug: 'specifications/admin-dashboard' },
-						{ label: '認証・セキュリティ', slug: 'specifications/security' },
 						{
-							label: 'サービス仕様',
-							autogenerate: { directory: 'specifications/services' },
+							label: '110 要件定義',
+							autogenerate: { directory: '100-development/110-requirements' },
+						},
+						{
+							label: '120 仕様書',
+							items: [
+								{
+									label: '121 全体',
+									autogenerate: { directory: '100-development/120-specifications/121-overview' },
+								},
+								{
+									label: '122 pipelines（データ取得）',
+									autogenerate: { directory: '100-development/120-specifications/122-pipelines/services' },
+								},
+								{
+									label: '123 transform（データ変換）',
+									items: [
+										{
+											label: 'スキーマ',
+											autogenerate: { directory: '100-development/120-specifications/123-transform/schema/core' },
+										},
+										{
+											label: 'ロジック',
+											autogenerate: { directory: '100-development/120-specifications/123-transform/logic/time' },
+										},
+									],
+								},
+								{
+									label: '124 console（管理コンソール）',
+									autogenerate: { directory: '100-development/120-specifications/124-console' },
+								},
+							],
+						},
+						{
+							label: '130 設計書',
+							items: [
+								{ label: 'システムアーキテクチャ', slug: '100-development/130-design/architecture' },
+								{ label: 'データベーススキーマ', slug: '100-development/130-design/database-schema' },
+								{
+									label: '131 ADR',
+									autogenerate: { directory: '100-development/130-design/131-decisions' },
+								},
+							],
 						},
 					],
 				},
 				{
-					label: '設計書',
+					label: '200 品質',
 					items: [
-						{ label: 'システムアーキテクチャ', slug: 'design/architecture' },
-						{ label: 'データベーススキーマ', slug: 'design/database-schema' },
 						{
-							label: 'ADR',
-							autogenerate: { directory: 'design/decisions' },
+							label: '210 テスト計画',
+							autogenerate: { directory: '200-quality/210-test' },
+						},
+						{
+							label: '220 品質基準',
+							autogenerate: { directory: '200-quality/220-standards' },
 						},
 					],
 				},
 				{
-					label: 'ガイド',
-					autogenerate: { directory: 'guides' },
+					label: '300 管理',
+					items: [
+						{
+							label: '310 状況・計画',
+							items: [
+								{ label: '実装状況', slug: '300-management/310-status/implementation' },
+								{ label: '変更履歴', slug: '300-management/310-status/changelog' },
+								{ label: 'ロードマップ', slug: '300-management/310-status/roadmap' },
+								{ label: 'バックログ', slug: '300-management/310-status/backlog' },
+							],
+						},
+						{
+							label: '320 プロジェクト管理',
+							autogenerate: { directory: '300-management/320-project' },
+						},
+					],
 				},
 				{
-					label: '状況・計画',
+					label: '400 運用',
 					items: [
-						{ label: '実装状況', slug: 'status/implementation' },
-						{ label: '変更履歴', slug: 'status/changelog' },
-						{ label: 'ロードマップ', slug: 'planning/roadmap' },
-						{ label: 'バックログ', slug: 'planning/backlog' },
+						{
+							label: '410 ガイド',
+							autogenerate: { directory: '400-operations/410-guides' },
+						},
+						{
+							label: '420 運用手順',
+							autogenerate: { directory: '400-operations/420-runbook' },
+						},
 					],
+				},
+				{
+					label: '500 セキュリティ',
+					autogenerate: { directory: '500-security' },
 				},
 			],
 			editLink: {
-				baseUrl: 'https://github.com/your-repo/lifetracer/edit/main/documentation/',
+				baseUrl: 'https://github.com/shibaleo/supabase-sync-jobs/edit/main/documentation/',
 			},
 			lastUpdated: true,
 		}),
