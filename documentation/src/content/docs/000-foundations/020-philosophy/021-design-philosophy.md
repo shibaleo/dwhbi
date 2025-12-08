@@ -1,6 +1,8 @@
 ---
 title: 設計哲学
 description: DWH+BIの設計原則
+sidebar:
+  order: 21
 ---
 
 # 設計哲学

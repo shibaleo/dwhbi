@@ -7,7 +7,7 @@ description: Dewey Decimal方式とPMBOK分類の採用
 
 ## ステータス
 
-採用（2025-12-07）
+採用（2025-12-07）、更新（2025-12-08）
 
 ## コンテキスト
 
@@ -75,6 +75,23 @@ description: Dewey Decimal方式とPMBOK分類の採用
 - **100**: 標準的な開発ドキュメント（WHAT→HOW→検証）
 - **200-500**: 開発とは異なる次元の横断的関心事
 
+### 3. リンクテキストへの番号プレフィックス
+
+ドキュメント内リンクには番号プレフィックスを含める。
+
+```markdown
+<!-- 推奨 -->
+[131 ADR-002 分析軸マスタ設計](/100-development/130-design/131-decisions/adr_002-ref-schema-design)
+[024 DWH 4層アーキテクチャ](/000-foundations/020-philosophy/024-dwh-architecture)
+
+<!-- 非推奨 -->
+[分析軸マスタ設計](/100-development/130-design/131-decisions/adr_002-ref-schema-design)
+```
+
+**目的**:
+- リンクテキストから参照先の階層（どのカテゴリのドキュメントか）が即座にわかる
+- 番号の大小で情報の抽象度を推測できる（000番台は基礎概念、100番台は開発詳細）
+
 ## 検討した代替案
 
 ### 案1: 連番維持（01, 02, 03...）
@@ -97,4 +114,4 @@ description: Dewey Decimal方式とPMBOK分類の採用
 
 ## 関連
 
-- [リポジトリ構成](/100-development/120-specifications/121-overview/repository-structure)
+- [121 リポジトリ構成](/100-development/120-specifications/121-overview/repository-structure)

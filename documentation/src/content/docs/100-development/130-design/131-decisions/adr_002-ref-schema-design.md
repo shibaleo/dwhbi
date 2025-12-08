@@ -7,7 +7,9 @@ description: dbt seedsによるマスタ・マッピングテーブルの設計�
 
 ## ステータス
 
-採用（2025-12-06）
+**廃止（obsolete）** - 2025-12-08
+
+マスタデータは基本的にUI入力方式に変更。dbt seedsによるマスタ管理はほとんど廃止。
 
 ## コンテキスト
 
@@ -273,6 +275,6 @@ Calendar色から時間personalへのマッピング。API色情報を統合。
 
 ## 関連
 
-- [データベーススキーマ設計](/100-development/130-design/database-schema)
-- [DWH 4層アーキテクチャ](/100-development/120-specifications/121-overview/dwh-layers)
+- [130 データベーススキーマ設計](/100-development/130-design/database-schema)
+- [024 DWH 4層アーキテクチャ](/000-foundations/020-philosophy/024-dwh-architecture)
 - [dbt Best Practices: How we structure our dbt projects](https://docs.getdbt.com/best-practices/how-we-structure/1-guide-overview)

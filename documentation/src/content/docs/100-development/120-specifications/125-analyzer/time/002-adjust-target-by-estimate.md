@@ -319,5 +319,5 @@ GROUP BY 1, 2, 4, 5
 
 ## 関連ドキュメント
 
-- [ADR-003 フィードバックループ](/100-development/130-design/131-decisions/adr_003-feedback-loop)
-- [001 推定値計算ロジック](/100-development/120-specifications/123-transform/logic/time/001-estimation)
+- [131 ADR-003 フィードバックループ](/100-development/130-design/131-decisions/adr_003-feedback-loop)
+- [125 推定値計算ロジック](/100-development/120-specifications/125-analyzer/time/001-estimation)

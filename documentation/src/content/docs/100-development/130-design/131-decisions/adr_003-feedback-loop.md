@@ -7,7 +7,9 @@ description: 4 Information × 4 Practices による時間管理サイクルの�
 
 ## ステータス
 
-採用（2025-12-07）
+**廃止（obsolete）** - 2025-12-08
+
+フィードバックループの概念はQPIモデル（[011 QPIモデル](/000-foundations/010-theory/011-qpi-model)）として概念レベルでrefineし、プロジェクト全体を貫く基礎概念とした。
 
 ## コンテキスト
 
@@ -67,14 +69,14 @@ description: 4 Information × 4 Practices による時間管理サイクルの�
 
 ## 関連ADR
 
-- [ADR-004 day_type設計](/100-development/130-design/131-decisions/adr_004-day-type-design) - 日タイプの導出ロジック
+- [131 ADR-004 day_type設計](/100-development/130-design/131-decisions/adr_004-day-type-design) - 日タイプの導出ロジック
 
 ## 関連仕様
 
-- [004 目標管理（target）](/100-development/120-specifications/123-transform/schema/core/004-target) - 目標管理の設計
-- [005 推定値（estimate）](/100-development/120-specifications/123-transform/schema/core/005-estimate) - 推定値の設計
+- [123 目標管理（target）](/100-development/120-specifications/123-transform/schema/core/004-target) - 目標管理の設計
+- [123 推定値（estimate）](/100-development/120-specifications/123-transform/schema/core/005-estimate) - 推定値の設計
 
 ## 関連
 
-- [ADR-002 分析軸マスタ設計](/100-development/130-design/131-decisions/adr_002-ref-schema-design)
-- [データベーススキーマ設計](/100-development/130-design/database-schema)
+- [131 ADR-002 分析軸マスタ設計](/100-development/130-design/131-decisions/adr_002-ref-schema-design)
+- [130 データベーススキーマ設計](/100-development/130-design/database-schema)

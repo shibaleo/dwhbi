@@ -19,7 +19,7 @@ description: テーブル定義とスキーマ設計
 
 **dbt seedsがDWHの分析軸を定義する中核**である。
 
-詳細は [ADR-002 分析軸マスタ設計](/100-development/130-design/131-decisions/adr_002-ref-schema-design) を参照。
+詳細は [131 ADR-002 分析軸マスタ設計](/100-development/130-design/131-decisions/adr_002-ref-schema-design) を参照。
 
 ### dbt seedsの役割
 
@@ -63,7 +63,7 @@ dbt/seeds/
 
 ## raw スキーマ
 
-詳細は [DWH 4層アーキテクチャ](/100-development/120-specifications/121-overview/dwh-layers) を参照。
+詳細は [121 DWH技術仕様](/100-development/120-specifications/121-overview/dwh-layers) を参照。
 
 - 命名規則: `raw.{service}__{entity}`（ダブルアンダースコア区切り）
 - 共通カラム: `id`, `source_id`, `data` (JSONB), `synced_at`, `api_version`
@@ -71,7 +71,7 @@ dbt/seeds/
 
 ## seeds スキーマ テーブル詳細
 
-時間は **social（対外的・共有可能な分類）** と **personal（内省的・個人的分類）** の2軸で分類する。マスタはサービス非依存、マッピングでサービス固有値を変換。詳細は [ADR-002](/100-development/130-design/131-decisions/adr_002-ref-schema-design) を参照。
+時間は **social（対外的・共有可能な分類）** と **personal（内省的・個人的分類）** の2軸で分類する。マスタはサービス非依存、マッピングでサービス固有値を変換。詳細は [131 ADR-002](/100-development/130-design/131-decisions/adr_002-ref-schema-design) を参照。
 
 ### seeds.mst_time_social_categories
 

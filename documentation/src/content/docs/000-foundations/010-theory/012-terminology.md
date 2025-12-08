@@ -1,11 +1,22 @@
 ---
 title: 用語解説
 description: DWH・BI・ML・LLMの基礎知識
+sidebar:
+  order: 12
 ---
 
 # 用語解説
 
 本プロジェクトで頻出する技術用語の解説。
+
+## QPI（Quad Practices & Information）
+
+本プロジェクトで採用しているデータ活用のためのモデル。詳細は[QPIモデル](./011-qpi-model)を参照。
+
+- **4 practices**: log / analyze / aim / adjust
+- **4 information**: actual / estimate / draft / target
+
+意思決定の主体（個人・組織）の行動データを、4つの実践によって4種類の情報として構造化する。
 
 ## DWH（Data Warehouse）
 

@@ -171,6 +171,6 @@ LEFT JOIN plan_daily p ON ...
 
 ## 関連ドキュメント
 
-- [ADR-003 フィードバックループ](/100-development/130-design/131-decisions/adr_003-feedback-loop) - 4 Information概念
-- [004 目標管理（target）](/100-development/120-specifications/123-transform/schema/core/004-target) - 目標管理
-- [003 統合時間ビュー](/100-development/120-specifications/123-transform/schema/core/003-time-records-unified) - actual/plan統合
+- [131 ADR-003 フィードバックループ](/100-development/130-design/131-decisions/adr_003-feedback-loop) - 4 Information概念
+- [123 目標管理（target）](/100-development/120-specifications/123-transform/schema/core/004-target) - 目標管理
+- [123 統合時間ビュー](/100-development/120-specifications/123-transform/schema/core/003-time-records-unified) - actual/plan統合

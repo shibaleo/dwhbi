@@ -10,7 +10,7 @@ description: プロジェクト全体のディレクトリ構成とファイル�
 本リポジトリはモノレポ構成を採用し、複数のプロジェクトを単一リポジトリで管理する。
 各プロジェクトは自己完結型で、独自の依存関係・仮想環境・テストを持つ。
 
-設計決定の詳細は [ADR-005 モノレポ構成](/03-design/decisions/adr_005-monorepo-structure) を参照。
+設計決定の詳細は [131 ADR-005 モノレポ構成](/100-development/130-design/131-decisions/adr_005-monorepo-structure) を参照。
 
 ## ディレクトリ構成
 
@@ -287,6 +287,7 @@ npm run dev
 
 ## 関連ドキュメント
 
-- [ADR-005 モノレポ構成](/100-development/130-design/131-decisions/adr_005-monorepo-structure) - 設計決定の理由
-- [DWH レイヤー構成](/100-development/120-specifications/121-overview/dwh-layers) - スキーマ設計
-- [001 推定値計算ロジック](/100-development/120-specifications/123-transform/logic/time/001-estimation) - analyzer 詳細
+- [131 ADR-005 モノレポ構成](/100-development/130-design/131-decisions/adr_005-monorepo-structure) - 設計決定の理由
+- [024 DWH 4層アーキテクチャ](/000-foundations/020-philosophy/024-dwh-architecture) - 設計哲学
+- [121 DWH技術仕様](/100-development/120-specifications/121-overview/dwh-layers) - スキーマ設計
+- [123 推定値計算ロジック](/100-development/120-specifications/123-transform/logic/time/001-estimation) - analyzer 詳細

@@ -117,9 +117,9 @@ v0.1.0 リリース後、必要に応じて追加：
 
 | 機能 | 優先度 | 備考 |
 |------|:------:|------|
-| **analyzer プロジェクト** | 高 | estimate 自動計算（LightGBM、[実装タスク](/100-development/120-specifications/123-transform/logic/time/001-estimation#実装ステータス)） |
-| **console.target GUI** | 高 | target の管理画面 CRUD / SCD Type 2（[設計](/100-development/120-specifications/123-transform/logic/time/002-adjust-target-by-estimate#target-テーブル設計console-スキーマ--scd-type-2)） |
-| **actual 列追加** | 高 | project_name, project_color_hex（[設計](/100-development/120-specifications/123-transform/schema/core/001-time-records-actual)） |
+| **analyzer プロジェクト** | 高 | estimate 自動計算（LightGBM、[123 推定値計算ロジック](/100-development/120-specifications/123-transform/logic/time/001-estimation#実装ステータス)） |
+| **console.target GUI** | 高 | target の管理画面 CRUD / SCD Type 2（[123 目標値調整ロジック](/100-development/120-specifications/123-transform/logic/time/002-adjust-target-by-estimate#target-テーブル設計console-スキーマ--scd-type-2)） |
+| **actual 列追加** | 高 | project_name, project_color_hex（[123 時間記録actual](/100-development/120-specifications/123-transform/schema/core/001-time-records-actual)） |
 | **analyzer スキーマ** | 高 | 分析過程の中間テーブル・ビュー |
 | **マルチドメイン分析** | 中 | 時間・金銭・健康の統合分析 |
 | ビジュアルETLエディタ | 低 | core/marts層をGUIで構築 |
@@ -149,7 +149,7 @@ marts     ← 分析・可視化用                    ⏳ 未実装
 | `console/` | 管理コンソール | console | ✅ |
 | `documentation/` | ドキュメント | - | ✅ |
 
-詳細は [リポジトリ構成](/100-development/120-specifications/121-overview/repository-structure) を参照。設計決定の理由は [ADR-005](/100-development/130-design/131-decisions/adr_005-monorepo-structure) を参照。
+詳細は [121 リポジトリ構成](/100-development/120-specifications/121-overview/repository-structure) を参照。設計決定の理由は [131 ADR-005](/100-development/130-design/131-decisions/adr_005-monorepo-structure) を参照。
 
 ---
 

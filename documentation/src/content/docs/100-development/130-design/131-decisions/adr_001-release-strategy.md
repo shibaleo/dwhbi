@@ -7,7 +7,9 @@ description: バージョニングとリリース条件の方針
 
 ## ステータス
 
-採用（2025-12-05 改訂）
+**廃止（obsolete）** - 2025-12-08
+
+サービスごとのマイナーバージョンアップではなく、サービスごとにmarts層まで設計する方針に変更。
 
 ## コンテキスト
 
@@ -148,5 +150,5 @@ v0.1.0 リリース後、必要に応じて追加：
 
 ## 関連
 
-- [ロードマップ](/300-management/310-status/roadmap)
-- [実装状況](/300-management/310-status/implementation)
+- [310 ロードマップ](/300-management/310-status/roadmap)
+- [310 実装状況](/300-management/310-status/implementation)

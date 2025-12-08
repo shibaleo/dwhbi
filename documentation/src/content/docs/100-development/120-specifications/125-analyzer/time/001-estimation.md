@@ -626,5 +626,5 @@ model.fit(df)
 
 ## 関連ドキュメント
 
-- [ADR-003 フィードバックループ](/100-development/130-design/131-decisions/adr_003-feedback-loop)
-- [005 推定値（estimate）](/100-development/120-specifications/123-transform/schema/core/005-estimate)
+- [131 ADR-003 フィードバックループ](/100-development/130-design/131-decisions/adr_003-feedback-loop)
+- [125 目標調整ロジック](/100-development/120-specifications/125-analyzer/time/002-adjust-target-by-estimate)

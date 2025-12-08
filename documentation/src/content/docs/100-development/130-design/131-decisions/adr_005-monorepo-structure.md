@@ -198,5 +198,5 @@ python scripts/run_estimate.py
 
 ## 関連ドキュメント
 
-- [リポジトリ構成](/100-development/120-specifications/121-overview/repository-structure)
-- [001 推定値計算ロジック](/100-development/120-specifications/123-transform/logic/time/001-estimation) - analyzer プロジェクト構成
+- [121 リポジトリ構成](/100-development/120-specifications/121-overview/repository-structure)
+- [123 推定値計算ロジック](/100-development/120-specifications/123-transform/logic/time/001-estimation) - analyzer プロジェクト構成

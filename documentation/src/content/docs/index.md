@@ -46,7 +46,7 @@ description: 個人データ統合基盤
 |-------------|------|
 | [システム概要](./100-development/120-specifications/121-overview/overview) | アーキテクチャ概要 |
 | [リポジトリ構成](./100-development/120-specifications/121-overview/repository-structure) | モノレポ構成（pipelines, transform, analyzer, console） |
-| [DWH 4層設計](./100-development/120-specifications/121-overview/dwh-layers) | raw→staging→core→marts |
+| [DWH 4層設計](./000-foundations/020-philosophy/024-dwh-architecture) | raw→staging→core→marts |
 | [管理コンソール](./100-development/120-specifications/124-console/console-dashboard) | 管理UI仕様 |
 
 ### 130 設計書

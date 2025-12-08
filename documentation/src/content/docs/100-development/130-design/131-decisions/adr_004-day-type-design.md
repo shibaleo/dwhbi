@@ -7,7 +7,9 @@ description: plan/actualからday_typeを動的に導出するロジックの設
 
 ## ステータス
 
-採用（2025-12-07）
+**廃止（obsolete）** - 2025-12-08
+
+day_type情報はanalysis段階のMLが使うデータを想定しているため、analysisモジュールの設計書に移行予定。
 
 ## コンテキスト
 
@@ -149,5 +151,5 @@ time_category_personalをそのまま使用（Work, Leisure, Education等）。�
 
 ## 関連
 
-- [ADR-003 時間管理フィードバックループ](/100-development/130-design/131-decisions/adr_003-feedback-loop)
-- [ADR-002 分析軸マスタ設計](/100-development/130-design/131-decisions/adr_002-ref-schema-design)
+- [131 ADR-003 時間管理フィードバックループ](/100-development/130-design/131-decisions/adr_003-feedback-loop)
+- [131 ADR-002 分析軸マスタ設計](/100-development/130-design/131-decisions/adr_002-ref-schema-design)

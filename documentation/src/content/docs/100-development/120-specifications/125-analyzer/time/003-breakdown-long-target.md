@@ -139,6 +139,5 @@ SELECT
 
 ## 関連ドキュメント
 
-- [ADR-003 フィードバックループ](/100-development/130-design/131-decisions/adr_003-feedback-loop)
-- [ADR-004 day_type設計](/100-development/130-design/131-decisions/adr_004-day-type-design)
-- [004 目標管理（target）](/100-development/120-specifications/123-transform/schema/core/004-target)
+- [131 ADR-003 フィードバックループ](/100-development/130-design/131-decisions/adr_003-feedback-loop)
+- [131 ADR-004 day_type設計](/100-development/130-design/131-decisions/adr_004-day-type-design)

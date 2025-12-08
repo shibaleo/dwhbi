@@ -54,9 +54,12 @@ description: 認証方式と認証情報の保護に関する仕様
 | 項目 | 説明 |
 |------|------|
 | 保存先 | `vault.secrets` テーブル |
+| 暗号化方式 | AEAD（Authenticated Encryption with Associated Data） |
 | 暗号化 | Supabase管理のマスターキーによる透過的暗号化 |
 | 読み取り | `vault.decrypted_secrets` ビュー経由で自動復号 |
 | アクセス方法 | 直接DB接続（`DIRECT_DATABASE_URL`）経由のみ |
+
+AEADは暗号化と認証を同時に行う方式で、データの機密性と完全性を保証する。Supabase Vaultはpgsodiumを使用してAEADを実現している。
 
 **メリット**:
 - 暗号化キーの管理不要
@@ -178,3 +181,16 @@ DIRECT_DATABASE_URL=postgresql://...
 | ログイン許可 | profiles テーブルでユーザー照合 |
 | API Routes | セッション検証 |
 | Vault | Service Role Key経由のみアクセス |
+
+## 通信の暗号化
+
+### Vercel採用の理由
+
+管理コンソールはVercelでホストする。理由は通信の暗号化（HTTPS）を容易に実現するため。
+
+| ホスト方式 | HTTPS対応 | 証明書管理 | 運用負荷 |
+|-----------|----------|-----------|---------|
+| Vercel | 自動 | 不要 | 最小 |
+| クラウドVM | 手動設定 | Let's Encrypt等 + 自動更新設定 | 高 |
+
+クラウドVMでHTTPSを実現するにはドメイン取得、証明書取得（Let's Encrypt等）、Nginx設定、証明書自動更新の設定が必要となり、個人プロジェクトには過剰な運用負荷となる。Vercelを使用することで、HTTPS化と証明書管理が自動化され、運用工数を最小限に抑えられる。

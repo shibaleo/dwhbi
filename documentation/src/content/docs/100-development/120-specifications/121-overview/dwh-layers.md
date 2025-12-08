@@ -1,46 +1,11 @@
 ---
-title: DWH 4層アーキテクチャ
-description: データウェアハウスの層構造と設計方針
+title: DWH 技術仕様
+description: データウェアハウス層構造の技術仕様
 ---
 
-# DWH 4層アーキテクチャ
+# DWH 技術仕様
 
-## 層構造
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│ marts.*                                                             │
-│   分析・集計ビュー                                                  │
-│   agg_daily_health, agg_weekly_productivity                         │
-└─────────────────────────────────────────────────────────────────────┘
-                                    ▲
-┌─────────────────────────────────────────────────────────────────────┐
-│ core.*                                                              │
-│   サービス統合（サービス名が消える）                                │
-│   fct_time_entries, fct_transactions, dim_categories                │
-└─────────────────────────────────────────────────────────────────────┘
-                                    ▲
-┌─────────────────────────────────────────────────────────────────────┐
-│ staging.*                                                           │
-│   クリーニング・正規化済み                                          │
-│   stg_toggl__entries, stg_zaim__transactions                        │
-└─────────────────────────────────────────────────────────────────────┘
-                                    ▲
-┌─────────────────────────────────────────────────────────────────────┐
-│ raw.*                                                               │
-│   外部APIからの生データ                                             │
-│   toggl_entries, zaim_transactions, fitbit_sleep                    │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-## 層別設計
-
-| 層 | 役割 | サービス名 | 形式 | 管理方法 |
-|----|------|-----------|------|---------|
-| raw | APIレスポンスをそのまま保存 | あり | テーブル | マイグレーション |
-| staging | 型変換、列名正規化、TZ変換 | あり | ビュー | dbt（サーバー定義） |
-| core | 複数サービスの統合 | **なし** | ビュー | ビジュアルエディタ（将来） |
-| marts | 分析・集計、ドメイン別 | なし | ビュー | ビジュアルエディタ（将来） |
+設計哲学については[024 DWH 4層アーキテクチャ](/000-foundations/020-philosophy/024-dwh-architecture)を参照。
 
 ## rawテーブルのスキーマ設計
 
@@ -67,16 +32,6 @@ CREATE INDEX idx_{service}__{entity}_synced_at ON raw.{service}__{entity} (synce
 CREATE INDEX idx_{service}__{entity}_data_gin ON raw.{service}__{entity} USING gin (data);
 ```
 
-### 命名規則
-
-| 項目 | 規則 | 例 |
-|------|------|-----|
-| スキーマ | `raw` | `raw.toggl_track__time_entries` |
-| テーブル名 | `{service}__{entity}` | `toggl_track__time_entries` |
-| サービス名 | snake_case | `toggl_track`, `google_calendar` |
-| エンティティ名 | snake_case（複数形） | `time_entries`, `projects` |
-| 区切り | ダブルアンダースコア `__` | サービスとエンティティの区切り |
-
 ### 設計理由
 
 | 要素 | 目的 |
@@ -86,7 +41,28 @@ CREATE INDEX idx_{service}__{entity}_data_gin ON raw.{service}__{entity} USING g
 | api_version | APIバージョン変更時のデータ追跡 |
 | GINインデックス | JSONB内の値検索を高速化 |
 
-### データ取得方針
+## 命名規則
+
+| 項目 | 規則 | 例 |
+|------|------|-----|
+| スキーマ | `raw` | `raw.toggl_track__time_entries` |
+| テーブル名 | `{service}__{entity}` | `toggl_track__time_entries` |
+| サービス名 | snake_case | `toggl_track`, `google_calendar` |
+| エンティティ名 | snake_case（複数形） | `time_entries`, `projects` |
+| 区切り | ダブルアンダースコア `__` | サービスとエンティティの区切り |
+
+### 層別命名規則
+
+| 層 | プレフィックス | 例 |
+|----|---------------|-----|
+| raw | `raw.{service}__{entity}` | raw.toggl_track__time_entries |
+| staging | `staging.stg_{service}__{entity}` | staging.stg_toggl__time_entries |
+| core | `core.fct_` / `core.dim_` | core.fct_time_entries, core.dim_projects |
+| marts | `marts.agg_` / ドメイン名 | marts.agg_daily_health |
+
+**注意**: raw層はダブルアンダースコア `__` でサービスとエンティティを区切る
+
+## データ取得方針
 
 | API種別 | 用途 | 取得範囲 | 頻度 |
 |---------|------|----------|------|
@@ -101,6 +77,36 @@ CREATE INDEX idx_{service}__{entity}_data_gin ON raw.{service}__{entity} USING g
 - 全件取得用。billable_amount等の追加情報あり
 - 1リクエストあたり最大1年の制限あり（自動分割対応）
 - 無料プラン: 30リクエスト/時間（402エラー時は60分待機）
+
+## 層別管理方法
+
+| 層 | 管理方法 |
+|----|---------|
+| raw | マイグレーション |
+| staging | dbt（サーバー定義） |
+| core | ビジュアルエディタ（将来） |
+| marts | ビジュアルエディタ（将来） |
+
+## core層のデータ粒度
+
+4 informationの種別によって保存粒度が異なる：
+
+| information | 粒度 | 例 |
+|-------------|------|-----|
+| actual | データエントリ単位 | 個々の時間記録、取引明細 |
+| target | データエントリ単位 | 調整済み目標値（エントリごと） |
+| estimate | 集計値単位 | カテゴリ別・期間別の推定値 |
+| draft | 集計値単位 | カテゴリ別・期間別の目標草案 |
+
+## staging層の責務
+
+| 処理 | 例 |
+|------|---|
+| 型変換 | 文字列→タイムスタンプ |
+| 列名正規化 | `startTime` → `start_time` |
+| タイムゾーン変換 | JST → UTC |
+| NULL処理 | デフォルト値の設定 |
+| フィルタリング | 削除済みレコードの除外 |
 
 ## マイグレーション戦略
 
@@ -125,42 +131,7 @@ supabase/migrations/
 - PostgreSQLは空テーブルによる性能影響なし
 - 全ユーザー共通のスキーマにより、テンプレートとしての堅牢性を確保
 
-## staging層の管理
-
-### 方針
-
-- **サーバー側で定義**: 全ユーザー共通のクレンジングロジック
-- **dbtで実装**: SQL変換の標準ツール
-
-
-### 責務
-
-| 処理 | 例 |
-|------|---|
-| 型変換 | 文字列→タイムスタンプ |
-| 列名正規化 | `startTime` → `start_time` |
-| タイムゾーン変換 | JST → UTC |
-| NULL処理 | デフォルト値の設定 |
-| フィルタリング | 削除済みレコードの除外 |
-
-## 命名規則
-
-| 層 | プレフィックス | 例 |
-|----|---------------|----|
-| raw | `raw.{service}__{entity}` | raw.toggl_track__time_entries |
-| staging | `staging.stg_{service}__{entity}` | staging.stg_toggl__time_entries |
-| core | `core.fct_` / `core.dim_` | core.fct_time_entries, core.dim_projects |
-| marts | `marts.agg_` / ドメイン名 | marts.agg_daily_health |
-
-**注意**: raw層はダブルアンダースコア `__` でサービスとエンティティを区切る
-
-## サービス非依存の設計
-
-core層以降ではサービス名が消える：
-
-- 将来Toggl Trackから別サービスに移行しても、core/marts層は変更不要
-- 分析クエリは `fct_time_entries` を参照し、データソースを意識しない
-- staging層で新旧サービスを統合するロジックを吸収
+---
 
 ## raw層テーブル一覧
 
@@ -232,4 +203,3 @@ core層以降ではサービス名が消える：
 | テーブル | source_id | 説明 |
 |---------|-----------|------|
 | `raw.airtable__records` | record id | レコード |
-

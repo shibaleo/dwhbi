@@ -219,6 +219,6 @@ ADR-003 のフィードバックループに従い、estimate を考慮して ta
 
 ## 関連ドキュメント
 
-- [ADR-003 フィードバックループ](/100-development/130-design/131-decisions/adr_003-feedback-loop) - 4 Information概念
-- [ADR-004 day_type設計](/100-development/130-design/131-decisions/adr_004-day-type-design) - 日タイプ導出
-- [005 推定値（estimate）](/100-development/120-specifications/123-transform/schema/core/005-estimate) - 推定値の設計
+- [131 ADR-003 フィードバックループ](/100-development/130-design/131-decisions/adr_003-feedback-loop) - 4 Information概念
+- [131 ADR-004 day_type設計](/100-development/130-design/131-decisions/adr_004-day-type-design) - 日タイプ導出
+- [123 推定値（estimate）](/100-development/120-specifications/123-transform/schema/core/005-estimate) - 推定値の設計

@@ -1,11 +1,17 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import { rehypeBasePath } from './src/plugins/rehype-base-path.mjs';
+
+const BASE_PATH = '/supabase-sync-jobs';
 
 // https://astro.build/config
 export default defineConfig({
 	site: 'https://shibaleo.github.io',
-	base: '/supabase-sync-jobs',
+	base: BASE_PATH,
+	markdown: {
+		rehypePlugins: [[rehypeBasePath, { base: BASE_PATH }]],
+	},
 	integrations: [
 		starlight({
 			title: 'DWH+BI',
@@ -46,20 +52,25 @@ export default defineConfig({
 								},
 								{
 									label: '123 transform（データ変換）',
-									items: [
-										{
-											label: 'スキーマ',
-											autogenerate: { directory: '100-development/120-specifications/123-transform/schema/core' },
-										},
-										{
-											label: 'ロジック',
-											autogenerate: { directory: '100-development/120-specifications/123-transform/logic/time' },
-										},
-									],
+									autogenerate: { directory: '100-development/120-specifications/123-transform/schema/core' },
 								},
 								{
 									label: '124 console（管理コンソール）',
 									autogenerate: { directory: '100-development/120-specifications/124-console' },
+								},
+								{
+									label: '125 analyzer（ML分析）',
+									items: [
+										{ label: '概要', slug: '100-development/120-specifications/125-analyzer/overview' },
+										{
+											label: 'time（時間）',
+											autogenerate: { directory: '100-development/120-specifications/125-analyzer/time' },
+										},
+										{
+											label: 'health（健康）',
+											autogenerate: { directory: '100-development/120-specifications/125-analyzer/health' },
+										},
+									],
 								},
 							],
 						},
@@ -117,6 +128,10 @@ export default defineConfig({
 						{
 							label: '420 運用手順',
 							autogenerate: { directory: '400-operations/420-runbook' },
+						},
+						{
+							label: '430 運用リスク',
+							autogenerate: { directory: '400-operations/430-risk' },
 						},
 					],
 				},
