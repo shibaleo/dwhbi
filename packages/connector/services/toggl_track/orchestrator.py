@@ -7,9 +7,9 @@
 import time
 from typing import TypedDict
 
-from pipelines.lib.logger import setup_logger
-from pipelines.services.toggl_track.sync_time_entries import sync_time_entries
-from pipelines.services.toggl_track.sync_masters import sync_masters
+from lib.logger import setup_logger
+from services.toggl_track.sync_time_entries import sync_time_entries
+from services.toggl_track.sync_masters import sync_masters
 
 logger = setup_logger(__name__)
 

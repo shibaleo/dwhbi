@@ -9,9 +9,9 @@ import time
 from datetime import date, timedelta
 from typing import Any, TypedDict
 
-from pipelines.db.raw_client import upsert_raw_batch, RawRecord
-from pipelines.lib.logger import setup_logger
-from pipelines.services.google_calendar.api_client import fetch_events
+from db.raw_client import upsert_raw_batch, RawRecord
+from lib.logger import setup_logger
+from services.google_calendar.api_client import fetch_events
 
 logger = setup_logger(__name__)
 

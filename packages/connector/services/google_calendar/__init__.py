@@ -10,6 +10,6 @@ raw層にJSONB形式で保存する。
 - orchestrator.py: 統合オーケストレーター
 """
 
-from pipelines.services.google_calendar.orchestrator import sync_all
+from services.google_calendar.orchestrator import sync_all
 
 __all__ = ["sync_all"]

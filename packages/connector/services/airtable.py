@@ -13,9 +13,9 @@ from typing import Any, TypedDict
 
 import httpx
 
-from pipelines.lib.credentials_vault import get_credentials
-from pipelines.lib.db import get_supabase_client
-from pipelines.lib.logger import setup_logger
+from lib.credentials_vault import get_credentials
+from lib.db import get_supabase_client
+from lib.logger import setup_logger
 
 logger = setup_logger(__name__)
 

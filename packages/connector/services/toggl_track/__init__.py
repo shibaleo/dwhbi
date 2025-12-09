@@ -9,10 +9,10 @@
     - sync_all: 全データ同期
 """
 
-from pipelines.services.toggl_track.sync_time_entries import sync_time_entries
-from pipelines.services.toggl_track.sync_time_entries_report import sync_time_entries_report
-from pipelines.services.toggl_track.sync_masters import sync_masters
-from pipelines.services.toggl_track.orchestrator import sync_all
+from services.toggl_track.sync_time_entries import sync_time_entries
+from services.toggl_track.sync_time_entries_report import sync_time_entries_report
+from services.toggl_track.sync_masters import sync_masters
+from services.toggl_track.orchestrator import sync_all
 
 __all__ = [
     "sync_time_entries",

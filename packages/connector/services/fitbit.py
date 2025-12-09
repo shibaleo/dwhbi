@@ -12,7 +12,7 @@ Supabase の raw.fitbit_* テーブルに保存する。
 - 差分同期対応
 
 使用例:
-    python -c "import asyncio; from pipelines.services.fitbit import sync_fitbit; asyncio.run(sync_fitbit(days=3))"
+    python -c "import asyncio; from services.fitbit import sync_fitbit; asyncio.run(sync_fitbit(days=3))"
 """
 
 import asyncio
@@ -21,9 +21,9 @@ from datetime import datetime, timedelta, timezone
 from typing import TypedDict, Any, Optional
 from zoneinfo import ZoneInfo
 
-from pipelines.lib.logger import setup_logger
-from pipelines.lib.credentials_vault import get_credentials, update_credentials
-from pipelines.lib.db import get_supabase_client
+from lib.logger import setup_logger
+from lib.credentials_vault import get_credentials, update_credentials
+from lib.db import get_supabase_client
 
 logger = setup_logger(__name__)
 

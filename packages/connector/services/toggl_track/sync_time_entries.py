@@ -8,9 +8,9 @@ import time
 from datetime import date, timedelta
 from typing import Any, TypedDict
 
-from pipelines.db.raw_client import upsert_raw, RawRecord
-from pipelines.lib.logger import setup_logger
-from pipelines.services.toggl_track.api_client import fetch_time_entries
+from db.raw_client import upsert_raw, RawRecord
+from lib.logger import setup_logger
+from services.toggl_track.api_client import fetch_time_entries
 
 logger = setup_logger(__name__)
 

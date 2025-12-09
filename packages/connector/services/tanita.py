@@ -24,9 +24,9 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
-from pipelines.lib.credentials_vault import get_credentials, update_credentials
-from pipelines.lib.db import get_supabase_client
-from pipelines.lib.logger import setup_logger
+from lib.credentials_vault import get_credentials, update_credentials
+from lib.db import get_supabase_client
+from lib.logger import setup_logger
 
 # ロガー設定
 logger = setup_logger("tanita")

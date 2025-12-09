@@ -1,5 +1,5 @@
-"""Database utilities for pipelines"""
+"""Database utilities for connector"""
 
-from pipelines.db.raw_client import upsert_raw, upsert_raw_batch
+from db.raw_client import upsert_raw, upsert_raw_batch
 
 __all__ = ["upsert_raw", "upsert_raw_batch"]

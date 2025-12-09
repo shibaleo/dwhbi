@@ -3,7 +3,7 @@
 全サービス共通でraw.{service}__{endpoint}テーブルへのUPSERTを行う。
 
 使用方法:
-    from pipelines.db.raw_client import upsert_raw
+    from db.raw_client import upsert_raw
 
     records = [
         {"source_id": "123", "data": {"id": 123, "name": "test"}},
@@ -27,7 +27,7 @@ from typing import Any, TypedDict
 import psycopg2
 from psycopg2.extras import execute_values
 
-from pipelines.lib.logger import setup_logger
+from lib.logger import setup_logger
 
 logger = setup_logger(__name__)
 

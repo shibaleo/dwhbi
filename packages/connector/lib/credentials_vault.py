@@ -17,7 +17,7 @@ Supabase Vault（vault.secrets）を使用した認証情報管理。
     - DIRECT_DATABASE_URL (直接DB接続用)
 
 使用方法:
-    from pipelines.lib.credentials_vault import get_credentials, update_credentials
+    from lib.credentials_vault import get_credentials, update_credentials
 """
 
 import json

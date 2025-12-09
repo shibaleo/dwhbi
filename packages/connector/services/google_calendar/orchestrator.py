@@ -7,9 +7,9 @@
 import time
 from typing import TypedDict
 
-from pipelines.lib.logger import setup_logger
-from pipelines.services.google_calendar.sync_events import sync_events
-from pipelines.services.google_calendar.sync_masters import sync_masters
+from lib.logger import setup_logger
+from services.google_calendar.sync_events import sync_events
+from services.google_calendar.sync_masters import sync_masters
 
 logger = setup_logger(__name__)
 

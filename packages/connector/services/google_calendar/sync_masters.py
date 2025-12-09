@@ -7,9 +7,9 @@ import asyncio
 import time
 from typing import Any, TypedDict
 
-from pipelines.db.raw_client import upsert_raw, RawRecord
-from pipelines.lib.logger import setup_logger
-from pipelines.services.google_calendar.api_client import (
+from db.raw_client import upsert_raw, RawRecord
+from lib.logger import setup_logger
+from services.google_calendar.api_client import (
     fetch_colors,
     fetch_calendar_list,
     fetch_calendar,
