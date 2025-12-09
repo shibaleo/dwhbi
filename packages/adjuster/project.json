@@ -1,0 +1,36 @@
+{
+  "name": "adjuster",
+  "projectType": "application",
+  "sourceRoot": "packages/adjuster/src",
+  "targets": {
+    "run": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/adjuster",
+        "command": ".venv/Scripts/python -m adjuster"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/adjuster",
+        "command": ".venv/Scripts/pytest tests/"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/adjuster",
+        "command": ".venv/Scripts/ruff check src/"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/adjuster",
+        "command": ".venv/Scripts/mypy src/"
+      }
+    }
+  },
+  "tags": ["scope:adjuster", "type:app", "lang:python"]
+}

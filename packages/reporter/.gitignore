@@ -1,0 +1,5 @@
+# Generated PDFs
+output/*.pdf
+
+# Node
+node_modules/

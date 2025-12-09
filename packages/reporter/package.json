@@ -1,0 +1,14 @@
+{
+  "name": "@repo/reporter",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "typst compile templates/daily.typ output/daily.pdf",
+    "watch": "typst watch templates/daily.typ output/daily.pdf",
+    "generate": "node src/generate.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.0.0",
+    "dotenv": "^16.0.0"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "name": "analyzer",
+  "projectType": "application",
+  "sourceRoot": "packages/analyzer/src",
+  "targets": {
+    "run": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/analyzer",
+        "command": ".venv/Scripts/python -m analyzer"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/analyzer",
+        "command": ".venv/Scripts/pytest tests/"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/analyzer",
+        "command": ".venv/Scripts/ruff check src/"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/analyzer",
+        "command": ".venv/Scripts/mypy src/"
+      }
+    }
+  },
+  "tags": ["scope:analyzer", "type:app", "lang:python"]
+}

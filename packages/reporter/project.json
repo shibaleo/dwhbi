@@ -1,0 +1,29 @@
+{
+  "name": "reporter",
+  "projectType": "application",
+  "sourceRoot": "packages/reporter/src",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/reporter",
+        "command": "typst compile templates/daily.typ output/daily.pdf"
+      }
+    },
+    "watch": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/reporter",
+        "command": "typst watch templates/daily.typ output/daily.pdf"
+      }
+    },
+    "generate": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/reporter",
+        "command": "node src/generate.js"
+      }
+    }
+  },
+  "tags": ["scope:reporter", "type:app", "lang:typst"]
+}

@@ -1,0 +1,29 @@
+{
+  "name": "visualizer",
+  "projectType": "application",
+  "sourceRoot": "packages/visualizer",
+  "targets": {
+    "up": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/visualizer",
+        "command": "docker-compose up -d"
+      }
+    },
+    "down": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/visualizer",
+        "command": "docker-compose down"
+      }
+    },
+    "logs": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/visualizer",
+        "command": "docker-compose logs -f"
+      }
+    }
+  },
+  "tags": ["scope:visualizer", "type:app", "lang:grafana"]
+}
