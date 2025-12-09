@@ -327,3 +327,6 @@ dmypy.json
 
 # ruff
 .ruff_cache/
+
+# Nx
+.nx/

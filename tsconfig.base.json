@@ -18,7 +18,9 @@
     "resolveJsonModule": true,
     "baseUrl": ".",
     "paths": {
-      "@repo/database-types": ["packages/database-types/src/index.ts"]
+      "@repo/database-types": ["packages/database-types/src/index.ts"],
+      "@repo/connector": ["packages/connector/src/index.ts"],
+      "@repo/connector/*": ["packages/connector/src/*"]
     }
   },
   "exclude": ["node_modules", "dist"]

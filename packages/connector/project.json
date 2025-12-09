@@ -1,36 +1,50 @@
 {
   "name": "connector",
-  "projectType": "application",
-  "sourceRoot": "packages/connector",
+  "projectType": "library",
+  "sourceRoot": "packages/connector/src",
   "targets": {
-    "sync:toggl": {
+    "build": {
       "executor": "nx:run-commands",
       "options": {
         "cwd": "packages/connector",
-        "command": "python -m services.toggl_track"
+        "command": "tsc"
       }
     },
-    "sync:gcalendar": {
+    "typecheck": {
       "executor": "nx:run-commands",
       "options": {
         "cwd": "packages/connector",
-        "command": "python -m services.google_calendar"
+        "command": "tsc --noEmit"
       }
     },
     "test": {
       "executor": "nx:run-commands",
       "options": {
         "cwd": "packages/connector",
-        "command": "pytest tests/"
+        "command": "vitest run"
       }
     },
     "lint": {
       "executor": "nx:run-commands",
       "options": {
         "cwd": "packages/connector",
-        "command": "ruff check ."
+        "command": "npx tsc --noEmit"
+      }
+    },
+    "sync:toggl": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/connector",
+        "command": "npx tsx src/services/toggl-track/cli.ts"
+      }
+    },
+    "sync:gcal": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/connector",
+        "command": "npx tsx src/services/google-calendar/cli.ts"
       }
     }
   },
-  "tags": ["scope:connector", "type:app", "lang:python"]
+  "tags": ["scope:connector", "type:lib", "lang:typescript"]
 }

@@ -8,6 +8,7 @@ export default defineConfig({
     include: ["**/__tests__/**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}"],
     exclude: ["node_modules", ".next"],
     globals: true,
+    setupFiles: ["./src/__tests__/setup.ts"],
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],
