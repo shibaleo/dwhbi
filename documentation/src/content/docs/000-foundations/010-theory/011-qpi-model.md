@@ -11,8 +11,17 @@ status: finalized
 # QPI モデル
 - QPI（Quad Practices & Information）モデルは、意思決定の主体(個人・組織)の行動の結果として計測できるデータの活用を構造化するモデルである。
 - 名称の「Quad Practices & Information」は、4つの実践（practices）が4つの情報（information）を生むという関係性を表す。
-- データ活用を **log/analyze/aim/adjust** の4つの実践（4 practices）で定義する。
-- 各実践から生まれるデータに **actual/estimate/draft/target** という4種類の意味を付与し、4つの情報（4 information）として定義する。
+- データ活用を以下の4つの実践（4 practices）で定義する。
+  - **log（記録）**
+  - **analyze（分析）**
+  - **conceive（構想）**
+  - **adjust（調整）**
+
+- 各実践から生まれるデータに以下の4種類の意味を付与し、4つの情報（4 information）として定義する。
+  - **actual（実績）**
+  - **estimate（推定）**
+  - **intent（意向）**
+  - **target（目標）**
 
 **対象とするデータ**
 - 意思決定の主体（個人・組織）の行動に起因し、その行動を改善可能なデータを対象とする。
@@ -36,8 +45,8 @@ status: finalized
 |---|------|------|------|
 | 1 | log | 測定対象（行動・状態） | actual（実績） |
 | 2 | analyze | actual + 客観的外部データ（objective inputs） | estimate（推定） |
-| 3 | aim | estimate + 主観的外部要因（subjective external factors） | draft（草案） |
-| 4 | adjust | draft + すべての利用可能な情報 | target（目標） |
+| 3 | conceive | estimate + 主観的外部要因（subjective external factors） | intent（意向） |
+| 4 | adjust | intent + すべての利用可能な情報 | target（目標） |
 
 ### log（測定）
 
@@ -56,27 +65,27 @@ actualを集計・分析し、estimateを導出するプロセス。
 - 例：マスタデータ、気象情報、機械学習モデルのハイパーパラメータなど。
 - 主観を含まない客観的データのみを扱う。
 
-### aim（目標草案の設定）
+### conceive（構想）
 
-estimate を基に、主観的外部要因（subjective external factors）を取り込み、主観的な未来像である draft を生成する内的プロセス。
+estimate を基に、主観的外部要因（subjective external factors）を取り込み、主観的な未来像である intent を生成する内的プロセス。
 
-- estimateはdraftを考えるための材料となる。
+- estimateはintentを考えるための材料となる。
 - 主観的外部要因は、analyze の客観的外部データ（objective inputs）とは異なり、主体の外部から与えられる目的・制約や主体の願望といった外生的な入力である。
 - 例：「今年中に資格を取りたい」「上司から月100時間の業務指示」「家族との時間を確保したい」など。
 
 ### adjust（目標調整）
 
-aim で生成された draft に、現実的制約を導入して target を確定させるプロセス。
+conceive で生成された intent に、現実的制約を導入して target を確定させるプロセス。
 
 - 将来予定、生活条件、性格傾向、外部環境など、現時点で利用可能なすべてを考慮して調整する。
-- draft が「主観的な理想」であるのに対し、target は「実現可能性により調整された主観」である。
+- intent が「主観的な理想」であるのに対し、target は「実現可能性により調整された主観」である。
 
-### aim と adjust の違い
+### conceive と adjust の違い
 
 | 実践 | 性質 | 説明 |
 |------|------|-----------|
-| **aim** | 内的プロセス | estimate を基に、主観的外部要因を取り込んで「理想（draft）」を描く |
-| **adjust** | 制約の導入 | draft をすべての情報で調整し、「実現可能な目標（target）」にする |
+| **conceive** | 内的プロセス | estimate を基に、主観的外部要因を取り込んで「理想（intent）」を描く |
+| **adjust** | 制約の導入 | intent をすべての情報で調整し、「実現可能な目標（target）」にする |
 
 ---
 
@@ -86,20 +95,15 @@ aim で生成された draft に、現実的制約を導入して target を確�
 
 ### なぜ4種類なのか（2×2マトリクス）
 
+QPIモデルでは、情報を**主観/客観**, **確実/不確実**という2つの軸で分類する。
+
 | | 確実 | 不確実 |
 |---|---|---|
 | **客観** | actual | estimate |
-| **主観** | target | draft |
+| **主観** | target | intent |
 
-- **客観/主観**: 情報に意思が含まれるか
-- **確実/不確実**: 事実の確度またはコミットメントの強さ
-
-**draft は主観的で願望を含み、不確実性を内包する点が本質である。**
-target は「現時点での確定意図（committed intention）」であり、行動を規定する基準値として機能する。
-
-**注意：targetは目標なのだから変わりうるのでは？**
-
-回答：当然変わりうるが、目標の変更は行動後の目標の再設定を意味する。一度目標を決めた後は、その目標を前提として行動し、記録するという過程を説明するために「主観/確実」と定義している。
+- **客観/主観**: 情報に意図が含まれるか
+- **確実/不確実**: 情報の確度またはコミットメントの強さ
 
 ### information の定義
 
@@ -107,35 +111,51 @@ target は「現時点での確定意図（committed intention）」であり、
 |---|-----------|------|-----|
 | 1 | **actual** | 実際に記録された値 | 作業時間のログ |
 | 2 | **estimate** | 過去実績から導出された推定 | 推定作業時間 |
-| 3 | **draft** | 理想・願望を含む草案（不確実） | 「来月は200時間働きたい」 |
-| 4 | **target** | draftを現実制約で調整した目標 | 「185時間が妥当」 |
+| 3 | **intent** | 理想・願望を含む意向（不確実） | 「来月は200時間働きたい」 |
+| 4 | **target** | intentを現実制約で調整した目標 | 「185時間が妥当」 |
 
 ### practice と information の対応
 
 - log → actual
 - analyze → estimate
-- aim → draft
+- conceive → intent
 - adjust → target
 
-ただし実際には1:1に限定されず、複数の estimate や draft が統合されることもある。
+ただし実際には1:1に限定されず、複数の estimate や intent が統合されることもある。
 
-### actual と estimate
+### estimate の不確実性
+- QPIモデルにおける「確実/不確実」は、数値の確定性ではなく「主体の判断に使える確度」を意味する。判断に適用される情報である点で“判断の不確実さ”を内包する。
+
+
+- 質問：過去データの平均を予測値として使う場合、過去データの平均値は確定値では？
+- 回答：estimate に含まれる値は、平均・回帰・補間・モデル予測など複数の方法で生成される。
+- これらはすべて「過去の確定情報を判断に投射する」という共通点を持つため、QPI では 判断に対する不確実情報 として統一的に扱う。
+- estimate の数値が数学的に確定しているかどうかは重要ではない。
+
+### target の確実性
+- target は「現時点での確定意図（committed intention）」であり、行動の基準として使用されるため、主体の確定意図として“確実な主観情報”となる。
+
+
+- 注意：targetは目標なのだから変わりうるのでは？
+- 回答：当然変わりうるが、目標の変更は行動後の目標の再設定を意味する。一度目標を決めた後は、その目標を前提として行動し、記録するという過程を説明するために「主観/確実」と定義している。
+
+### actual と estimate の違い
 
 - **actual** は過去の記録であり変更不可能。
 - **estimate** は actual を分析して導出される推定値。
 
-estimate は draft・target の基準として機能し、この「客観性」が後工程の判断を支える。
+estimate は intent・target の基準として機能し、この「客観性」が後工程の判断を支える。
 
-### draft と target の違い
+### intent と target の違い
 
-- **draft** は外部要因・理想・願望を含む主観的な未来像（不確実）。
-- **target** は draft を現実的な制約で調整したもの（主観×確実）。
+- **intent** は外部要因・理想・願望を含む主観的な未来像（不確実）。
+- **target** は intent を現実的な制約で調整したもの（主観×確実）。
 
-この分離が、計画倒れの構造的な発生を抑制する。
+この分離が、計画倒れの構造的な発生を抑制する。意向は人間の行動の動機を反映する情報であるため、軽視するわけではないことに注意
 
 ```
 estimate: 過去3ヶ月の平均は180時間
-draft: 200時間働きたい
+intent: 200時間働きたい
 target: 現実的には185時間が妥当
 ```
 
@@ -146,21 +166,21 @@ target: 現実的には185時間が妥当
 ### 組み合わせパターン（8種）
 
 - QPIモデルは4つの情報すべてを揃えることを強制しない。
-- actualを必須として、残り3つ（estimate, draft, target）の有無により8パターンが存在する。
+- actualを必須として、残り3つ（estimate, intent, target）の有無により8パターンが存在する。
 
 | パターン | 保持する情報 | 説明 |
 |----------|-------------|------|
 | 記録のみ | actual | 最小構成。記録を残すだけでも、後から振り返る材料になる |
 | 振り返り | actual + estimate | 実績から推定を導出し、傾向を把握する |
-| 意欲駆動 | actual + draft | 草案と実績を比較。adjustを経ていないため乖離が生じやすい |
+| 意欲駆動 | actual + intent | 意向と実績を比較。adjustを経ていないため乖離が生じやすい |
 | 外部目標従属型 | actual + target | 外部から与えられた目標に対して実績を記録・比較する |
-| 草案設定 | actual + estimate + draft | 推定を参照して草案を設定するが、調整はしないので実現可能性は不明 |
-| 合理的目標 | actual + estimate + target | 推定から直接目標を設定。効率的だが、草案がないと動機づけが弱まる可能性がある |
-| 経験則依存 | actual + draft + target | 草案を調整して目標化するが、推定なしで行う。経験則に依存 |
-| フル活用 | actual + estimate + draft + target | 4 practicesすべてが機能し、継続的な行動選択が可能 |
+| 意向設定 | actual + estimate + intent | 推定を参照して意向を設定するが、調整はしないので実現可能性は不明 |
+| 合理的目標 | actual + estimate + target | 推定から直接目標を設定。効率的だが、意向がないと動機づけが弱まる可能性がある |
+| 経験則依存 | actual + intent + target | 意向を調整して目標化するが、推定なしで行う。経験則に依存 |
+| フル活用 | actual + estimate + intent + target | 4 practicesすべてが機能し、継続的な行動選択が可能 |
 
 - **actualは必須**: どのパターンでも、記録（actual）がなければ始まらない
-- **順序は問わない**: draftから始めてもよいし、外部からtargetが与えられることもある
+- **順序は問わない**: intentから始めてもよいし、外部からtargetが与えられることもある
 - **段階的に拡張可能**: 記録だけから始めて、必要に応じて他の情報を追加できる
 
 ### target を記録する意義
@@ -184,7 +204,7 @@ target と actual の乖離は、
 | 記録だけで終わる | 記録後の実践が明確になる |
 | データの関係性が曖昧 | 4 information として整理 |
 | 何を見るべきかわからない | actual を中心に据える |
-| 計画倒れ | draft と target の分離で防ぐ |
+| 計画倒れ | intent と target の分離で防ぐ |
 
 ### 紙とペンでも実践可能
 
@@ -192,14 +212,14 @@ target と actual の乖離は、
 
 1. **log** → actual
 2. **analyze** → estimate
-3. **aim** → draft
+3. **conceive** → intent
 4. **adjust** → target
 
 の4段階は手作業でも実行可能である。
 
 ただし、analyze, adjustの過程における客観性を担保することが難しくなる。
 
-特にaim と adjust を無意識に混同すると、過大目標や計画倒れが生じやすい。
+特にconceive と adjust を無意識に混同すると、過大目標や計画倒れが生じやすい。
 
 ### 関連フレームワーク
 
@@ -208,7 +228,7 @@ QPIモデルは独自の概念ではなく、既存のフレームワークや�
 | 概念 | 共通点 |
 |------|--------|
 | **PDCA** | 反復的な改善行動（Plan-Do-Check-Act）。PDCAは行動の循環を前提とするが、QPIモデルは情報の分類を主眼とし、「サイクルを回す」ことを前提としない |
-| **OKR** | 目標の階層化（Objectives and Key Results）。draftとtargetの分離は、野心的な目標と測定可能な成果指標の分離と類似 |
+| **OKR** | 目標の階層化（Objectives and Key Results）。intentとtargetの分離は、野心的な目標と測定可能な成果指標の分離と類似 |
 | **GTD** | タスク・行動管理（Getting Things Done）。logによる記録とanalyzeによる振り返りの構造が共通 |
 | **Quantified Self** | データの記録・分析による自己理解。actualの蓄積とanalyzeという基本思想が共通 |
 
@@ -235,14 +255,14 @@ Ackoff, R. L. (1989) "From Data to Wisdom"
 
 2. Goal-setting Theory（目標設定理論）
 
-draft / target の分離は、この理論の文脈と整合する。
+intent / target の分離は、この理論の文脈と整合する。
 
 Locke & Latham (1990, 2002)
 A theory of goal setting and task performance.
 
 特に：
 
-Ambitious (draft)
+Ambitious (intent)
 
 Achievable commitment (target)
 
@@ -250,7 +270,7 @@ Achievable commitment (target)
 
 3. Behavioral Economics / 行動科学
 
-（aim と adjust の分離を補強）
+（conceive と adjust の分離を補強）
 
 Kahneman & Tversky（プロスペクト理論）
 
@@ -313,7 +333,7 @@ QPIは独自モデルなので、
 
 estimate（推定）→ 統計学・予測理論
 
-aim（主観的未来像）→ 目標設定理論・動機づけ理論
+conceive（構想）→ 目標設定理論・動機づけ理論
 
 adjust（制約導入）→ 自己調整理論・行動経済学
 

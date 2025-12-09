@@ -30,7 +30,16 @@ export default defineConfig({
 				},
 				{
 					label: '000 背景・基礎',
-					autogenerate: { directory: '000-foundations' },
+					items: [
+						{
+							label: '010 理論',
+							autogenerate: { directory: '000-foundations/010-theory' },
+						},
+						{
+							label: '020 実装哲学',
+							autogenerate: { directory: '000-foundations/020-philosophy' },
+						},
+					],
 				},
 				{
 					label: '100 開発',
