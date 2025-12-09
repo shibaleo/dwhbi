@@ -306,6 +306,41 @@ supabase-sync-jobs/
 
 ---
 
+### Phase 9: console のテスト本格整備
+
+**目的:** console (Next.js) のテスト環境を Vitest で本格的に整備
+
+**前提条件:** Phase 8 完了（または独立して実行可能）
+
+| # | タスク | 詳細 |
+|---|--------|------|
+| 9.1 | コンポーネントテスト追加 | React Testing Library でコンポーネントテスト |
+| 9.2 | API ルートテスト追加 | Next.js API Routes のテスト |
+| 9.3 | Supabase モック設定 | @supabase/supabase-js のモック設定 |
+| 9.4 | MSW 導入 | API モック用の Mock Service Worker 設定 |
+| 9.5 | カバレッジ目標設定 | 最低カバレッジ閾値の設定 |
+| 9.6 | CI/CD 統合 | GitHub Actions でのテスト自動実行 |
+
+**テスト構成:**
+- `__tests__/components/`: コンポーネント単体テスト
+- `__tests__/api/`: API ルートテスト
+- `__tests__/lib/`: ユーティリティ関数テスト
+- `__tests__/integration/`: 統合テスト
+
+**技術スタック:**
+- Vitest: テストランナー（Vite ベース、高速）
+- @testing-library/react: コンポーネントテスト
+- @testing-library/user-event: ユーザーインタラクション
+- MSW (Mock Service Worker): API モック
+- jsdom: DOM 環境
+
+**成果物:**
+- 充実したテストスイート
+- 80%+ のカバレッジ
+- CI/CD でのテスト自動実行
+
+---
+
 ## 移行時の注意事項
 
 ### Git 履歴の保持
