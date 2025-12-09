@@ -218,7 +218,9 @@ jobs:
 
 ### 6.4 データ同期ワークフロー更新
 
-#### 6.4.1 sync-toggl.yml 更新例
+**注意:** connector は Phase 8 完了まで Python。TypeScript 移行後にワークフローを更新する。
+
+#### 6.4.1 sync-toggl.yml 更新例（Python 版）
 
 ```yaml
 # .github/workflows/sync-toggl.yml
@@ -237,24 +239,41 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install dependencies
+      - name: Install Node dependencies
         run: npm ci
 
-      - name: Build connector
-        run: npx nx build connector
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
 
       - name: Run sync
-        run: npx nx run connector:sync-toggl
+        run: npx nx run connector:sync:toggl
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           TOGGL_API_TOKEN: ${{ secrets.TOGGL_API_TOKEN }}
+```
+
+#### 6.4.2 Phase 8 完了後（TypeScript 版）
+
+```yaml
+# Phase 8 完了後に更新
+- name: Build connector
+  run: npx nx build connector
+
+- name: Run sync
+  run: npx nx run connector:sync:toggl
 ```
 
 ---

@@ -1,0 +1,57 @@
+{
+  "name": "transform",
+  "projectType": "application",
+  "sourceRoot": "packages/transform",
+  "targets": {
+    "run": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/transform",
+        "command": "PYTHONUTF8=1 ../.venv/Scripts/dbt run"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/transform",
+        "command": "PYTHONUTF8=1 ../.venv/Scripts/dbt test"
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/transform",
+        "command": "PYTHONUTF8=1 ../.venv/Scripts/dbt build"
+      }
+    },
+    "seed": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/transform",
+        "command": "PYTHONUTF8=1 ../.venv/Scripts/dbt seed"
+      }
+    },
+    "compile": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/transform",
+        "command": "PYTHONUTF8=1 ../.venv/Scripts/dbt compile"
+      }
+    },
+    "docs:generate": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/transform",
+        "command": "PYTHONUTF8=1 ../.venv/Scripts/dbt docs generate"
+      }
+    },
+    "docs:serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/transform",
+        "command": "PYTHONUTF8=1 ../.venv/Scripts/dbt docs serve"
+      }
+    }
+  },
+  "tags": ["scope:transform", "type:app", "lang:dbt"]
+}

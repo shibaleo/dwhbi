@@ -1,0 +1,30 @@
+{
+  "name": "documentation",
+  "projectType": "application",
+  "sourceRoot": "documentation/src",
+  "targets": {
+    "dev": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "documentation",
+        "command": "astro dev"
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "documentation",
+        "command": "astro build"
+      },
+      "outputs": ["{projectRoot}/dist"]
+    },
+    "preview": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "documentation",
+        "command": "astro preview"
+      }
+    }
+  },
+  "tags": ["scope:documentation", "type:app", "lang:astro"]
+}

@@ -132,17 +132,16 @@ supabase-sync-jobs/
 
 **目的:** 既存コードを `packages/` へ移動
 
-#### 3.1 connector（pipelines から移行）
+**注意:** connector は現在 Python で実装されている。Phase 8 で Node.js + TypeScript へトランスレーションする予定。
+
+#### 3.1 connector（pipelines から移行 - Python のまま）
 
 | # | タスク | 詳細 |
 |---|--------|------|
-| 3.1.1 | `packages/connector/` 作成 | 新ディレクトリ作成 |
-| 3.1.2 | `pipelines/` を移行 | `git mv pipelines packages/connector` |
-| 3.1.3 | `project.json` 作成 | Nx プロジェクト設定 |
-| 3.1.4 | `package.json` 整理 | 依存関係の分離 |
-| 3.1.5 | `tsconfig.json` 作成 | プロジェクト固有の設定 |
-| 3.1.6 | テスト移行 | `tests/pipelines/` → `packages/connector/__tests__/` |
-| 3.1.7 | インポートパス更新 | `@repo/database-types` への参照 |
+| 3.1.1 | `pipelines/` を移行 | `git mv pipelines packages/connector` |
+| 3.1.2 | `project.json` 作成 | Python 用 Nx プロジェクト設定 |
+| 3.1.3 | テスト移行 | `tests/pipelines/` → `packages/connector/tests/` |
+| 3.1.4 | `pyproject.toml` 作成 | Python 依存定義 |
 
 #### 3.2 console
 
@@ -277,6 +276,33 @@ supabase-sync-jobs/
 **成果物:**
 - クリーンな最終構成
 - 更新された README.md
+
+---
+
+### Phase 8: connector の TypeScript 移行
+
+**目的:** connector を Python から Node.js + TypeScript へトランスレーション
+
+**前提条件:** Phase 7 完了、connector の機能が安定している
+
+| # | タスク | 詳細 |
+|---|--------|------|
+| 8.1 | プロジェクト構造準備 | Python コードをバックアップ、TS プロジェクト作成 |
+| 8.2 | `package.json` 作成 | `@repo/database-types` 依存を追加 |
+| 8.3 | `tsconfig.json` 作成 | プロジェクト固有の TypeScript 設定 |
+| 8.4 | `project.json` 更新 | TypeScript 用 Nx ターゲットに変更 |
+| 8.5 | コードトランスレーション | Python → TypeScript への書き換え |
+| 8.6 | テスト移行 | pytest → Vitest への書き換え |
+| 8.7 | Python コード削除 | バックアップを削除 |
+
+**移行理由:**
+- `@repo/database-types` との型共有が可能に
+- コンパイル時の型チェック
+- CI/CD パイプラインの統一（npm のみ）
+
+**成果物:**
+- TypeScript 版 `packages/connector/`
+- `@repo/database-types` との連携
 
 ---
 

@@ -1,0 +1,37 @@
+{
+  "name": "console",
+  "projectType": "application",
+  "sourceRoot": "packages/console",
+  "targets": {
+    "dev": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/console",
+        "command": "next dev"
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/console",
+        "command": "next build"
+      },
+      "outputs": ["{projectRoot}/.next"]
+    },
+    "start": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/console",
+        "command": "next start"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/console",
+        "command": "eslint ."
+      }
+    }
+  },
+  "tags": ["scope:console", "type:app", "lang:typescript"]
+}

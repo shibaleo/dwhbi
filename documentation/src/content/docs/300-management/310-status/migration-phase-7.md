@@ -208,7 +208,7 @@ packages/reporter/output/*.pdf
 
 | プロジェクト | 技術スタック | 責務 |
 |-------------|-------------|------|
-| connector | Node.js + TypeScript | 外部 API からデータ取得 |
+| connector | Python ※ | 外部 API からデータ取得 |
 | console | Next.js | 管理画面 |
 | transform | dbt | データ変換 |
 | analyzer | Python | ML 予測分析 |
@@ -217,6 +217,8 @@ packages/reporter/output/*.pdf
 | visualizer | Grafana | ダッシュボード |
 | database-types | TypeScript | 型定義共有 |
 | documentation | Astro | ドキュメント |
+
+※ connector は Phase 8 で Node.js + TypeScript に移行予定
 
 ## セットアップ
 
@@ -381,6 +383,10 @@ git reset --hard v0.x.x  # 移行前のタグ
 - 依存関係確認: `npx nx graph`
 - 影響範囲確認: `npx nx affected --target=build`
 - キャッシュクリア: `npx nx reset`
+
+## 次のフェーズ
+
+[Phase 8: connector の TypeScript 移行](/300-management/310-status/migration-phase-8)
 
 ## 関連ドキュメント
 

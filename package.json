@@ -1,0 +1,22 @@
+{
+  "name": "supabase-sync-jobs",
+  "version": "0.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "documentation"
+  ],
+  "scripts": {
+    "build": "nx run-many --target=build --all",
+    "test": "nx run-many --target=test --all",
+    "lint": "nx run-many --target=lint --all",
+    "affected:build": "nx affected --target=build",
+    "affected:test": "nx affected --target=test",
+    "graph": "nx graph",
+    "gen:types": "supabase gen types typescript --project-id liegivvinbwmeujddzif > packages/database-types/src/database.ts"
+  },
+  "devDependencies": {
+    "nx": "^22.2.0",
+    "typescript": "^5.0.0"
+  }
+}

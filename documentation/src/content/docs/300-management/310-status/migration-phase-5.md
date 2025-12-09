@@ -233,6 +233,8 @@ python-dotenv>=1.0.0
 
 ### 5.4 Jest 設定（TypeScript プロジェクト用）
 
+**注意:** connector は Phase 3 時点では Python。Phase 8 完了後に TypeScript 用 Jest 設定を適用する。
+
 #### 5.4.1 jest.preset.js 作成（ルート）
 
 ```javascript
@@ -256,22 +258,26 @@ module.exports = {
 }
 ```
 
-#### 5.4.2 各 TypeScript プロジェクトの jest.config.ts
+#### 5.4.2 TypeScript プロジェクトの jest.config.ts 例
+
+console や database-types など TypeScript プロジェクトに適用:
 
 ```typescript
-// packages/connector/jest.config.ts
+// packages/console/jest.config.ts
 export default {
-  displayName: 'connector',
+  displayName: 'console',
   preset: '../../jest.preset.js',
   testEnvironment: 'node',
   transform: {
     '^.+\\.[tj]s$': ['ts-jest', { tsconfig: '<rootDir>/tsconfig.json' }]
   },
   moduleFileExtensions: ['ts', 'js', 'json'],
-  coverageDirectory: '../../coverage/packages/connector',
+  coverageDirectory: '../../coverage/packages/console',
   testMatch: ['**/__tests__/**/*.test.ts', '**/*.spec.ts']
 }
 ```
+
+**connector の Jest 設定は Phase 8 で作成する。**
 
 ### 5.5 Nx テストターゲット設定
 

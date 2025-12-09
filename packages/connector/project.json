@@ -1,0 +1,36 @@
+{
+  "name": "connector",
+  "projectType": "application",
+  "sourceRoot": "packages/connector",
+  "targets": {
+    "sync:toggl": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/connector",
+        "command": "python -m services.toggl_track"
+      }
+    },
+    "sync:gcalendar": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/connector",
+        "command": "python -m services.google_calendar"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/connector",
+        "command": "pytest tests/"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/connector",
+        "command": "ruff check ."
+      }
+    }
+  },
+  "tags": ["scope:connector", "type:app", "lang:python"]
+}

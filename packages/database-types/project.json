@@ -1,0 +1,15 @@
+{
+  "name": "database-types",
+  "projectType": "library",
+  "sourceRoot": "packages/database-types/src",
+  "targets": {
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/database-types",
+        "command": "tsc --noEmit"
+      }
+    }
+  },
+  "tags": ["scope:shared", "type:lib"]
+}

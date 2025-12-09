@@ -13,11 +13,15 @@ description: 既存コードを packages/ へ移動する移行フェーズ
 | 前提条件 | Phase 2 完了 |
 | 成果物 | `packages/connector/`, `packages/console/`, `packages/transform/`, `documentation/project.json` |
 
+**注意:** connector は現在 Python で実装されている。Phase 8 で Node.js + TypeScript へトランスレーションする予定。
+
 ## タスク一覧
 
 ---
 
 ## 3.1 connector（pipelines から移行）
+
+現在 Python プロジェクトとして移行。Node.js + TypeScript への変換は Phase 8 で実施。
 
 ### 3.1.1 ディレクトリ移動
 
@@ -33,116 +37,65 @@ git mv pipelines packages/connector
 {
   "name": "connector",
   "projectType": "application",
-  "sourceRoot": "packages/connector/src",
+  "sourceRoot": "packages/connector",
   "targets": {
-    "build": {
-      "executor": "@nx/esbuild:esbuild",
+    "sync": {
+      "executor": "nx:run-commands",
       "options": {
-        "outputPath": "dist/packages/connector",
-        "main": "packages/connector/src/main.ts",
-        "tsConfig": "packages/connector/tsconfig.json",
-        "platform": "node",
-        "format": ["cjs"]
-      }
-    },
-    "serve": {
-      "executor": "@nx/js:node",
-      "options": {
-        "buildTarget": "connector:build"
+        "cwd": "packages/connector",
+        "command": "python -m services.{service}"
       }
     },
     "test": {
-      "executor": "@nx/jest:jest",
+      "executor": "nx:run-commands",
       "options": {
-        "jestConfig": "packages/connector/jest.config.ts"
+        "cwd": "packages/connector",
+        "command": "pytest tests/"
       }
     },
     "lint": {
-      "executor": "@nx/eslint:lint",
+      "executor": "nx:run-commands",
       "options": {
-        "lintFilePatterns": ["packages/connector/**/*.ts"]
+        "cwd": "packages/connector",
+        "command": "ruff check ."
       }
     }
   },
-  "tags": ["scope:connector", "type:app"],
-  "implicitDependencies": ["database-types"]
+  "tags": ["scope:connector", "type:app", "lang:python"]
 }
 ```
 
-### 3.1.3 package.json 更新
-
-```json
-// packages/connector/package.json
-{
-  "name": "@repo/connector",
-  "version": "0.0.0",
-  "private": true,
-  "main": "./src/main.ts",
-  "scripts": {
-    "build": "nx build connector",
-    "test": "nx test connector",
-    "lint": "nx lint connector"
-  },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.0.0",
-    "dotenv": "^16.0.0"
-  },
-  "devDependencies": {
-    "@repo/database-types": "workspace:*",
-    "@types/node": "^20.0.0",
-    "typescript": "^5.0.0"
-  }
-}
-```
-
-### 3.1.4 tsconfig.json 作成
-
-```json
-// packages/connector/tsconfig.json
-{
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "outDir": "./dist",
-    "module": "CommonJS",
-    "types": ["node", "jest"]
-  },
-  "include": ["src/**/*", "__tests__/**/*"],
-  "exclude": ["node_modules", "dist"]
-}
-```
-
-### 3.1.5 テスト移行
+### 3.1.3 テスト移動
 
 ```bash
-# 既存テストを __tests__ へ移動
-mkdir -p packages/connector/__tests__
-git mv tests/pipelines/* packages/connector/__tests__/
+# 既存テストを tests/ へ移動
+mkdir -p packages/connector/tests
+git mv tests/pipelines/* packages/connector/tests/
 ```
 
-### 3.1.6 jest.config.ts 作成
+### 3.1.4 pyproject.toml 作成
 
-```typescript
-// packages/connector/jest.config.ts
-export default {
-  displayName: 'connector',
-  preset: '../../jest.preset.js',
-  testEnvironment: 'node',
-  transform: {
-    '^.+\\.[tj]s$': ['ts-jest', { tsconfig: '<rootDir>/tsconfig.json' }]
-  },
-  moduleFileExtensions: ['ts', 'js', 'json'],
-  coverageDirectory: '../../coverage/packages/connector'
-}
-```
+```toml
+# packages/connector/pyproject.toml
+[project]
+name = "connector"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "supabase>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "httpx>=0.25.0",
+]
 
-### 3.1.7 インポートパス更新
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "ruff>=0.1.0",
+]
 
-```typescript
-// 変更前
-import { SomeType } from '../types/database'
-
-// 変更後
-import { SomeType } from '@repo/database-types'
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 ```
 
 ---
@@ -164,36 +117,32 @@ git mv console packages/console
   "projectType": "application",
   "sourceRoot": "packages/console/src",
   "targets": {
-    "build": {
-      "executor": "@nx/next:build",
-      "outputs": ["{options.outputPath}"],
-      "options": {
-        "outputPath": "dist/packages/console"
-      }
-    },
     "dev": {
-      "executor": "@nx/next:server",
+      "executor": "nx:run-commands",
       "options": {
-        "buildTarget": "console:build",
-        "dev": true
+        "cwd": "packages/console",
+        "command": "npm run dev"
       }
     },
-    "serve": {
-      "executor": "@nx/next:server",
+    "build": {
+      "executor": "nx:run-commands",
       "options": {
-        "buildTarget": "console:build"
+        "cwd": "packages/console",
+        "command": "npm run build"
       }
     },
-    "test": {
-      "executor": "@nx/jest:jest",
+    "start": {
+      "executor": "nx:run-commands",
       "options": {
-        "jestConfig": "packages/console/jest.config.ts"
+        "cwd": "packages/console",
+        "command": "npm run start"
       }
     },
     "lint": {
-      "executor": "@nx/eslint:lint",
+      "executor": "nx:run-commands",
       "options": {
-        "lintFilePatterns": ["packages/console/**/*.{ts,tsx}"]
+        "cwd": "packages/console",
+        "command": "npm run lint"
       }
     }
   },
@@ -205,44 +154,11 @@ git mv console packages/console
 ### 3.2.3 package.json 更新
 
 ```json
-// packages/console/package.json
+// packages/console/package.json に name を追加・更新
 {
   "name": "@repo/console",
-  "version": "0.0.0",
-  "private": true,
-  "scripts": {
-    "dev": "nx dev console",
-    "build": "nx build console",
-    "test": "nx test console"
-  },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.0.0",
-    "next": "^14.0.0",
-    "react": "^18.0.0",
-    "react-dom": "^18.0.0"
-  },
-  "devDependencies": {
-    "@repo/database-types": "workspace:*",
-    "@types/react": "^18.0.0",
-    "typescript": "^5.0.0"
-  }
+  // ... 既存の設定を維持
 }
-```
-
-### 3.2.4 next.config.js 更新
-
-```javascript
-// packages/console/next.config.js
-const { composePlugins, withNx } = require('@nx/next')
-
-const nextConfig = {
-  nx: {
-    svgr: false
-  },
-  transpilePackages: ['@repo/database-types']
-}
-
-module.exports = composePlugins(withNx)(nextConfig)
 ```
 
 ---
@@ -268,95 +184,43 @@ git mv transform packages/transform
       "executor": "nx:run-commands",
       "options": {
         "cwd": "packages/transform",
-        "command": ".venv/Scripts/activate && dbt run"
+        "command": "dbt run"
       }
     },
     "test": {
       "executor": "nx:run-commands",
       "options": {
         "cwd": "packages/transform",
-        "command": ".venv/Scripts/activate && dbt test"
+        "command": "dbt test"
       }
     },
     "build": {
       "executor": "nx:run-commands",
       "options": {
         "cwd": "packages/transform",
-        "command": ".venv/Scripts/activate && dbt compile"
+        "command": "dbt compile"
       }
     },
     "seed": {
       "executor": "nx:run-commands",
       "options": {
         "cwd": "packages/transform",
-        "command": ".venv/Scripts/activate && dbt seed"
+        "command": "dbt seed"
       }
     },
     "docs": {
       "executor": "nx:run-commands",
       "options": {
         "cwd": "packages/transform",
-        "command": ".venv/Scripts/activate && dbt docs generate && dbt docs serve"
+        "command": "dbt docs generate && dbt docs serve"
       }
     }
   },
-  "tags": ["scope:transform", "type:app"]
+  "tags": ["scope:transform", "type:app", "lang:dbt"]
 }
 ```
 
-**注意:** Windows 環境では `.venv/Scripts/activate`、Unix 環境では `source .venv/bin/activate` を使用。
-
-### 3.3.3 pyproject.toml 確認・更新
-
-```toml
-# packages/transform/pyproject.toml
-[project]
-name = "transform"
-version = "0.1.0"
-requires-python = ">=3.12"
-dependencies = [
-    "dbt-postgres>=1.7.0",
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=7.0.0",
-]
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-```
-
-### 3.3.4 profiles.yml 更新
-
-パスが変わるため、環境変数を使用するか相対パスを調整:
-
-```yaml
-# packages/transform/profiles.yml
-default:
-  target: dev
-  outputs:
-    dev:
-      type: postgres
-      host: "{{ env_var('DB_HOST') }}"
-      port: "{{ env_var('DB_PORT') | int }}"
-      user: "{{ env_var('DB_USER') }}"
-      password: "{{ env_var('DB_PASSWORD') }}"
-      dbname: "{{ env_var('DB_NAME') }}"
-      schema: public
-      threads: 4
-```
-
-### 3.3.5 仮想環境再作成
-
-```bash
-cd packages/transform
-python -m venv .venv
-.venv/Scripts/activate  # Windows
-pip install -e ".[dev]"
-dbt deps
-```
+**注意:** dbt コマンドはルートの `.venv` またはグローバルインストールを使用。
 
 ---
 
@@ -416,8 +280,7 @@ documentation はルート直下に維持し、project.json のみ追加。
 ### 各プロジェクトの動作確認
 
 ```bash
-# connector
-npx nx build connector
+# connector (Python)
 npx nx test connector
 
 # console
@@ -439,16 +302,15 @@ npx nx build documentation
 npx nx graph
 ```
 
-すべてのプロジェクトが表示され、database-types への依存が可視化されることを確認。
+すべてのプロジェクトが表示されることを確認。
 
 ### チェックリスト
 
-- [ ] `packages/connector/` が正しく移行されている
+- [ ] `packages/connector/` が正しく移行されている（Python）
 - [ ] `packages/console/` が正しく移行されている
 - [ ] `packages/transform/` が正しく移行されている
 - [ ] `documentation/project.json` が作成されている
 - [ ] 各プロジェクトの build/test が成功する
-- [ ] `@repo/database-types` からのインポートが動作する
 - [ ] `npx nx graph` で依存関係が正しく表示される
 
 ## ロールバック手順
@@ -473,8 +335,7 @@ git checkout HEAD~1
 1. 4つのプロジェクトが正しい場所に配置されている
 2. 各プロジェクトに `project.json` がある
 3. 各プロジェクトの build/test が成功する
-4. database-types への依存が正しく解決される
-5. Git 履歴が保持されている
+4. Git 履歴が保持されている
 
 ## 次のフェーズ
 
@@ -484,3 +345,4 @@ git checkout HEAD~1
 
 - [モノレポ移行計画](/300-management/310-status/migration-plan) - 全体計画
 - [Phase 2: 共有ライブラリ作成](/300-management/310-status/migration-phase-2) - 前のフェーズ
+- [Phase 8: connector の TypeScript 移行](/300-management/310-status/migration-phase-8) - connector の言語移行
