@@ -1,0 +1,25 @@
+{
+  "name": "tests",
+  "projectType": "application",
+  "targets": {
+    "e2e": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pytest tests/e2e -v -m e2e"
+      }
+    },
+    "integration": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pytest tests/integration -v -m integration"
+      }
+    },
+    "all": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pytest tests/ -v"
+      }
+    }
+  },
+  "tags": ["scope:tests", "type:e2e"]
+}
