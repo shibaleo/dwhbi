@@ -42,7 +42,7 @@ jobs:
           python -c "
           import asyncio
           import os
-          from pipelines.services.toggl_track.sync_time_entries_report import sync_time_entries_report
+          from services.toggl_track.sync_time_entries_report import sync_time_entries_report
 
           start_date = os.environ.get('START_DATE') or None
           end_date = os.environ.get('END_DATE') or None
@@ -63,5 +63,5 @@ jobs:
         run: |
           echo "❌ Toggl Reportsフル同期が失敗しました"
           echo "タイムアウトの場合はローカルで実行してください："
-          echo "  python -c \"import asyncio; from pipelines.services.toggl_track.sync_time_entries_report import sync_time_entries_report; print(asyncio.run(sync_time_entries_report(days=365)))\""
+          echo "  python -c \"import asyncio; from services.toggl_track.sync_time_entries_report import sync_time_entries_report; print(asyncio.run(sync_time_entries_report(days=365)))\""
           echo "詳細は Actions ログを確認してください"

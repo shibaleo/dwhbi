@@ -31,7 +31,7 @@ jobs:
           python -c "
           import asyncio
           import os
-          from pipelines.services.ticktick import sync_ticktick
+          from services.ticktick import sync_ticktick
           days = int(os.environ.get('SYNC_DAYS', '7'))
           result = asyncio.run(sync_ticktick(days=days))
           print(result)

@@ -76,13 +76,13 @@ jobs:
           python -c "
           import asyncio
           import os
-          from pipelines.services.toggl_track.orchestrator import sync_all as sync_toggl
-          from pipelines.services.tanita import sync_tanita
-          from pipelines.services.zaim import sync_zaim
-          from pipelines.services.google_calendar.orchestrator import sync_all as sync_gcalendar
-          from pipelines.services.fitbit import sync_fitbit
-          from pipelines.services.trello import sync_trello
-          from pipelines.services.ticktick import sync_ticktick
+          from services.toggl_track.orchestrator import sync_all as sync_toggl
+          from services.tanita import sync_tanita
+          from services.zaim import sync_zaim
+          from services.google_calendar.orchestrator import sync_all as sync_gcalendar
+          from services.fitbit import sync_fitbit
+          from services.trello import sync_trello
+          from services.ticktick import sync_ticktick
 
           async def run_all():
               results = {}
@@ -193,17 +193,17 @@ jobs:
 
       - name: Install dbt packages
         if: inputs.skip_dbt != 'true'
-        working-directory: transform
+        working-directory: packages/transform
         run: dbt deps
 
       - name: Run dbt models
         if: inputs.skip_dbt != 'true'
-        working-directory: transform
+        working-directory: packages/transform
         run: dbt run
 
       - name: Run dbt tests
         if: inputs.skip_dbt != 'true'
-        working-directory: transform
+        working-directory: packages/transform
         run: dbt test
 
       - name: Notify on failure

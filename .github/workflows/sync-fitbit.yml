@@ -31,7 +31,7 @@ jobs:
           python -c "
           import asyncio
           import os
-          from pipelines.services.fitbit import sync_fitbit
+          from services.fitbit import sync_fitbit
           days = int(os.environ.get('SYNC_DAYS', '3'))
           result = asyncio.run(sync_fitbit(days=days))
           print(result)

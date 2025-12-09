@@ -31,7 +31,7 @@ jobs:
           python -c "
           import asyncio
           import os
-          from pipelines.services.trello import sync_trello
+          from services.trello import sync_trello
           full_sync = os.environ.get('FULL_SYNC', 'false').lower() == 'true'
           result = asyncio.run(sync_trello(full_sync=full_sync))
           print(result)

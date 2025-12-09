@@ -54,17 +54,17 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install dbt-postgres python-dotenv
 
       - name: Install dbt packages
         env:
           DIRECT_DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
-        run: python scripts/run_dbt.py deps
+        run: python packages/transform/scripts/run_dbt.py deps
 
       - name: Run dbt debug
         env:
           DIRECT_DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
-        run: python scripts/run_dbt.py debug
+        run: python packages/transform/scripts/run_dbt.py debug
 
       - name: Run dbt command
         env:
@@ -76,21 +76,21 @@ jobs:
           echo "Running: dbt $COMMAND"
 
           if [ "$FULL_REFRESH" = "true" ]; then
-            python scripts/run_dbt.py $COMMAND --full-refresh
+            python packages/transform/scripts/run_dbt.py $COMMAND --full-refresh
           else
-            python scripts/run_dbt.py $COMMAND
+            python packages/transform/scripts/run_dbt.py $COMMAND
           fi
 
       - name: Run dbt tests
         if: inputs.run_tests == true || inputs.run_tests == 'true'
         env:
           DIRECT_DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
-        run: python scripts/run_dbt.py test
+        run: python packages/transform/scripts/run_dbt.py test
 
       - name: Generate dbt docs
         env:
           DIRECT_DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
-        run: python scripts/run_dbt.py docs generate
+        run: python packages/transform/scripts/run_dbt.py docs generate
 
       - name: Notify on failure
         if: failure()

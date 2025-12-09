@@ -1,5 +1,5 @@
 name: 'Python Setup'
-description: 'Setup Python environment and install dependencies'
+description: 'Setup Python environment and install connector dependencies'
 
 runs:
   using: 'composite'
@@ -9,8 +9,12 @@ runs:
       with:
         python-version: '3.12'
 
-    - name: Install dependencies
+    - name: Install connector dependencies
       shell: bash
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install httpx supabase psycopg2-binary cryptography python-dotenv tzdata
+
+    - name: Set PYTHONPATH for connector
+      shell: bash
+      run: echo "PYTHONPATH=$GITHUB_WORKSPACE/packages/connector" >> $GITHUB_ENV

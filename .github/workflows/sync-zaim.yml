@@ -31,7 +31,7 @@ jobs:
           python -c "
           import asyncio
           import os
-          from pipelines.services.zaim import sync_zaim
+          from services.zaim import sync_zaim
           days = int(os.environ.get('SYNC_DAYS', '7'))
           result = asyncio.run(sync_zaim(days=days))
           print(result)

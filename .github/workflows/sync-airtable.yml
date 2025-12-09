@@ -36,7 +36,7 @@ jobs:
           python -c "
           import asyncio
           import os
-          from pipelines.services.airtable import sync_airtable
+          from services.airtable import sync_airtable
 
           base_ids_str = os.environ.get('AIRTABLE_BASE_IDS', '')
           base_ids = [b.strip() for b in base_ids_str.split(',') if b.strip()] or None

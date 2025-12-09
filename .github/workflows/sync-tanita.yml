@@ -37,7 +37,7 @@ jobs:
           python -c "
           import asyncio
           import os
-          from pipelines.services.tanita import sync_tanita
+          from services.tanita import sync_tanita
           days = int(os.environ.get('SYNC_DAYS', '3'))
           result = asyncio.run(sync_tanita(days=days))
           print(result)

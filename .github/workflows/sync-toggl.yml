@@ -32,7 +32,7 @@ jobs:
           python -c "
           import asyncio
           import os
-          from pipelines.services.toggl_track.orchestrator import sync_all
+          from services.toggl_track.orchestrator import sync_all
           days = int(os.environ.get('SYNC_DAYS', '3'))
           result = asyncio.run(sync_all(days=days))
           print(result)
@@ -45,5 +45,5 @@ jobs:
         run: |
           echo "❌ Toggl日次同期が失敗しました"
           echo "タイムアウトの場合はローカルで実行してください："
-          echo "  python -c \"import asyncio; from pipelines.services.toggl_track.orchestrator import sync_all; print(asyncio.run(sync_all()))\""
+          echo "  python -c \"import asyncio; from services.toggl_track.orchestrator import sync_all; print(asyncio.run(sync_all()))\""
           echo "詳細は Actions ログを確認してください"
