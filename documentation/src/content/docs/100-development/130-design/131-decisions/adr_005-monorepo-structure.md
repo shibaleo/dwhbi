@@ -27,19 +27,11 @@ supabase-sync-jobs/
 ├── package.json             # ルート package.json
 ├── README.md
 │
-├── libs/                    # 共有ライブラリ
-│   └── database-types/      # Supabase 型定義
-│       ├── project.json     # Nx プロジェクト設定
-│       ├── package.json
-│       └── src/
-│           ├── index.ts         # 再エクスポート
-│           └── database.ts      # supabase gen types 出力先
-│
-├── apps/                    # アプリケーション
+├── packages/                # 全プロジェクト（フラット構成）
 │   ├── connector/           # Node.js + TypeScript - Extract/Load
 │   │   ├── project.json
 │   │   ├── package.json
-│   │   ├── .env             # connector 固有の環境変数
+│   │   ├── .env
 │   │   ├── tsconfig.json
 │   │   ├── src/
 │   │   └── __tests__/
@@ -51,21 +43,8 @@ supabase-sync-jobs/
 │   │   ├── src/
 │   │   └── __tests__/
 │   │
-│   ├── reporter/            # Typst + CeTZ - PDF レポート生成
-│   │   ├── project.json
-│   │   ├── package.json
-│   │   ├── .env
-│   │   ├── templates/
-│   │   ├── src/
-│   │   └── output/
-│   │
-│   └── documentation/       # Node.js (Astro) - ドキュメント
-│       ├── project.json
-│       └── package.json
-│
-├── tools/                   # 非 Node.js プロジェクト
 │   ├── transform/           # dbt - Transform
-│   │   ├── project.json     # Nx プロジェクト設定（カスタムエグゼキュータ）
+│   │   ├── project.json
 │   │   ├── pyproject.toml
 │   │   ├── .env
 │   │   ├── .venv/
@@ -75,7 +54,7 @@ supabase-sync-jobs/
 │   │   ├── seeds/
 │   │   └── tests/
 │   │
-│   ├── analyzer/            # Python - ML分析
+│   ├── analyzer/            # Python - ML予測分析
 │   │   ├── project.json
 │   │   ├── pyproject.toml
 │   │   ├── .env
@@ -85,18 +64,47 @@ supabase-sync-jobs/
 │   │   ├── notebooks/
 │   │   └── tests/
 │   │
-│   └── visualizer/          # Grafana - 日常可視化
+│   ├── adjuster/            # Python - 調整提案
+│   │   ├── project.json
+│   │   ├── pyproject.toml
+│   │   ├── .env
+│   │   ├── .python-version
+│   │   ├── .venv/
+│   │   ├── src/adjuster/
+│   │   └── tests/
+│   │
+│   ├── reporter/            # Typst + CeTZ - PDF レポート生成
+│   │   ├── project.json
+│   │   ├── package.json
+│   │   ├── .env
+│   │   ├── templates/
+│   │   ├── src/
+│   │   └── output/
+│   │
+│   ├── visualizer/          # Grafana - 日常可視化
+│   │   ├── project.json
+│   │   ├── docker-compose.yml
+│   │   ├── .env
+│   │   ├── provisioning/
+│   │   │   ├── datasources/
+│   │   │   └── dashboards/
+│   │   └── dashboards/
+│   │
+│   └── database-types/      # Supabase 型定義（共有ライブラリ）
 │       ├── project.json
-│       ├── docker-compose.yml
-│       ├── .env
-│       ├── provisioning/
-│       │   ├── datasources/
-│       │   └── dashboards/
-│       └── dashboards/
+│       ├── package.json
+│       └── src/
+│           ├── index.ts
+│           └── database.ts
 │
 ├── tests/                   # 総合テスト（プロジェクト横断 E2E・統合）
 │   ├── e2e/
 │   └── integration/
+│
+├── documentation/           # Node.js (Astro) - ドキュメント
+│   ├── project.json
+│   ├── package.json
+│   └── src/
 │
 └── supabase/                # Supabase マイグレーション・型生成
     ├── config.toml
@@ -106,17 +114,18 @@ supabase-sync-jobs/
 
 ### プロジェクト一覧
 
-| プロジェクト | 配置 | 技術スタック | 責務 |
-|-------------|------|-------------|------|
-| connector | apps/ | Node.js + TypeScript | 外部 API と接続してデータ取得、Raw 層へ格納 |
-| console | apps/ | Next.js | 管理画面、設定 UI |
-| reporter | apps/ | Typst + CeTZ | 日次 PDF レポート生成 |
-| documentation | apps/ | Astro | プロジェクトドキュメント |
-| transform | tools/ | dbt (Python) | Raw → Staging → Core → Marts 変換 |
-| analyzer | tools/ | Python | ML 予測・介入分析、結果を Supabase に保存 |
-| visualizer | tools/ | Grafana | リアルタイムダッシュボード・アラート |
-| database-types | libs/ | TypeScript | Supabase 型定義の共有 |
-| supabase | ルート | Supabase CLI | DB マイグレーション・RLS 管理・型生成 |
+| プロジェクト | 技術スタック | 責務 |
+|-------------|-------------|------|
+| connector | Node.js + TypeScript | 外部 API と接続してデータ取得、Raw 層へ格納 |
+| console | Next.js | 管理画面、設定 UI |
+| transform | dbt (Python) | Raw → Staging → Core → Marts 変換 |
+| analyzer | Python | ML 予測分析、予測結果を Supabase に保存 |
+| adjuster | Python | 調整提案、介入アクションを Supabase に保存 |
+| reporter | Typst + CeTZ | 日次 PDF レポート生成 |
+| visualizer | Grafana | リアルタイムダッシュボード・アラート |
+| database-types | TypeScript | Supabase 型定義の共有 |
+| documentation | Astro | プロジェクトドキュメント |
+| supabase | Supabase CLI | DB マイグレーション・RLS 管理・型生成 |
 
 ### 命名規則
 
@@ -126,7 +135,8 @@ supabase-sync-jobs/
 |-------------|------|
 | connector | データを 外部 API と「接続する」もの |
 | transform | データを「変換する」処理（dbt 慣習に従い動詞形） |
-| analyzer | データを「分析する」もの |
+| analyzer | データを「分析・予測する」もの |
+| adjuster | データを「調整する」もの |
 | reporter | データを「報告する」もの |
 | visualizer | データを「可視化する」もの |
 
@@ -206,7 +216,7 @@ supabase-sync-jobs/
 #### プロジェクト設定例
 
 ```json
-// apps/connector/project.json
+// packages/connector/project.json
 {
   "name": "connector",
   "projectType": "application",
@@ -214,9 +224,9 @@ supabase-sync-jobs/
     "build": {
       "executor": "@nx/esbuild:esbuild",
       "options": {
-        "outputPath": "dist/apps/connector",
-        "main": "apps/connector/src/main.ts",
-        "tsConfig": "apps/connector/tsconfig.json"
+        "outputPath": "dist/packages/connector",
+        "main": "packages/connector/src/main.ts",
+        "tsConfig": "packages/connector/tsconfig.json"
       }
     },
     "serve": {
@@ -228,7 +238,7 @@ supabase-sync-jobs/
     "test": {
       "executor": "@nx/jest:jest",
       "options": {
-        "jestConfig": "apps/connector/jest.config.ts"
+        "jestConfig": "packages/connector/jest.config.ts"
       }
     }
   }
@@ -236,7 +246,7 @@ supabase-sync-jobs/
 ```
 
 ```json
-// tools/transform/project.json
+// packages/transform/project.json
 {
   "name": "transform",
   "projectType": "application",
@@ -244,21 +254,21 @@ supabase-sync-jobs/
     "run": {
       "executor": "nx:run-commands",
       "options": {
-        "cwd": "tools/transform",
+        "cwd": "packages/transform",
         "command": "source .venv/bin/activate && dbt run"
       }
     },
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "cwd": "tools/transform",
+        "cwd": "packages/transform",
         "command": "source .venv/bin/activate && dbt test"
       }
     },
     "build": {
       "executor": "nx:run-commands",
       "options": {
-        "cwd": "tools/transform",
+        "cwd": "packages/transform",
         "command": "source .venv/bin/activate && dbt compile"
       }
     }
@@ -279,17 +289,17 @@ supabase-sync-jobs/
 | transform | 低 | dbt は SQL。メタデータ参照時のみ |
 | visualizer | 低 | Grafana は直接 SQL クエリ |
 
-#### libs/database-types の構成
+#### packages/database-types の構成
 
 ```typescript
-// libs/database-types/src/index.ts
+// packages/database-types/src/index.ts
 export * from './database'
 export * from './extensions'
 
-// libs/database-types/src/database.ts
+// packages/database-types/src/database.ts
 // supabase gen types typescript --local > src/database.ts で生成
 
-// libs/database-types/src/extensions.ts
+// packages/database-types/src/extensions.ts
 // カスタム型（Enum のラベル、ユーティリティ型等）
 ```
 
@@ -302,7 +312,7 @@ tsconfig.json の paths で参照:
 {
   "compilerOptions": {
     "paths": {
-      "@repo/database-types": ["libs/database-types/src/index.ts"]
+      "@repo/database-types": ["packages/database-types/src/index.ts"]
     }
   }
 }
@@ -317,10 +327,10 @@ tsconfig.json の paths で参照:
 cd supabase
 
 # ローカル Supabase から型生成
-supabase gen types typescript --local > ../libs/database-types/src/database.ts
+supabase gen types typescript --local > ../packages/database-types/src/database.ts
 
 # または本番から生成
-supabase gen types typescript --project-id <project-id> > ../libs/database-types/src/database.ts
+supabase gen types typescript --project-id <project-id> > ../packages/database-types/src/database.ts
 ```
 
 #### マイグレーション運用
@@ -345,7 +355,7 @@ supabase db push
 - name: Generate types
   run: |
     cd supabase
-    supabase gen types typescript --local > ../libs/database-types/src/database.ts
+    supabase gen types typescript --local > ../packages/database-types/src/database.ts
 - name: Type check
   run: npx nx run-many --target=typecheck --all
 ```
@@ -450,6 +460,20 @@ Next.js (console)
 | 新規追加 | パターン不明確 | テンプレート化可能 |
 | 開発体験 | 設定混乱 | 明確な境界 |
 
+### analyzer と adjuster を分離した理由
+
+| 観点 | 効果 |
+|------|------|
+| QPI 対応 | Practice と モジュールが 1:1 |
+| 責務明確化 | 「予測する」と「調整する」が分離 |
+| テスト | 各責務を独立してテスト |
+| 変更影響 | estimate ロジック変更が adjuster に直接影響しない |
+
+- **責務の違い**: analyzer は「予測・分析」、adjuster は「調整・介入提案」
+- **入出力の違い**: analyzer は Core 層を入力に予測結果を出力、adjuster は予測結果を入力に調整アクションを出力
+- **変更頻度の違い**: 予測モデルの改善と調整ロジックの改善は独立して進められる
+- **テストの独立性**: 予測精度のテストと調整ロジックのテストを分離できる
+
 ### reporter と visualizer を分離した理由
 
 - **責務の違い**: reporter は「記録・保存」、visualizer は「日常確認・アラート」
@@ -521,7 +545,7 @@ npx nx graph                          # ブラウザで依存グラフを表示
 
 # 型の再生成（スキーマ変更後）
 cd supabase
-supabase gen types typescript --local > ../libs/database-types/src/database.ts
+supabase gen types typescript --local > ../packages/database-types/src/database.ts
 ```
 
 ## 関連ドキュメント

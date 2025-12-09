@@ -119,6 +119,19 @@ export default defineConfig({
 								{ label: '変更履歴', slug: '300-management/310-status/changelog' },
 								{ label: 'ロードマップ', slug: '300-management/310-status/roadmap' },
 								{ label: 'バックログ', slug: '300-management/310-status/backlog' },
+								{
+									label: 'モノレポ移行計画',
+									items: [
+										{ label: '概要', slug: '300-management/310-status/migration-plan' },
+										{ label: 'Phase 1: 基盤整備', slug: '300-management/310-status/migration-phase-1' },
+										{ label: 'Phase 2: 共有ライブラリ', slug: '300-management/310-status/migration-phase-2' },
+										{ label: 'Phase 3: 既存プロジェクト移行', slug: '300-management/310-status/migration-phase-3' },
+										{ label: 'Phase 4: 新規プロジェクト', slug: '300-management/310-status/migration-phase-4' },
+										{ label: 'Phase 5: テスト構成', slug: '300-management/310-status/migration-phase-5' },
+										{ label: 'Phase 6: CI/CD', slug: '300-management/310-status/migration-phase-6' },
+										{ label: 'Phase 7: クリーンアップ', slug: '300-management/310-status/migration-phase-7' },
+									],
+								},
 							],
 						},
 						{
