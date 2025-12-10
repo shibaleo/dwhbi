@@ -1,6 +1,6 @@
 ---
 title: インフラ構築・ホスティング計画
-description: ADR-007 で定義したインフラ構成の構築計画
+description: ADR-007 で定義したインフラ構成の構築計画（Terraform + シンプル構成版）
 ---
 
 # インフラ構築・ホスティング計画
@@ -11,567 +11,684 @@ description: ADR-007 で定義したインフラ構成の構築計画
 
 GitHub Actions での同期実行から OCI VM 上の常駐サーバーへ移行し、GitHub Actions を本来の CI/CD 用途に戻す。
 
-## 現状と目標
+## アーキテクチャ
 
-### 現在のフォルダ構成
+### 構成方針
 
-```
-supabase-sync-jobs/
-├── .github/
-│   └── workflows/           # 同期実行に使用中（移行対象）
-│
-├── packages/
-│   ├── connector/           # ✅ Node.js/TS 実装済み（CLI）
-│   ├── console/             # ✅ Next.js 実装済み
-│   ├── analyzer/            # △ Python スケルトンのみ
-│   ├── adjuster/            # △ Python スケルトンのみ
-│   ├── reporter/            # △ Node.js + Typst スケルトンのみ
-│   ├── transform/           # ✅ dbt 実装済み
-│   ├── visualizer/          # △ ローカルDocker設定のみ
-│   └── database-types/      # ✅ 型定義
-│
-├── supabase/                # ✅ マイグレーション管理
-│
-├── infra/                   # ❌ 存在しない
-│   └── (なし)
-│
-└── packages/server/         # ❌ 存在しない
-```
+- **IaC (Infrastructure as Code)**: Terraform で OCI リソースを管理
+- **コンテナは1つのみ**: server（マルチランタイム）
+- **マルチランタイム**: 1つのコンテナに Node + Python + dbt + Typst
+- **子プロセス spawn**: バッチ処理は常駐せず、API リクエスト時に spawn
+- **非同期レスポンス**: 即座に 202 返却、バックグラウンドで実行
+- **セキュリティ**: HTTP + IP 制限（[ADR-008](/01-product/100-development/130-design/131-decisions/adr_008-server-communication-security) 参照）
 
-### 現在のインフラ状態
-
-| サービス | 状態 | 備考 |
-|---------|------|------|
-| Supabase | ✅ 稼働中 | PostgreSQL、認証 |
-| GitHub Actions | ✅ 稼働中 | 同期実行に使用中（移行対象） |
-| OCI VM | △ 旧VM存在 | superset-vm（削除予定） |
-| Cloudflare | ❌ 未設定 | Tunnel未作成 |
-| Vercel | ❌ 未デプロイ | console用 |
-| Grafana Cloud | ❌ 未設定 | visualizer用 |
-
-### 現在のリクエストフロー（Phase A）
+### システム構成図
 
 ```
-console → GitHub Actions dispatch → connector CLI
-                                         │
-                                         ▼
-                                    Supabase
+┌─────────────────────────────────────────────────────────────────┐
+│ ローカル PC                                                      │
+│                                                                 │
+│  infra/terraform/           ~/.oci/config                       │
+│  ├── main.tf         ───→   (API キー)                          │
+│  ├── variables.tf           │                                   │
+│  └── outputs.tf             ▼                                   │
+│         │              OCI API                                  │
+│         │                                                       │
+│         ▼ terraform apply                                       │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ OCI (Terraform で自動構築)                                       │
+│                                                                 │
+│  VCN: lifetracer-vcn                                            │
+│  ├── Subnet: public-subnet                                      │
+│  ├── Internet Gateway                                           │
+│  └── Security List                                              │
+│       ├── SSH: 22 (自分の IP のみ)                               │
+│       └── API: 3000 (Vercel IP のみ)                            │
+│                                                                 │
+│  ┌───────────────────────────────────────────────────────────┐ │
+│  │ VM: lifetracer-vm (ARM, 4 OCPU / 24 GB)                    │ │
+│  │                                                            │ │
+│  │  ┌──────────────────────────────────────────────────────┐ │ │
+│  │  │ server コンテナ (Node + Python + dbt + Typst)         │ │ │
+│  │  │                                                       │ │ │
+│  │  │  Hono API ─┬─ spawn → connector (Node)               │ │ │
+│  │  │            ├─ spawn → transform (dbt)                │ │ │
+│  │  │            ├─ spawn → analyzer (Python)              │ │ │
+│  │  │            ├─ spawn → adjuster (Python)              │ │ │
+│  │  │            └─ spawn → reporter (Node+Typst)          │ │ │
+│  │  └──────────────────────────────────────────────────────┘ │ │
+│  └───────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+         ▲                              ▲
+         │ HTTP (IP 制限)               │ SSL/TLS
+         │                              │
+┌─────────────────┐              ┌─────────────────┐
+│ Vercel          │              │ Supabase        │
+│ (console)       │              │ (PostgreSQL)    │
+└─────────────────┘              └─────────────────┘
 ```
 
-### 目標のリクエストフロー（Phase C）
+### パッケージ一覧
+
+| パッケージ | ランタイム | 実行方式 | 役割 |
+|-----------|-----------|---------|------|
+| server | Node (Hono) | 常駐 | API Gateway、spawn 管理 |
+| connector | Node | spawn | 外部 API → raw |
+| transform | Python (dbt) | spawn | raw → staging → core |
+| analyzer | Python | spawn | 推定値計算、ML |
+| adjuster | Python | spawn | 目標値調整提案 |
+| reporter | Node + Typst | spawn | PDF レポート生成 |
+| console | Next.js | Vercel | 管理 UI |
+
+### リクエストフロー
 
 ```
-console → Vercel Serverless → Cloudflare Tunnel → server (Hono)
-                                                      │
-                                            ┌─────────┼─────────┐
-                                            ▼         ▼         ▼
-                                      connector   analyzer   adjuster
-                                            │
-                                            ▼
-                                       Supabase
-
-cron → docker compose run → connector sync / transform dbt run
-                                            │
-                                            ▼
-                                       Supabase
+console (Vercel)
+    │
+    ▼ POST /api/sync/toggl
+server (Hono)
+    │
+    ├─ spawn connector → 非同期実行
+    │
+    └─ return { jobId, status: 'queued' } (202)
+              │
+              ▼
+         connector 実行完了 → Supabase raw 更新
+              │
+              ▼
+         staging/core は view なので自動反映
 ```
 
 ---
 
-## 移行フェーズ概要
+## 移行フェーズ
 
-ADR-007 で定義された移行フェーズ:
-
-| フェーズ | 状態 | 内容 |
-|---------|------|------|
-| Phase A | ✅ 現在 | GitHub Actions で同期実行 |
-| Phase B | 🎯 目標 | 並行運用（GitHub Actions + server API） |
-| Phase C | 📅 将来 | server API に完全移行、GitHub Actions は CI/CD 専用 |
-
-本計画は **Phase A → Phase B** への移行を詳細化する。
-
----
-
-## 詳細計画ドキュメント
-
-各フェーズの詳細な実行計画は以下のドキュメントを参照:
-
-| Phase | ドキュメント | 内容 |
-|-------|-------------|------|
-| 1 | [OCI VM 準備](./infra-phase-1-oci-vm) | VM作成、SSH接続確立 |
-| 2 | [VM 環境構築](./infra-phase-2-vm-setup) | Docker、開発ツールインストール |
-| 3 | [infra ディレクトリ作成](./infra-phase-3-infra-directory) | docker-compose.yml、IaC基盤 |
-| 4 | [server パッケージ作成](./infra-phase-4-server-package) | Hono API Gateway実装 |
-| 5 | [Cloudflare Tunnel 設定](./infra-phase-5-cloudflare-tunnel) | HTTPS アクセス確立 |
-| 6 | [console デプロイ](./infra-phase-6-console-deploy) | Vercel デプロイ、Serverless Function |
-| 7 | [cron 設定](./infra-phase-7-cron-setup) | 日次レポート生成パイプライン |
-| 8 | [GitHub Actions 整理](./infra-phase-8-github-actions) | CI/CD 専用に整理 |
-| 9 | [統合テスト・ドキュメント整備](./infra-phase-9-integration-test) | E2E テスト、Phase B 完了 |
+| Phase | 内容 | 状態 |
+|-------|------|:----:|
+| 0 | OCI API キー準備 | ⬜ |
+| 1 | Terraform セットアップ | ⬜ |
+| 2 | OCI リソース構築 | ⬜ |
+| 3 | VM 環境構築 | ⬜ |
+| 4 | infra ディレクトリ作成 | ⬜ |
+| 5 | server パッケージ作成 | ⬜ |
+| 6 | console デプロイ (Vercel) | ⬜ |
+| 7 | cron 設定 | ⬜ |
+| 8 | GitHub Actions 整理 | ⬜ |
+| 9 | 統合テスト・ドキュメント整備 | ⬜ |
 
 ---
 
-## 構築タスク概要
+## Phase 0: OCI API キー準備
 
-以下は各フェーズの概要です。詳細は上記の個別ドキュメントを参照してください。
+**目的:** Terraform が OCI にアクセスするための認証設定
 
-### Phase 1: OCI VM 準備
-
-**目的:** 新しい VM を作成し、SSH 接続を確立
-
-#### 1.1 既存リソース削除
+### タスク
 
 | # | タスク | 状態 |
-|---|--------|------|
-| 1.1.1 | superset-vm を Terminate（Boot Volume も削除） | ⬜ |
-| 1.1.2 | superset-nsg を削除 | ⬜ |
-| 1.1.3 | vcn-20250905-2350 を削除 | ⬜ |
+|---|--------|:----:|
+| 0.1 | OCI Web Console にログイン | ⬜ |
+| 0.2 | Identity → Users → 自分 → API Keys → Add API Key | ⬜ |
+| 0.3 | 秘密鍵ダウンロード（`oci_api_key.pem`） | ⬜ |
+| 0.4 | `~/.oci/` ディレクトリ作成 | ⬜ |
+| 0.5 | `~/.oci/config` 作成（OCI が生成するスニペットをコピー） | ⬜ |
 
-#### 1.2 新規 VM 作成
+### ~/.oci/config 例
 
-| # | タスク | 状態 |
-|---|--------|------|
-| 1.2.1 | VCN 作成: lifetracer-vcn | ⬜ |
-| 1.2.2 | VM 作成: lifetracer-vm (VM.Standard.A1.Flex) | ⬜ |
-| 1.2.3 | スペック: 4 OCPU / 24 GB RAM | ⬜ |
-| 1.2.4 | OS: Ubuntu 24.04 (ARM) | ⬜ |
-| 1.2.5 | SSH キー生成・秘密鍵ダウンロード | ⬜ |
-| 1.2.6 | Public IP 確認 | ⬜ |
-
-#### 1.3 SSH 接続設定
-
-| # | タスク | 状態 |
-|---|--------|------|
-| 1.3.1 | 秘密鍵配置: `~/.ssh/oci-lifetracer.pem` | ⬜ |
-| 1.3.2 | パーミッション: `chmod 600` | ⬜ |
-| 1.3.3 | SSH config 追加 | ⬜ |
-| 1.3.4 | 接続テスト: `ssh lifetracer` | ⬜ |
-
-**SSH config:**
-
-```bash
-Host lifetracer
-  HostName <VM_PUBLIC_IP>
-  User ubuntu
-  IdentityFile ~/.ssh/oci-lifetracer.pem
+```ini
+[DEFAULT]
+user=ocid1.user.oc1..xxxxx
+fingerprint=xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx
+tenancy=ocid1.tenancy.oc1..xxxxx
+region=ap-tokyo-1
+key_file=~/.oci/oci_api_key.pem
 ```
 
-**成果物:**
-- [ ] 稼働中の OCI VM (RUNNING)
-- [ ] SSH 接続確立
-- [ ] `~/.ssh/config` 更新
+### 成果物
+
+- `~/.oci/config` 設定完了
+- `~/.oci/oci_api_key.pem` 配置完了
 
 ---
 
-### Phase 2: VM 環境構築
+## Phase 1: Terraform セットアップ
 
-**目的:** Docker と開発ツールをインストール
+**目的:** Terraform をインストールし、プロジェクト構造を作成
 
-#### 2.1 基本パッケージ
-
-| # | タスク | 状態 |
-|---|--------|------|
-| 2.1.1 | システム更新: `apt update && apt upgrade` | ⬜ |
-| 2.1.2 | 基本ツール: git, curl, vim, htop | ⬜ |
-| 2.1.3 | タイムゾーン: Asia/Tokyo | ⬜ |
-
-#### 2.2 Docker インストール
+### タスク
 
 | # | タスク | 状態 |
-|---|--------|------|
-| 2.2.1 | Docker インストール（公式リポジトリ） | ⬜ |
-| 2.2.2 | Docker Compose v2 インストール | ⬜ |
-| 2.2.3 | ユーザー追加: docker グループ | ⬜ |
-| 2.2.4 | 動作確認: `docker run hello-world` | ⬜ |
+|---|--------|:----:|
+| 1.1 | Terraform インストール（Windows: winget / Chocolatey） | ⬜ |
+| 1.2 | `infra/terraform/` ディレクトリ作成 | ⬜ |
+| 1.3 | `main.tf`, `variables.tf`, `outputs.tf` 作成 | ⬜ |
+| 1.4 | `terraform init` 実行 | ⬜ |
 
-#### 2.3 VSCode Remote SSH 設定
-
-| # | タスク | 状態 |
-|---|--------|------|
-| 2.3.1 | ローカル VSCode に Remote-SSH 拡張インストール | ⬜ |
-| 2.3.2 | VM 接続テスト | ⬜ |
-| 2.3.3 | VM 側に拡張機能インストール（Docker, ESLint等） | ⬜ |
-
-**成果物:**
-- [ ] Docker 稼働中
-- [ ] VSCode Remote SSH 接続可能
-
----
-
-### Phase 3: infra ディレクトリ作成
-
-**目的:** Infrastructure as Code の基盤整備
-
-#### 3.1 ディレクトリ構造
-
-| # | タスク | 状態 |
-|---|--------|------|
-| 3.1.1 | `infra/` 作成 | ⬜ |
-| 3.1.2 | `infra/oci/scripts/` 作成 | ⬜ |
-| 3.1.3 | `infra/cloudflare/` 作成 | ⬜ |
-| 3.1.4 | `infra/vercel/` 作成 | ⬜ |
-| 3.1.5 | `infra/README.md` 作成 | ⬜ |
-
-#### 3.2 セットアップスクリプト
-
-| # | タスク | 状態 |
-|---|--------|------|
-| 3.2.1 | `infra/oci/scripts/setup-vm.sh` 作成 | ⬜ |
-| 3.2.2 | `infra/oci/scripts/deploy.sh` 作成 | ⬜ |
-| 3.2.3 | `.gitignore` 更新（機密ファイル除外） | ⬜ |
-
-#### 3.3 docker-compose.yml 作成
-
-| # | タスク | 状態 |
-|---|--------|------|
-| 3.3.1 | `infra/docker-compose.yml` 作成（最小構成） | ⬜ |
-| 3.3.2 | `infra/.env.example` 作成 | ⬜ |
-| 3.3.3 | ネットワーク定義 | ⬜ |
-
-**目標構造:**
+### ディレクトリ構造
 
 ```
 infra/
-├── README.md
-├── docker-compose.yml
-├── .env.example
+├── terraform/
+│   ├── main.tf           # OCI リソース定義
+│   ├── variables.tf      # 変数定義
+│   ├── outputs.tf        # 出力定義（VM IP など）
+│   ├── terraform.tfvars  # 変数値（gitignore）
+│   └── .terraform/       # プロバイダ（gitignore）
+├── docker/
+│   ├── docker-compose.yml
+│   ├── Dockerfile
+│   └── .env.example
 ├── crontab
-│
-├── oci/
-│   └── scripts/
-│       ├── setup-vm.sh
-│       └── deploy.sh
-│
-├── cloudflare/
-│   ├── config.yml.example
-│   └── README.md
-│
-└── vercel/
-    └── vercel.json
+└── README.md
 ```
 
-**成果物:**
-- [ ] `infra/` ディレクトリ一式
-- [ ] セットアップスクリプト
-- [ ] docker-compose.yml（最小構成）
+### main.tf（概要）
+
+```hcl
+terraform {
+  required_providers {
+    oci = {
+      source  = "oracle/oci"
+      version = "~> 5.0"
+    }
+  }
+}
+
+provider "oci" {
+  config_file_profile = "DEFAULT"
+}
+
+# VCN
+resource "oci_core_vcn" "lifetracer_vcn" {
+  compartment_id = var.compartment_id
+  display_name   = "lifetracer-vcn"
+  cidr_blocks    = ["10.0.0.0/16"]
+}
+
+# Internet Gateway
+resource "oci_core_internet_gateway" "igw" {
+  compartment_id = var.compartment_id
+  vcn_id         = oci_core_vcn.lifetracer_vcn.id
+  display_name   = "lifetracer-igw"
+}
+
+# Route Table
+resource "oci_core_route_table" "public_rt" {
+  compartment_id = var.compartment_id
+  vcn_id         = oci_core_vcn.lifetracer_vcn.id
+  display_name   = "public-route-table"
+
+  route_rules {
+    destination       = "0.0.0.0/0"
+    network_entity_id = oci_core_internet_gateway.igw.id
+  }
+}
+
+# Security List
+resource "oci_core_security_list" "server_sl" {
+  compartment_id = var.compartment_id
+  vcn_id         = oci_core_vcn.lifetracer_vcn.id
+  display_name   = "server-security-list"
+
+  # Egress: すべて許可
+  egress_security_rules {
+    protocol    = "all"
+    destination = "0.0.0.0/0"
+  }
+
+  # SSH (自分の IP のみ)
+  ingress_security_rules {
+    protocol = "6"  # TCP
+    source   = var.my_ip
+    tcp_options {
+      min = 22
+      max = 22
+    }
+  }
+
+  # API (Vercel IP のみ)
+  ingress_security_rules {
+    protocol = "6"
+    source   = "76.76.21.0/24"
+    tcp_options {
+      min = 3000
+      max = 3000
+    }
+  }
+}
+
+# Subnet
+resource "oci_core_subnet" "public_subnet" {
+  compartment_id    = var.compartment_id
+  vcn_id            = oci_core_vcn.lifetracer_vcn.id
+  cidr_block        = "10.0.1.0/24"
+  display_name      = "public-subnet"
+  route_table_id    = oci_core_route_table.public_rt.id
+  security_list_ids = [oci_core_security_list.server_sl.id]
+}
+
+# VM Instance
+resource "oci_core_instance" "lifetracer_vm" {
+  compartment_id      = var.compartment_id
+  availability_domain = var.availability_domain
+  display_name        = "lifetracer-vm"
+  shape               = "VM.Standard.A1.Flex"
+
+  shape_config {
+    ocpus         = 4
+    memory_in_gbs = 24
+  }
+
+  source_details {
+    source_type = "image"
+    source_id   = var.image_id  # Oracle Linux 8 ARM
+  }
+
+  create_vnic_details {
+    subnet_id        = oci_core_subnet.public_subnet.id
+    assign_public_ip = true
+  }
+
+  metadata = {
+    ssh_authorized_keys = file(var.ssh_public_key_path)
+  }
+}
+```
+
+### 成果物
+
+- `terraform init` 成功
+- プロバイダダウンロード完了
 
 ---
 
-### Phase 4: server パッケージ作成
+## Phase 2: OCI リソース構築
 
-**目的:** API ゲートウェイ（Hono）の実装
+**目的:** Terraform で VCN / VM を自動構築
 
-#### 4.1 プロジェクト作成
-
-| # | タスク | 状態 |
-|---|--------|------|
-| 4.1.1 | `packages/server/` 作成 | ⬜ |
-| 4.1.2 | `package.json` 作成（Hono 依存、`@repo/connector` ワークスペース依存） | ⬜ |
-| 4.1.3 | `tsconfig.json` 作成 | ⬜ |
-| 4.1.4 | `project.json` 作成（Nx 設定） | ⬜ |
-
-#### 4.2 基本実装
+### タスク
 
 | # | タスク | 状態 |
-|---|--------|------|
-| 4.2.1 | `src/index.ts` エントリーポイント | ⬜ |
-| 4.2.2 | `GET /health` ヘルスチェック | ⬜ |
-| 4.2.3 | `@repo/connector` 統合 | ⬜ |
-| 4.2.4 | `POST /api/sync/toggl` エンドポイント | ⬜ |
-| 4.2.5 | `POST /api/sync/gcal` エンドポイント | ⬜ |
+|---|--------|:----:|
+| 2.1 | `terraform.tfvars` に変数値設定 | ⬜ |
+| 2.2 | `terraform plan` で構成確認 | ⬜ |
+| 2.3 | `terraform apply` でリソース作成 | ⬜ |
+| 2.4 | SSH config 設定 | ⬜ |
+| 2.5 | `ssh lifetracer` で接続確認 | ⬜ |
 
-#### 4.3 Dockerfile 作成
+### terraform.tfvars（例）
+
+```hcl
+compartment_id      = "ocid1.compartment.oc1..xxxxx"
+availability_domain = "xxxx:AP-TOKYO-1-AD-1"
+image_id            = "ocid1.image.oc1.ap-tokyo-1.xxxxx"
+ssh_public_key_path = "~/.ssh/lifetracer.pub"
+my_ip               = "xxx.xxx.xxx.xxx/32"
+```
+
+### outputs.tf
+
+```hcl
+output "vm_public_ip" {
+  value = oci_core_instance.lifetracer_vm.public_ip
+}
+
+output "vm_private_ip" {
+  value = oci_core_instance.lifetracer_vm.private_ip
+}
+```
+
+### SSH config（~/.ssh/config）
+
+```
+Host lifetracer
+  HostName <terraform output vm_public_ip>
+  User opc
+  IdentityFile ~/.ssh/lifetracer
+```
+
+### 成果物
+
+- OCI VM が RUNNING
+- `ssh lifetracer` で接続可能
+- Security List で IP 制限設定済み
+
+---
+
+## Phase 3: VM 環境構築
+
+**目的:** Docker と開発ツールをインストール
+
+### タスク
 
 | # | タスク | 状態 |
-|---|--------|------|
-| 4.3.1 | `packages/server/Dockerfile` 作成 | ⬜ |
-| 4.3.2 | `.dockerignore` 作成 | ⬜ |
-| 4.3.3 | ビルドテスト | ⬜ |
+|---|--------|:----:|
+| 3.1 | システム更新、基本ツールインストール | ⬜ |
+| 3.2 | Docker + Docker Compose インストール | ⬜ |
+| 3.3 | VSCode Remote SSH 接続確認 | ⬜ |
 
-**server API 設計:**
+### セットアップスクリプト
+
+```bash
+# SSH 接続後
+sudo dnf update -y
+sudo dnf install -y git curl
+
+# Docker インストール
+sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+sudo systemctl enable --now docker
+sudo usermod -aG docker opc
+
+# 再ログイン後
+docker compose version
+```
+
+### 成果物
+
+- `docker compose version` 動作
+- VSCode Remote SSH 接続可能
+
+---
+
+## Phase 4: infra ディレクトリ作成
+
+**目的:** Docker Compose 構成の作成
+
+### ディレクトリ構造
+
+```
+infra/
+├── terraform/        # Phase 1 で作成済み
+├── docker/
+│   ├── docker-compose.yml
+│   ├── Dockerfile
+│   └── .env.example
+├── crontab
+└── README.md
+```
+
+### docker-compose.yml
+
+```yaml
+services:
+  server:
+    build: .
+    restart: always
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../../packages:/app/packages:ro
+      - ./logs:/app/logs
+    env_file:
+      - .env
+```
+
+### Dockerfile（マルチランタイム）
+
+```dockerfile
+FROM node:20-slim
+
+# システム依存
+RUN apt-get update && apt-get install -y \
+    python3 python3-pip python3-venv curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# dbt インストール
+RUN python3 -m pip install --break-system-packages dbt-postgres
+
+# Typst インストール
+RUN curl -fsSL https://typst.community/typst-install/install.sh | sh
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --production
+
+COPY . .
+
+EXPOSE 3000
+CMD ["node", "packages/server/dist/index.js"]
+```
+
+### タスク
+
+| # | タスク | 状態 |
+|---|--------|:----:|
+| 4.1 | `infra/docker/` ディレクトリ作成 | ⬜ |
+| 4.2 | `docker-compose.yml` 作成 | ⬜ |
+| 4.3 | `Dockerfile` 作成（マルチランタイム） | ⬜ |
+| 4.4 | `.env.example` 作成 | ⬜ |
+
+### 成果物
+
+- `infra/docker/` ディレクトリ一式
+- ビルド可能な Dockerfile
+
+---
+
+## Phase 5: server パッケージ作成
+
+**目的:** Hono API Gateway の実装
+
+### API 設計
 
 ```typescript
 // packages/server/src/index.ts
 import { Hono } from 'hono'
-import { syncToggl, syncGcal } from '@repo/connector'
+import { spawn } from 'child_process'
 
 const app = new Hono()
 
+// ヘルスチェック
 app.get('/health', (c) => c.json({ status: 'ok' }))
 
-app.post('/api/sync/toggl', async (c) => {
-  const result = await syncToggl()
-  return c.json(result)
+// ジョブステータス
+app.get('/api/jobs/:id', async (c) => {
+  const job = await getJob(c.req.param('id'))
+  return c.json(job)
 })
 
-app.post('/api/sync/gcal', async (c) => {
-  const result = await syncGcal()
-  return c.json(result)
+// 同期（非同期）
+app.post('/api/sync/:service', async (c) => {
+  const service = c.req.param('service')
+  const jobId = crypto.randomUUID()
+
+  // バックグラウンドで実行
+  spawnJob(jobId, 'connector', ['npm', 'run', `sync:${service}`])
+
+  return c.json({ jobId, status: 'queued' }, 202)
+})
+
+// dbt 実行（非同期）
+app.post('/api/transform', async (c) => {
+  const jobId = crypto.randomUUID()
+  spawnJob(jobId, 'transform', ['dbt', 'run'])
+  return c.json({ jobId, status: 'queued' }, 202)
+})
+
+// 分析（非同期）
+app.post('/api/analyze', async (c) => {
+  const jobId = crypto.randomUUID()
+  spawnJob(jobId, 'analyzer', ['python', 'main.py'])
+  return c.json({ jobId, status: 'queued' }, 202)
+})
+
+// 調整提案（非同期）
+app.post('/api/adjust', async (c) => {
+  const jobId = crypto.randomUUID()
+  spawnJob(jobId, 'adjuster', ['python', 'main.py'])
+  return c.json({ jobId, status: 'queued' }, 202)
+})
+
+// レポート生成（非同期）
+app.post('/api/report', async (c) => {
+  const jobId = crypto.randomUUID()
+  spawnJob(jobId, 'reporter', ['npm', 'run', 'generate'])
+  return c.json({ jobId, status: 'queued' }, 202)
 })
 
 export default app
 ```
 
-**成果物:**
-- [ ] `packages/server/` 完成
-- [ ] Hono API サーバー稼働
-- [ ] Dockerfile
+### タスク
+
+| # | タスク | 状態 |
+|---|--------|:----:|
+| 5.1 | `packages/server/` 作成 | ⬜ |
+| 5.2 | Hono + spawn 実装 | ⬜ |
+| 5.3 | ジョブ管理（メモリ or SQLite） | ⬜ |
+| 5.4 | ローカルテスト | ⬜ |
+
+### 成果物
+
+- `packages/server/` 完成
+- `GET /health` 応答
+
+### 備考: セキュリティ設定
+
+IP 制限は Phase 2 の Terraform で Security List として設定済み。
+設計の詳細は [ADR-008 サーバー間通信セキュリティ](/01-product/100-development/130-design/131-decisions/adr_008-server-communication-security) を参照。
 
 ---
 
-### Phase 5: Cloudflare Tunnel 設定
-
-**目的:** HTTPS アクセスの確立
-
-#### 5.1 Cloudflare 準備
-
-| # | タスク | 状態 |
-|---|--------|------|
-| 5.1.1 | ドメイン確認（Cloudflare 管理下） | ⬜ |
-| 5.1.2 | VM に cloudflared インストール | ⬜ |
-| 5.1.3 | `cloudflared tunnel login` | ⬜ |
-
-#### 5.2 Tunnel 作成
-
-| # | タスク | 状態 |
-|---|--------|------|
-| 5.2.1 | `cloudflared tunnel create lifetracer` | ⬜ |
-| 5.2.2 | DNS ルート設定 | ⬜ |
-| 5.2.3 | `config.yml` 作成 | ⬜ |
-| 5.2.4 | docker-compose に cloudflared 追加 | ⬜ |
-
-#### 5.3 動作確認
-
-| # | タスク | 状態 |
-|---|--------|------|
-| 5.3.1 | Tunnel 起動 | ⬜ |
-| 5.3.2 | HTTPS アクセス確認 | ⬜ |
-| 5.3.3 | `/health` レスポンス確認 | ⬜ |
-
-**config.yml テンプレート:**
-
-```yaml
-# infra/cloudflare/config.yml.example
-tunnel: <TUNNEL_ID>
-credentials-file: /etc/cloudflared/credentials.json
-
-ingress:
-  - hostname: api.example.com
-    service: http://server:3000
-  - service: http_status:404
-```
-
-**成果物:**
-- [ ] Named Tunnel 稼働
-- [ ] HTTPS でアクセス可能
-- [ ] `infra/cloudflare/config.yml.example`
-
----
-
-### Phase 6: console デプロイ（Vercel）
+## Phase 6: console デプロイ (Vercel)
 
 **目的:** 管理 UI を Vercel にデプロイ
 
-#### 6.1 Vercel 準備
+### タスク
 
 | # | タスク | 状態 |
-|---|--------|------|
-| 6.1.1 | Vercel アカウント確認 | ⬜ |
-| 6.1.2 | GitHub リポジトリ連携 | ⬜ |
-| 6.1.3 | プロジェクト作成（packages/console） | ⬜ |
+|---|--------|:----:|
+| 6.1 | Vercel プロジェクト作成 | ⬜ |
+| 6.2 | 環境変数設定 | ⬜ |
+| 6.3 | API Route 実装（server 呼び出し） | ⬜ |
+| 6.4 | デプロイ確認 | ⬜ |
 
-#### 6.2 環境変数設定
+### 環境変数
 
-| # | タスク | 状態 |
-|---|--------|------|
-| 6.2.1 | `NEXT_PUBLIC_SUPABASE_URL` | ⬜ |
-| 6.2.2 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ⬜ |
-| 6.2.3 | `API_URL`（OCI VM の Tunnel URL） | ⬜ |
-
-#### 6.3 Serverless Function 実装
-
-| # | タスク | 状態 |
-|---|--------|------|
-| 6.3.1 | `app/api/sync/[service]/route.ts` 作成 | ⬜ |
-| 6.3.2 | server API 呼び出し実装 | ⬜ |
-| 6.3.3 | デプロイテスト | ⬜ |
-
-**Serverless Function:**
-
-```typescript
-// packages/console/src/app/api/sync/[service]/route.ts
-export async function POST(
-  request: Request,
-  { params }: { params: { service: string } }
-) {
-  const response = await fetch(
-    `${process.env.API_URL}/api/sync/${params.service}`,
-    { method: 'POST' }
-  )
-  return response
-}
+```
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+OCI_VM_IP=<OCI VM の Public IP>
 ```
 
-**成果物:**
-- [ ] console が Vercel で稼働
-- [ ] server API 呼び出し動作
-- [ ] `infra/vercel/vercel.json`
+### 成果物
+
+- console が Vercel で稼働
+- 同期ボタンで server API 呼び出し動作
 
 ---
 
-### Phase 7: cron 設定（日次レポート生成）
+## Phase 7: cron 設定
 
-**目的:** 日次レポート生成のための同期・変換・レポート出力の自動実行
+**目的:** 日次バッチの自動実行
+
+### crontab
+
+```bash
+# 日次同期パイプライン (JST 01:00 = UTC 16:00)
+
+# 1. データ同期
+0 16 * * * curl -X POST http://localhost:3000/api/sync/toggl
+5 16 * * * curl -X POST http://localhost:3000/api/sync/gcal
+
+# 2. レポート生成 (必要に応じて)
+0 17 * * * curl -X POST http://localhost:3000/api/report
+```
+
+### タスク
 
 | # | タスク | 状態 |
-|---|--------|------|
+|---|--------|:----:|
 | 7.1 | `infra/crontab` 作成 | ⬜ |
 | 7.2 | VM に crontab 設定 | ⬜ |
 | 7.3 | ログ出力設定 | ⬜ |
-| 7.4 | 動作確認 | ⬜ |
 
-**crontab:**
+### 成果物
 
-```bash
-# infra/crontab
-# 日次レポート生成パイプライン
-
-# 1. データ同期 (01:00 JST = 16:00 UTC)
-0 16 * * * cd /opt/supabase-sync-jobs/infra && docker compose run --rm connector npm run sync:toggl >> /var/log/sync.log 2>&1
-5 16 * * * cd /opt/supabase-sync-jobs/infra && docker compose run --rm connector npm run sync:gcal >> /var/log/sync.log 2>&1
-
-# 2. dbt transform (02:00 JST = 17:00 UTC)
-0 17 * * * cd /opt/supabase-sync-jobs/infra && docker compose run --rm transform dbt run >> /var/log/dbt.log 2>&1
-
-# 3. レポート生成 (03:00 JST = 18:00 UTC)
-0 18 * * * cd /opt/supabase-sync-jobs/infra && docker compose run --rm reporter npm run generate >> /var/log/reporter.log 2>&1
-```
-
-**成果物:**
-- [ ] cron 設定完了
-- [ ] 日次同期自動実行
-- [ ] dbt 変換自動実行
-- [ ] レポート生成自動実行
+- 日次同期自動実行
 
 ---
 
-### Phase 8: GitHub Actions 整理
+## Phase 8: GitHub Actions 整理
 
 **目的:** GitHub Actions を CI/CD 専用に整理
 
-| # | タスク | 状態 |
-|---|--------|------|
-| 8.1 | 同期ワークフロー削除（または無効化） | ⬜ |
-| 8.2 | CI ワークフロー整理（test, lint, typecheck） | ⬜ |
-| 8.3 | デプロイワークフロー作成（将来用） | ⬜ |
+### タスク
 
-**成果物:**
-- [ ] GitHub Actions は CI/CD 専用
-- [ ] 同期は OCI VM で実行
+| # | タスク | 状態 |
+|---|--------|:----:|
+| 8.1 | 同期ワークフロー削除 or 無効化 | ⬜ |
+| 8.2 | CI ワークフロー整理（test, lint） | ⬜ |
+| 8.3 | dbt deploy ワークフロー確認 | ⬜ |
+
+### 成果物
+
+- GitHub Actions は CI/CD 専用
+- 同期は OCI VM で実行
 
 ---
 
-### Phase 9: 統合テスト・ドキュメント整備（Phase B 完了）
+## Phase 9: 統合テスト・ドキュメント整備
 
-**目的:** 並行運用の動作確認とドキュメント完成
+**目的:** 全体動作確認とドキュメント完成
 
-#### 9.1 統合テスト
-
-| # | タスク | 状態 |
-|---|--------|------|
-| 9.1.1 | 全サービス起動確認: `docker compose up` | ⬜ |
-| 9.1.2 | console → server 通信確認 | ⬜ |
-| 9.1.3 | 同期実行確認（Toggl, GCal） | ⬜ |
-| 9.1.4 | cron 実行確認 | ⬜ |
-
-#### 9.2 ドキュメント
+### タスク
 
 | # | タスク | 状態 |
-|---|--------|------|
-| 9.2.1 | `infra/README.md` 完成 | ⬜ |
-| 9.2.2 | ADR-007 ステータス更新（承認済み） | ⬜ |
-| 9.2.3 | 本計画ステータス更新（Phase B 完了） | ⬜ |
+|---|--------|:----:|
+| 9.1 | `docker compose up` で全サービス起動確認 | ⬜ |
+| 9.2 | console → server → Supabase フロー確認 | ⬜ |
+| 9.3 | cron 実行確認 | ⬜ |
+| 9.4 | `infra/README.md` 完成 | ⬜ |
+| 9.5 | ADR-007 ステータス更新 | ⬜ |
 
-**成果物:**
-- [ ] Phase B 完了（並行運用可能）
-- [ ] ドキュメント完成
+### 成果物
 
----
-
-## 将来タスク（Phase C 以降）
-
-Phase B 完了後、以下を順次実施:
-
-### Python サービス Docker 化
-
-| パッケージ | 内容 |
-|-----------|------|
-| analyzer | FastAPI + ML/LLM |
-| adjuster | FastAPI + 調整提案 |
-
-### reporter Docker 化
-
-| 内容 |
-|------|
-| Node.js + Typst CLI |
-
-### visualizer 移行
-
-| 内容 |
-|------|
-| ローカル Grafana → Grafana Cloud |
-
-### 完全移行
-
-| 内容 |
-|------|
-| GitHub Actions 同期ワークフロー完全削除 |
-| console からの同期を server API 経由に統一 |
+- Phase B 完了（並行運用可能）
+- ドキュメント完成
 
 ---
 
 ## 検証チェックリスト
 
-### Phase 1 完了時
+### Phase 2 完了時
+- [ ] `terraform apply` 成功
 - [ ] OCI コンソールで VM が RUNNING
 - [ ] `ssh lifetracer` で接続可能
-- [ ] Public IP が固定されている
-
-### Phase 2 完了時
-- [ ] `docker --version` が表示される
-- [ ] `docker compose version` が表示される
-- [ ] VSCode Remote SSH で接続・編集可能
+- [ ] Security List で IP 制限設定済み
 
 ### Phase 5 完了時
-- [ ] `https://api.example.com/health` が応答
-- [ ] SSL 証明書が有効（Cloudflare 発行）
+- [ ] `packages/server/` 完成
+- [ ] `GET /health` 応答
 
-### Phase 6 完了時
-- [ ] Vercel ダッシュボードでデプロイ成功
-- [ ] console から同期ボタンで server API 呼び出し成功
-
-### Phase 9 完了時（Phase B 完了）
+### Phase 9 完了時
 - [ ] `docker compose ps` で server が Up
-- [ ] console → server → Supabase の同期フロー動作
+- [ ] Vercel からのみ `http://<OCI_IP>:3000/health` が応答
+- [ ] 自分の IP からはタイムアウト
+- [ ] console から同期ボタンで非同期ジョブ開始
+- [ ] ジョブステータス取得可能
 - [ ] cron で日次同期が動作
-- [ ] GitHub Actions は CI/CD のみ実行
 
 ---
 
 ## 注意事項
 
-### OCI 無料枠の制限
+### OCI 無料枠
 
 | リソース | 制限 | 本構成での使用 |
 |---------|------|---------------|
-| ARM VM | 4 OCPU / 24 GB（合計） | 4 OCPU / 24 GB |
-| Block Volume | 200 GB | 50 GB（デフォルト） |
+| ARM VM | 4 OCPU / 24 GB | 4 OCPU / 24 GB |
+| Block Volume | 200 GB | 50 GB |
 | Outbound | 10 TB/月 | 十分 |
 
-**注意:** アイドル状態（CPU/メモリ/ネットワーク < 20%）が7日間続くと回収される可能性あり。日次レポート生成の cron 実行により自然に回避される。
+**注意:** 7日間アイドル状態が続くと回収の可能性あり。cron 実行で自然に回避。
 
 ### ARM アーキテクチャ
 
-VM は ARM（aarch64）。Dockerfile で明示:
+Dockerfile で明示:
 
 ```dockerfile
 FROM --platform=linux/arm64 node:20-slim
@@ -582,10 +699,35 @@ FROM --platform=linux/arm64 node:20-slim
 Git に含めない:
 
 ```gitignore
-infra/cloudflare/config.yml
-infra/cloudflare/credentials.json
-infra/.env
-infra/**/*.pem
+# infra/.gitignore
+terraform/.terraform/
+terraform/terraform.tfvars
+terraform/*.tfstate
+terraform/*.tfstate.*
+docker/.env
+```
+
+---
+
+## Terraform コマンドリファレンス
+
+```bash
+cd infra/terraform
+
+# 初期化（プロバイダダウンロード）
+terraform init
+
+# 構成確認（dry-run）
+terraform plan
+
+# リソース作成
+terraform apply
+
+# リソース削除
+terraform destroy
+
+# 出力値確認
+terraform output vm_public_ip
 ```
 
 ---
@@ -593,5 +735,6 @@ infra/**/*.pem
 ## 関連ドキュメント
 
 - [ADR-007 インフラストラクチャ配置](/01-product/100-development/130-design/131-decisions/adr_007-infrastructure-layout)
+- [ADR-008 サーバー間通信セキュリティ](/01-product/100-development/130-design/131-decisions/adr_008-server-communication-security)
 - [ADR-005 モノレポ構成](/01-product/100-development/130-design/131-decisions/adr_005-monorepo-structure)
-- [モノレポ移行計画](/02-project/300-management/310-planning/migration-plan)
+- [Terraform OCI Provider ドキュメント](https://registry.terraform.io/providers/oracle/oci/latest/docs)

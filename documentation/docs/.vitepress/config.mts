@@ -159,6 +159,7 @@ export default defineConfig({
                         { text: 'ADR-005 モノレポ構成', link: '/01-product/100-development/130-design/131-decisions/adr_005-monorepo-structure' },
                         { text: 'ADR-006 ドキュメント構成', link: '/01-product/100-development/130-design/131-decisions/adr_006-documentation-structure' },
                         { text: 'ADR-007 インフラ配置', link: '/01-product/100-development/130-design/131-decisions/adr_007-infrastructure-layout' },
+                        { text: 'ADR-008 通信セキュリティ', link: '/01-product/100-development/130-design/131-decisions/adr_008-server-communication-security' },
                       ]
                     },
                   ]
@@ -248,15 +249,6 @@ export default defineConfig({
                     { text: 'ロードマップ', link: '/02-project/300-management/310-planning/roadmap' },
                     { text: '移行計画', link: '/02-project/300-management/310-planning/migration-plan' },
                     { text: 'インフラ計画', link: '/02-project/300-management/310-planning/infrastructure-plan' },
-                    { text: 'Phase 1: OCI VM', link: '/02-project/300-management/310-planning/infra-phase-1-oci-vm' },
-                    { text: 'Phase 2: VMセットアップ', link: '/02-project/300-management/310-planning/infra-phase-2-vm-setup' },
-                    { text: 'Phase 3: infraディレクトリ', link: '/02-project/300-management/310-planning/infra-phase-3-infra-directory' },
-                    { text: 'Phase 4: serverパッケージ', link: '/02-project/300-management/310-planning/infra-phase-4-server-package' },
-                    { text: 'Phase 5: Cloudflare Tunnel', link: '/02-project/300-management/310-planning/infra-phase-5-cloudflare-tunnel' },
-                    { text: 'Phase 6: consoleデプロイ', link: '/02-project/300-management/310-planning/infra-phase-6-console-deploy' },
-                    { text: 'Phase 7: cron設定', link: '/02-project/300-management/310-planning/infra-phase-7-cron-setup' },
-                    { text: 'Phase 8: GitHub Actions', link: '/02-project/300-management/310-planning/infra-phase-8-github-actions' },
-                    { text: 'Phase 9: 統合テスト', link: '/02-project/300-management/310-planning/infra-phase-9-integration-test' },
                   ]
                 },
                 {
