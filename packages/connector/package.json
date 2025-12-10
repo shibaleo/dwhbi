@@ -28,7 +28,6 @@
     "sync:gcal": "npx tsx src/services/google-calendar/cli.ts"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.86.0",
     "dotenv": "^16.4.0",
     "pg": "^8.13.0"
   },

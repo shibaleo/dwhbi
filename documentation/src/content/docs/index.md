@@ -104,7 +104,7 @@ description: 個人データ統合基盤
 ## プロジェクト構成
 
 ```
-supabase-sync-jobs/
+dwhbi/
 ├── pipelines/      # Python - 外部API→raw層
 ├── transform/      # dbt - raw→staging→core→marts
 ├── analyzer/       # Python - ML分析（estimate計算）

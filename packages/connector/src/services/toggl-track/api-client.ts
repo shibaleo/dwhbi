@@ -106,9 +106,11 @@ async function requestWithRetry(
  */
 export async function getAuthInfo(): Promise<AuthInfo> {
   if (cachedAuth !== null) {
+    logger.debug("Using cached auth info");
     return cachedAuth;
   }
 
+  logger.debug("Loading credentials from vault...");
   const result = await getCredentials("toggl_track");
   const credentials = result.credentials as Record<string, unknown>;
 
@@ -125,11 +127,12 @@ export async function getAuthInfo(): Promise<AuthInfo> {
     "Content-Type": "application/json",
     Authorization: `Basic ${encoded}`,
   };
+  logger.debug("Basic auth header generated");
 
   // Get workspace_id
   let workspaceId = credentials.workspace_id as number | undefined;
   if (!workspaceId) {
-    // Fetch from /me
+    logger.debug("workspace_id not in credentials, fetching from /me...");
     const meResponse = await fetch(`${TRACK_API_BASE}/me`, { headers });
     if (!meResponse.ok) {
       throw new Error(`Failed to get /me: ${meResponse.status}`);
@@ -142,6 +145,7 @@ export async function getAuthInfo(): Promise<AuthInfo> {
     throw new Error("Failed to get workspace_id from Toggl");
   }
 
+  logger.debug(`Auth initialized: workspace_id=${workspaceId}`);
   cachedAuth = {
     headers,
     workspaceId,
@@ -171,9 +175,12 @@ export async function fetchTimeEntries(
   const params = new URLSearchParams({ start_date: startDate, end_date: endDate });
   const url = `${TRACK_API_BASE}/me/time_entries?${params}`;
 
+  logger.debug(`GET /me/time_entries (${startDate} to ${endDate})`);
   const response = await requestWithRetry("GET", url, { headers: auth.headers });
   const data = await response.json();
-  return (data as Record<string, unknown>[]) || [];
+  const entries = (data as Record<string, unknown>[]) || [];
+  logger.debug(`Response: ${entries.length} entries`);
+  return entries;
 }
 
 /**
@@ -183,9 +190,12 @@ export async function fetchProjects(): Promise<Record<string, unknown>[]> {
   const auth = await getAuthInfo();
   const url = `${TRACK_API_BASE}/workspaces/${auth.workspaceId}/projects`;
 
+  logger.debug(`GET /workspaces/${auth.workspaceId}/projects`);
   const response = await requestWithRetry("GET", url, { headers: auth.headers });
   const data = await response.json();
-  return (data as Record<string, unknown>[]) || [];
+  const items = (data as Record<string, unknown>[]) || [];
+  logger.debug(`Response: ${items.length} projects`);
+  return items;
 }
 
 /**
@@ -195,9 +205,12 @@ export async function fetchClients(): Promise<Record<string, unknown>[]> {
   const auth = await getAuthInfo();
   const url = `${TRACK_API_BASE}/workspaces/${auth.workspaceId}/clients`;
 
+  logger.debug(`GET /workspaces/${auth.workspaceId}/clients`);
   const response = await requestWithRetry("GET", url, { headers: auth.headers });
   const data = await response.json();
-  return (data as Record<string, unknown>[]) || [];
+  const items = (data as Record<string, unknown>[]) || [];
+  logger.debug(`Response: ${items.length} clients`);
+  return items;
 }
 
 /**
@@ -207,9 +220,12 @@ export async function fetchTags(): Promise<Record<string, unknown>[]> {
   const auth = await getAuthInfo();
   const url = `${TRACK_API_BASE}/workspaces/${auth.workspaceId}/tags`;
 
+  logger.debug(`GET /workspaces/${auth.workspaceId}/tags`);
   const response = await requestWithRetry("GET", url, { headers: auth.headers });
   const data = await response.json();
-  return (data as Record<string, unknown>[]) || [];
+  const items = (data as Record<string, unknown>[]) || [];
+  logger.debug(`Response: ${items.length} tags`);
+  return items;
 }
 
 /**
@@ -219,8 +235,11 @@ export async function fetchMe(): Promise<Record<string, unknown>> {
   const auth = await getAuthInfo();
   const url = `${TRACK_API_BASE}/me`;
 
+  logger.debug("GET /me");
   const response = await requestWithRetry("GET", url, { headers: auth.headers });
-  return (await response.json()) as Record<string, unknown>;
+  const data = (await response.json()) as Record<string, unknown>;
+  logger.debug(`Response: user_id=${data.id}`);
+  return data;
 }
 
 /**
@@ -230,9 +249,12 @@ export async function fetchWorkspaces(): Promise<Record<string, unknown>[]> {
   const auth = await getAuthInfo();
   const url = `${TRACK_API_BASE}/workspaces`;
 
+  logger.debug("GET /workspaces");
   const response = await requestWithRetry("GET", url, { headers: auth.headers });
   const data = await response.json();
-  return (data as Record<string, unknown>[]) || [];
+  const items = (data as Record<string, unknown>[]) || [];
+  logger.debug(`Response: ${items.length} workspaces`);
+  return items;
 }
 
 /**
@@ -242,9 +264,12 @@ export async function fetchWorkspaceUsers(): Promise<Record<string, unknown>[]> 
   const auth = await getAuthInfo();
   const url = `${TRACK_API_BASE}/workspaces/${auth.workspaceId}/users`;
 
+  logger.debug(`GET /workspaces/${auth.workspaceId}/users`);
   const response = await requestWithRetry("GET", url, { headers: auth.headers });
   const data = await response.json();
-  return (data as Record<string, unknown>[]) || [];
+  const items = (data as Record<string, unknown>[]) || [];
+  logger.debug(`Response: ${items.length} users`);
+  return items;
 }
 
 /**
@@ -254,9 +279,12 @@ export async function fetchWorkspaceGroups(): Promise<Record<string, unknown>[]>
   const auth = await getAuthInfo();
   const url = `${TRACK_API_BASE}/workspaces/${auth.workspaceId}/groups`;
 
+  logger.debug(`GET /workspaces/${auth.workspaceId}/groups`);
   const response = await requestWithRetry("GET", url, { headers: auth.headers });
   const data = await response.json();
-  return (data as Record<string, unknown>[]) || [];
+  const items = (data as Record<string, unknown>[]) || [];
+  logger.debug(`Response: ${items.length} groups`);
+  return items;
 }
 
 // =============================================================================

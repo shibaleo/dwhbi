@@ -1,7 +1,17 @@
 /**
  * Logger utility
  *
- * Simple console-based logging with timestamp and log levels.
+ * Console-based logging with timestamp and log levels.
+ *
+ * Log levels:
+ * - debug: Detailed internal state (credentials loading, API requests, etc.)
+ * - info: Normal operation progress (sync start/end, record counts)
+ * - warn: Recoverable issues (rate limits, partial failures)
+ * - error: Fatal errors that stop execution
+ *
+ * Usage:
+ * - CLI: --log-level debug|info|warn|error
+ * - Library: setLogLevel("warn") before calling sync functions
  */
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
@@ -13,7 +23,14 @@ const LOG_LEVELS: Record<LogLevel, number> = {
   error: 3,
 };
 
+// Default to "info" level for development visibility.
+// DESIGN DECISION: We intentionally do NOT auto-detect environment (VITEST, NODE_ENV, CI).
+// Explicit flag is required so that future developers always know why the log level is set.
+// Production environments should use --log-level warn to minimize output.
+// If you're wondering "why is logging behaving this way?", check the CLI --log-level flag
+// or setLogLevel() call in your code.
 let currentLevel: LogLevel = "info";
+let levelHasBeenSet = false;
 
 function formatTimestamp(): string {
   return new Date().toISOString().replace("T", " ").slice(0, 19);
@@ -36,11 +53,33 @@ export interface Logger {
   error: (message: string) => void;
 }
 
-export function setupLogger(name: string, level?: LogLevel): Logger {
-  if (level) {
-    currentLevel = level;
-  }
+/**
+ * Set global log level.
+ * Call this early in your application (e.g., in CLI before sync).
+ */
+export function setLogLevel(level: LogLevel): void {
+  currentLevel = level;
+  levelHasBeenSet = true;
+}
 
+/**
+ * Get current log level.
+ */
+export function getLogLevel(): LogLevel {
+  return currentLevel;
+}
+
+/**
+ * Check if log level has been explicitly set.
+ */
+export function isLogLevelSet(): boolean {
+  return levelHasBeenSet;
+}
+
+/**
+ * Create a logger instance for a specific module.
+ */
+export function setupLogger(name: string): Logger {
   return {
     debug: (message: string) => log("debug", name, message),
     info: (message: string) => log("info", name, message),

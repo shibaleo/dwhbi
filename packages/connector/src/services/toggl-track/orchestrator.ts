@@ -3,9 +3,11 @@
  *
  * Unified entry point for full data sync.
  * Executes master sync first, then time entries.
+ * Manages database connection lifecycle.
  */
 
 import { setupLogger } from "../../lib/logger.js";
+import { getDbClient, closeDbClient } from "../../db/raw-client.js";
 import { syncTimeEntries } from "./sync-time-entries.js";
 import { syncMasters } from "./sync-masters.js";
 
@@ -23,6 +25,7 @@ export interface SyncAllResult {
  * Sync all Toggl Track data
  *
  * Executes in order: masters -> time entries
+ * Database connection is opened once and reused throughout.
  *
  * @param days - Number of days for time entries
  * @returns Sync result
@@ -36,6 +39,9 @@ export async function syncAll(days: number = 3): Promise<SyncAllResult> {
   let mastersCounts: Record<string, number> = {};
 
   try {
+    // Initialize shared DB connection
+    await getDbClient();
+
     // 1. Masters sync (parallel internally)
     logger.info("Step 1: Syncing masters...");
     const mastersResult = await syncMasters();
@@ -75,5 +81,8 @@ export async function syncAll(days: number = 3): Promise<SyncAllResult> {
     const elapsed = Math.round((performance.now() - startTime) / 10) / 100;
     logger.error(`Toggl Track full sync failed after ${elapsed}s: ${error}`);
     throw error;
+  } finally {
+    // Always close DB connection
+    await closeDbClient();
   }
 }

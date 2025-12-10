@@ -15,7 +15,7 @@ description: プロジェクト全体のディレクトリ構成とファイル�
 ## ディレクトリ構成
 
 ```
-supabase-sync-jobs/
+dwhbi/
 ├── .github/                 # GitHub Actions（全体）
 │   └── workflows/
 │       ├── sync-*.yml       # データ同期ジョブ

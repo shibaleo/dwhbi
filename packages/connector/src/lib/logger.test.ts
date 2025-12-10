@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { setupLogger } from "./logger.js";
+import { setupLogger, setLogLevel } from "./logger.js";
 
 describe("logger", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    // Reset to info level for most tests (default is warn in production)
+    setLogLevel("info");
   });
 
   it("should create a logger with all methods", () => {
@@ -28,9 +30,11 @@ describe("logger", () => {
     expect(logOutput).toContain("test message");
   });
 
-  it("should respect log level", () => {
+  it("should respect log level (warn)", () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    const logger = setupLogger("test", "warn");
+    // Set log level to warn
+    setLogLevel("warn");
+    const logger = setupLogger("test");
 
     logger.debug("debug message");
     logger.info("info message");
@@ -39,5 +43,20 @@ describe("logger", () => {
 
     // Only warn and error should be logged
     expect(consoleSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("should respect log level (debug)", () => {
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    // Set log level to debug
+    setLogLevel("debug");
+    const logger = setupLogger("test");
+
+    logger.debug("debug message");
+    logger.info("info message");
+    logger.warn("warn message");
+    logger.error("error message");
+
+    // All 4 levels should be logged
+    expect(consoleSpy).toHaveBeenCalledTimes(4);
   });
 });

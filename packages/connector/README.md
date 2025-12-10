@@ -1,104 +1,190 @@
-# LIFETRACER Pipelines
+# @repo/connector
 
 データ収集パイプライン（外部API → raw層）
+
+Node.js/TypeScript で実装。PostgreSQL Vault 拡張を使用した認証情報管理。
 
 ## 構成
 
 ```
-pipelines/
-├── services/          # API同期スクリプト
-│   └── toggl_track/  # Toggl Track API同期
-│       ├── api_client.py           # API通信
-│       ├── orchestrator.py         # オーケストレーター
-│       ├── sync_time_entries.py    # Track API v9
-│       └── sync_time_entries_report.py  # Reports API v3
-├── lib/              # 共通ライブラリ
-│   ├── credentials.py # 認証情報取得・復号
-│   ├── db.py         # Supabase client
-│   ├── encryption.py # AES-GCM暗号化
-│   └── logger.py     # ロギング
-└── main.py           # オーケストレーター（未実装）
+connector/
+├── src/
+│   ├── services/              # サービス別同期モジュール
+│   │   ├── toggl-track/
+│   │   └── google-calendar/
+│   ├── lib/                   # 共通ライブラリ
+│   ├── db/                    # DB操作
+│   └── index.ts
+├── package.json
+└── .env
+```
+
+### サービス共通構造
+
+各サービスは以下の構造で実装:
+
+```
+services/{service}/
+├── api-client.ts       # API通信・認証（キャッシュ付き）
+├── orchestrator.ts     # 同期オーケストレーター（DB接続管理）
+├── sync-masters.ts     # マスタデータ同期
+├── sync-{data}.ts      # トランザクションデータ同期
+├── cli.ts              # CLIエントリポイント
+└── index.ts            # エクスポート
+```
+
+**処理フロー:**
+```
+cli.ts → orchestrator.syncAll()
+           ├── getDbClient()      # DB接続（1回）
+           ├── syncMasters()      # マスタ同期
+           ├── syncData(days)     # データ同期
+           └── closeDbClient()    # DB切断
 ```
 
 ## セットアップ
 
 ```bash
-# Python 3.12+ 必須
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-
-# 依存関係インストール
-pip install -r requirements.txt
+# 依存関係インストール（ルートから）
+npm install
 
 # 環境変数設定
 cp .env.example .env
-# .env を編集して SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, TOKEN_ENCRYPTION_KEY を設定
+# .env を編集
 ```
+
+### 必要な環境変数
+
+```env
+DIRECT_DATABASE_URL="postgresql://[user]:[password]@host:[port]/[dbname]"
+```
+
+例
+```env
+DIRECT_DATABASE_URL="postgresql://postgres:XXXYYYZZZ@host:5432/postgres"
+```
+
+> **Note**: Supabase 以外の PostgreSQL でも動作します（Vault 拡張が必要）。
 
 ## 使用方法
 
-```python
-from pipelines.services.toggl_track.orchestrator import sync_all
+### CLI
 
-# Toggl データを3日分同期
-result = await sync_all(days=3)
-print(f"Synced {result['count']} entries")
+```bash
+# Toggl Track 同期（デフォルト3日分）
+npm run sync:toggl
+
+# Google Calendar 同期（1日分）
+npm run sync:gcal -- --days 1
+
+# npx で直接実行
+npx tsx src/services/toggl-track/cli.ts --days 7
+npx tsx src/services/google-calendar/cli.ts --days 3
+```
+
+### ライブラリとして使用
+
+```typescript
+import { syncAll as syncToggl } from "@repo/connector/toggl-track";
+import { syncAll as syncGcal } from "@repo/connector/google-calendar";
+
+// Toggl データを3日分同期
+const togglResult = await syncToggl(3);
+console.log(`Synced ${togglResult.timeEntriesCount} time entries`);
+
+// Google Calendar を1日分同期
+const gcalResult = await syncGcal(1);
+console.log(`Synced ${gcalResult.eventsCount} events`);
 ```
 
 ## テスト
 
 ```bash
 # 全テスト実行
-pytest
+npm test
 
-# 特定のテストのみ
-pytest tests/pipelines/test_toggl.py
+# 一度だけ実行
+npm run test:run
 
-# カバレッジ付き
-pytest --cov=pipelines --cov-report=html
-
-# 詳細ログ付き
-pytest -v -s
+# 型チェック
+npm run typecheck
 ```
 
 ## 認証情報の管理
 
-認証情報は `credentials.services` テーブルに暗号化されて保存されます。
+認証情報は **PostgreSQL Vault 拡張** (`vault.secrets` テーブル) に保存されます。
+Vault は DB 内蔵の暗号化を使用するため、アプリケーション側での暗号化キー管理は不要です。
 
 ```sql
--- credentials.services テーブル構造
-CREATE TABLE credentials.services (
-    service TEXT PRIMARY KEY,
-    auth_type TEXT NOT NULL,
-    credentials_encrypted BYTEA NOT NULL,
-    expires_at TIMESTAMPTZ
-);
+-- vault.secrets（Vault拡張が自動管理）
+-- decrypted_secrets ビューで復号化されたデータを取得
+SELECT name, decrypted_secret FROM vault.decrypted_secrets;
 ```
 
-暗号化キーは環境変数 `TOKEN_ENCRYPTION_KEY` から取得されます（32バイトのBase64エンコード）。
+### 認証情報のフォーマット（JSON）
+
+```json
+// toggl_track
+{
+  "api_token": "xxxxx",
+  "workspace_id": 12345,
+  "_auth_type": "api_key"
+}
+
+// google_calendar
+{
+  "client_id": "xxxxx.apps.googleusercontent.com",
+  "client_secret": "GOCSPX-xxxxx",
+  "refresh_token": "1//xxxxx",
+  "access_token": "ya29.xxxxx",
+  "_auth_type": "oauth2",
+  "_expires_at": "2024-01-01T00:00:00.000Z"
+}
+```
+
+## 対応サービス
+
+| サービス | 認証方式 | raw テーブル |
+|---------|---------|-------------|
+| Toggl Track | API Token | `raw.toggl_track__*` (me, workspaces, clients, projects, tags, users, time_entries) |
+| Google Calendar | OAuth 2.0 | `raw.google_calendar__*` (colors, calendars, calendar_list, events) |
 
 ## 新サービスの追加
 
-1. `pipelines/services/{service}.py` を作成
-2. 以下の関数を実装:
-   - `get_auth_headers()` - 認証ヘッダー取得
-   - `fetch_*()` - API呼び出し
-   - `to_db_*()` - API型 → DB型変換
-   - `upsert_*()` - DB書き込み
-   - `sync_{service}()` - メイン同期関数
-3. テスト `tests/pipelines/test_{service}.py` を作成
+1. `src/services/{service}/` を作成（既存サービスをコピー）
+2. `api-client.ts` で認証・API呼び出しを実装
+3. `sync-*.ts` で `upsertRaw()` を使ってデータ保存
+4. `orchestrator.ts` で `getDbClient()` / `closeDbClient()` を呼び出し
+5. `package.json` の `exports` に追加
+6. Vault に認証情報を登録
+
+詳細は [設計ドキュメント](/100-development/130-design/) を参照。
 
 ## トラブルシューティング
 
-### `ValueError: TOKEN_ENCRYPTION_KEY environment variable is required`
+### `Error: DIRECT_DATABASE_URL environment variable is required`
 
-環境変数 `TOKEN_ENCRYPTION_KEY` が未設定です。`.env` ファイルを確認してください。
+`.env` ファイルに `DIRECT_DATABASE_URL` を設定してください。
+Supabase Vault へのアクセスには直接接続が必要です。
 
-### `ValueError: Credentials not found for service: toggl`
+### `Error: Credentials not found for service: toggl_track`
 
-`credentials.services` テーブルに Toggl の認証情報が登録されていません。
-管理UIまたは手動でデータを投入してください。
+Supabase Vault に認証情報が登録されていません。
+管理コンソールまたは SQL で登録してください:
 
-### `httpx.HTTPStatusError: 401 Unauthorized`
+```sql
+SELECT vault.create_secret(
+  '{"api_token": "your_token", "workspace_id": 12345, "_auth_type": "api_key"}',
+  'toggl_track',
+  'Toggl Track credentials'
+);
+```
 
-Toggl API トークンが無効です。`credentials.services` の `api_token` を確認してください。
+### `HTTP 401: Unauthorized`
+
+API トークンが無効です。Vault 内の認証情報を確認・更新してください。
+
+### `Token refresh error: 400`
+
+Google OAuth のリフレッシュトークンが失効しています。
+管理コンソールから再認証してください。

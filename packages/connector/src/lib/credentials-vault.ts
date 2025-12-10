@@ -1,5 +1,5 @@
 /**
- * Credentials vault using Supabase Vault
+ * Credentials vault using PostgreSQL Vault
  *
  * Manages OAuth credentials stored in vault.secrets.
  * Uses direct DB connection for vault functions.
@@ -15,11 +15,13 @@
 
 import pg from "pg";
 import { config } from "dotenv";
+import { setupLogger } from "./logger.js";
 
 // Load .env for local development
 config();
 
 const { Client } = pg;
+const logger = setupLogger("vault");
 
 // Types
 export interface CredentialsResult {
@@ -51,6 +53,7 @@ export async function getCredentials(
   const client = getDbConnection();
 
   try {
+    logger.debug(`Connecting to vault for service: ${service}`);
     await client.connect();
 
     const result = await client.query(
@@ -77,6 +80,7 @@ export async function getCredentials(
       expiresAt = new Date(expiresAtStr.replace("Z", "+00:00"));
     }
 
+    logger.debug(`Credentials loaded for ${service} (expires: ${expiresAt?.toISOString() || "never"})`);
     return {
       credentials: data,
       expiresAt,
@@ -141,6 +145,7 @@ export async function updateCredentials(
       "SELECT vault.update_secret($1, $2, $3, $4)",
       [secretId, secretJson, service, `${service} credentials`]
     );
+    logger.debug(`Credentials updated for ${service}`);
   } finally {
     await client.end();
   }

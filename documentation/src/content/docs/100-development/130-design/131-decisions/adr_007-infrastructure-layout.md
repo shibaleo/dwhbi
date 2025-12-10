@@ -235,7 +235,7 @@ cron (01:00 JST)
 ## リポジトリ配置構成
 
 ```
-supabase-sync-jobs/
+dwhbi/
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml              # テスト、lint、typecheck
@@ -404,11 +404,11 @@ services:
 ```bash
 # infra/crontab
 # 日次同期 (01:00 JST = 16:00 UTC)
-0 16 * * * cd /opt/supabase-sync-jobs/infra && docker compose run --rm connector npm run sync:toggl >> /var/log/sync.log 2>&1
-5 16 * * * cd /opt/supabase-sync-jobs/infra && docker compose run --rm connector npm run sync:gcal >> /var/log/sync.log 2>&1
+0 16 * * * cd /opt/dwhbi/infra && docker compose run --rm connector npm run sync:toggl >> /var/log/sync.log 2>&1
+5 16 * * * cd /opt/dwhbi/infra && docker compose run --rm connector npm run sync:gcal >> /var/log/sync.log 2>&1
 
 # dbt transform (02:00 JST = 17:00 UTC)
-0 17 * * * cd /opt/supabase-sync-jobs/infra && docker compose run --rm transform dbt run >> /var/log/dbt.log 2>&1
+0 17 * * * cd /opt/dwhbi/infra && docker compose run --rm transform dbt run >> /var/log/dbt.log 2>&1
 ```
 
 ---

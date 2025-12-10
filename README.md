@@ -1,4 +1,4 @@
-# supabase-sync-jobs
+# dwhbi
 
 LIFETRACER の中核となるデータ同期基盤。複数の外部サービスから個人データを取得し、Supabase（PostgreSQL）に統合保存する。
 
@@ -57,7 +57,7 @@ deno task check:sync
 ## ディレクトリ構成
 
 ```
-supabase-sync-jobs/
+dwhbi/
 ├── src/
 │   ├── services/           # サービス別モジュール
 │   │   ├── fitbit/         # Fitbit 同期

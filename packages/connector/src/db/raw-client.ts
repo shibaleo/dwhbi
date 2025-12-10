@@ -3,6 +3,10 @@
  *
  * Common UPSERT operations for raw.{service}__{endpoint} tables.
  * Uses direct PostgreSQL connection for execute_values equivalent.
+ *
+ * Connection management:
+ * - Use getDbClient() / closeDbClient() for connection reuse within a sync session
+ * - Orchestrator should call getDbClient() at start and closeDbClient() at end
  */
 
 import pg from "pg";
@@ -14,6 +18,10 @@ config();
 
 const { Client } = pg;
 const logger = setupLogger("raw-client");
+
+// Singleton client for connection reuse
+let sharedClient: pg.Client | null = null;
+let clientConnected = false;
 
 // Types
 export interface UpsertResult {
@@ -29,18 +37,66 @@ export interface RawRecord {
 }
 
 /**
- * Get direct database connection
+ * Get database URL from environment
  */
-function getDbConnection(): pg.Client {
+function getDatabaseUrl(): string {
   const databaseUrl = process.env.DIRECT_DATABASE_URL;
   if (!databaseUrl) {
     throw new Error("DIRECT_DATABASE_URL environment variable is required");
   }
-  return new Client({ connectionString: databaseUrl });
+  return databaseUrl;
+}
+
+/**
+ * Get shared database client (singleton)
+ *
+ * Call this at the start of a sync session.
+ * Remember to call closeDbClient() when done.
+ *
+ * @returns Connected pg.Client instance
+ */
+export async function getDbClient(): Promise<pg.Client> {
+  if (sharedClient && clientConnected) {
+    logger.debug("Reusing existing database connection");
+    return sharedClient;
+  }
+
+  logger.debug("Creating new database connection...");
+  sharedClient = new Client({ connectionString: getDatabaseUrl() });
+  await sharedClient.connect();
+  clientConnected = true;
+  logger.info("Database connection established");
+
+  return sharedClient;
+}
+
+/**
+ * Close shared database client
+ *
+ * Call this at the end of a sync session.
+ */
+export async function closeDbClient(): Promise<void> {
+  if (sharedClient && clientConnected) {
+    await sharedClient.end();
+    logger.info("Database connection closed");
+  }
+  sharedClient = null;
+  clientConnected = false;
+}
+
+/**
+ * Reset client state (for testing)
+ */
+export function resetDbClient(): void {
+  sharedClient = null;
+  clientConnected = false;
 }
 
 /**
  * UPSERT records to raw layer table
+ *
+ * Uses the shared database client (getDbClient).
+ * If no client is initialized, creates a temporary connection.
  *
  * @param tableName - Table name without schema (e.g., "toggl_track__time_entries")
  * @param records - Records with sourceId and data
@@ -56,10 +112,15 @@ export async function upsertRaw(
     return { table: tableName, inserted: 0, updated: 0, total: 0 };
   }
 
-  const client = getDbConnection();
+  // Use shared client if available, otherwise create temporary
+  const useShared = sharedClient && clientConnected;
+  const client = useShared ? sharedClient! : new Client({ connectionString: getDatabaseUrl() });
 
   try {
-    await client.connect();
+    if (!useShared) {
+      logger.debug(`Creating temporary connection for ${tableName}`);
+      await client.connect();
+    }
 
     const now = new Date().toISOString();
 
@@ -101,7 +162,10 @@ export async function upsertRaw(
       total: records.length,
     };
   } finally {
-    await client.end();
+    // Only close if using temporary connection
+    if (!useShared) {
+      await client.end();
+    }
   }
 }
 

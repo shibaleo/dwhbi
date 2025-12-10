@@ -166,11 +166,13 @@ export async function getAuthInfo(forceRefresh: boolean = false): Promise<AuthIn
     const minutesUntilExpiry =
       (cachedExpiresAt.getTime() - Date.now()) / 1000 / 60;
     if (minutesUntilExpiry > DEFAULT_THRESHOLD_MINUTES) {
+      logger.debug(`Using cached auth (${Math.round(minutesUntilExpiry)} min until expiry)`);
       return cachedAuth;
     }
   }
 
   // Load from vault
+  logger.debug("Loading credentials from vault...");
   const result = await getCredentials("google_calendar");
   const credentials = result.credentials as Record<string, unknown>;
   let expiresAt = result.expiresAt;
@@ -236,6 +238,7 @@ export async function getAuthInfo(forceRefresh: boolean = false): Promise<AuthIn
   };
   cachedExpiresAt = currentExpiresAt;
 
+  logger.debug(`Auth initialized: calendar_id=${calendarId}`);
   return cachedAuth;
 }
 
@@ -254,6 +257,8 @@ export async function fetchEvents(
 
   const timeMin = `${startDate}T00:00:00${JST_OFFSET}`;
   const timeMax = `${endDate}T23:59:59${JST_OFFSET}`;
+
+  logger.debug(`GET /calendars/{id}/events (${startDate} to ${endDate})`);
 
   const allEvents: Record<string, unknown>[] = [];
   let pageToken: string | undefined;
@@ -309,9 +314,11 @@ export async function fetchEvents(
       break;
     }
 
+    logger.debug(`Pagination: fetching next page...`);
     await new Promise((r) => setTimeout(r, 100));
   }
 
+  logger.debug(`Response: ${allEvents.length} events total`);
   return allEvents;
 }
 
@@ -325,11 +332,14 @@ export async function fetchEvents(
 export async function fetchColors(): Promise<Record<string, unknown>> {
   const auth = await getAuthInfo();
 
+  logger.debug("GET /colors");
   const response = await requestWithRetry("GET", `${CALENDAR_API_BASE}/colors`, {
     headers: { Authorization: `Bearer ${auth.accessToken}` },
   });
 
-  return (await response.json()) as Record<string, unknown>;
+  const data = (await response.json()) as Record<string, unknown>;
+  logger.debug("Response: colors fetched");
+  return data;
 }
 
 // =============================================================================
@@ -342,6 +352,7 @@ export async function fetchColors(): Promise<Record<string, unknown>> {
 export async function fetchCalendarList(): Promise<Record<string, unknown>[]> {
   const auth = await getAuthInfo();
 
+  logger.debug("GET /users/me/calendarList");
   const allCalendars: Record<string, unknown>[] = [];
   let pageToken: string | undefined;
 
@@ -371,6 +382,7 @@ export async function fetchCalendarList(): Promise<Record<string, unknown>[]> {
     }
   }
 
+  logger.debug(`Response: ${allCalendars.length} calendars`);
   return allCalendars;
 }
 
@@ -389,9 +401,12 @@ export async function fetchCalendar(
   const calendarIdEncoded = encodeURIComponent(calendarId);
   const url = `${CALENDAR_API_BASE}/calendars/${calendarIdEncoded}`;
 
+  logger.debug(`GET /calendars/${calendarId}`);
   const response = await requestWithRetry("GET", url, {
     headers: { Authorization: `Bearer ${auth.accessToken}` },
   });
 
-  return (await response.json()) as Record<string, unknown>;
+  const data = (await response.json()) as Record<string, unknown>;
+  logger.debug(`Response: calendar metadata fetched`);
+  return data;
 }

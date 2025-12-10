@@ -4,15 +4,15 @@
  * Markdown内の絶対パスリンク（/で始まるもの）に
  * astro.config.mjsのbaseパスを自動付与するrehypeプラグイン
  *
- * 例: base: '/supabase-sync-jobs' の場合
- *   /100-development/... → /supabase-sync-jobs/100-development/...
+ * 例: base: '/dwhbi' の場合
+ *   /100-development/... → /dwhbi/100-development/...
  */
 
 import { visit } from 'unist-util-visit';
 
 /**
  * @param {Object} options
- * @param {string} options.base - ベースパス（例: '/supabase-sync-jobs'）
+ * @param {string} options.base - ベースパス（例: '/dwhbi'）
  */
 export function rehypeBasePath(options = {}) {
   const base = options.base || '';

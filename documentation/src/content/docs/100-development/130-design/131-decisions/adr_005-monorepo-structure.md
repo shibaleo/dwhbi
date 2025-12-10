@@ -20,7 +20,7 @@ description: 複数プロジェクトを単一リポジトリで管理する構�
 ### ディレクトリ構成
 
 ```
-supabase-sync-jobs/
+dwhbi/
 ├── .github/                 # GitHub Actions（全体）
 ├── .env                     # 共通環境変数（DB接続情報等）
 ├── nx.json                  # Nx 設定

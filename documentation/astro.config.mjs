@@ -3,7 +3,7 @@ import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import { rehypeBasePath } from './src/plugins/rehype-base-path.mjs';
 
-const BASE_PATH = '/supabase-sync-jobs';
+const BASE_PATH = '/dwhbi';
 
 // https://astro.build/config
 export default defineConfig({
@@ -17,15 +17,15 @@ export default defineConfig({
 			title: 'DWH+BI',
 			description: '個人データ統合基盤',
 			social: [
-				{ icon: 'github', label: 'GitHub', href: 'https://github.com/shibaleo/supabase-sync-jobs' },
+				{ icon: 'github', label: 'GitHub', href: 'https://github.com/shibaleo/dwhbi' },
 			],
 			sidebar: [
 				{
 					label: 'はじめに',
 					items: [
 						{ label: '概要', link: '/' },
-						{ label: '実装状況', slug: '300-management/310-status/implementation' },
-						{ label: 'ロードマップ', slug: '300-management/310-status/roadmap' },
+						{ label: '実装状況', slug: '300-management/320-tracking/implementation' },
+						{ label: 'ロードマップ', slug: '300-management/310-planning/roadmap' },
 					],
 				},
 				{
@@ -113,30 +113,16 @@ export default defineConfig({
 					label: '300 管理',
 					items: [
 						{
-							label: '310 状況・計画',
-							items: [
-								{ label: '実装状況', slug: '300-management/310-status/implementation' },
-								{ label: '変更履歴', slug: '300-management/310-status/changelog' },
-								{ label: 'ロードマップ', slug: '300-management/310-status/roadmap' },
-								{ label: 'バックログ', slug: '300-management/310-status/backlog' },
-								{
-									label: 'モノレポ移行計画',
-									items: [
-										{ label: '概要', slug: '300-management/310-status/migration-plan' },
-										{ label: 'Phase 1: 基盤整備', slug: '300-management/310-status/migration-phase-1' },
-										{ label: 'Phase 2: 共有ライブラリ', slug: '300-management/310-status/migration-phase-2' },
-										{ label: 'Phase 3: 既存プロジェクト移行', slug: '300-management/310-status/migration-phase-3' },
-										{ label: 'Phase 4: 新規プロジェクト', slug: '300-management/310-status/migration-phase-4' },
-										{ label: 'Phase 5: テスト構成', slug: '300-management/310-status/migration-phase-5' },
-										{ label: 'Phase 6: CI/CD', slug: '300-management/310-status/migration-phase-6' },
-										{ label: 'Phase 7: クリーンアップ', slug: '300-management/310-status/migration-phase-7' },
-									],
-								},
-							],
+							label: '310 計画',
+							autogenerate: { directory: '300-management/310-planning' },
 						},
 						{
-							label: '320 プロジェクト管理',
-							autogenerate: { directory: '300-management/320-project' },
+							label: '320 進捗',
+							autogenerate: { directory: '300-management/320-tracking' },
+						},
+						{
+							label: '330 プロジェクト管理',
+							autogenerate: { directory: '300-management/330-project' },
 						},
 					],
 				},
@@ -163,7 +149,7 @@ export default defineConfig({
 				},
 			],
 			editLink: {
-				baseUrl: 'https://github.com/shibaleo/supabase-sync-jobs/edit/main/documentation/',
+				baseUrl: 'https://github.com/shibaleo/dwhbi/edit/main/documentation/',
 			},
 			lastUpdated: true,
 		}),
