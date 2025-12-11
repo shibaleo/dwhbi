@@ -47,6 +47,16 @@ models:
         - "GRANT SELECT ON {{ this }} TO authenticated"
         - "GRANT SELECT ON {{ this }} TO service_role"
 
+    # conceive層: intent（目標意図）評価モデル
+    conceive:
+      +materialized: view
+      +schema: conceive
+      +post-hook:
+        - "ALTER VIEW {{ this }} SET (security_invoker = on)"
+        - "GRANT SELECT ON {{ this }} TO authenticated"
+        - "GRANT SELECT ON {{ this }} TO service_role"
+      +tags: ['intent']
+
     # marts層: 分析用ビュー（将来用）
     # Note: モデル追加時にコメント解除
     # marts:

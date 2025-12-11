@@ -48,7 +48,14 @@
       "Bash(npm run typecheck:*)",
       "Bash(npm run sync:toggl:*)",
       "Bash(npm run sync:gcal:*)",
-      "Bash(del \"c:\\Users\\m_fukuda\\Documents\\dwhbi\\packages\\connector\\src\\lib\\db.ts\")"
+      "Bash(del \"c:\\Users\\m_fukuda\\Documents\\dwhbi\\packages\\connector\\src\\lib\\db.ts\")",
+      "Bash(git -C \"c:\\Users\\m_fukuda\\Documents\\dwhbi\" mv \"documentation/docs/01-product/100-development/120-specifications/123-transform/schema/core/006-intent.md\" \"documentation/docs/01-product/100-development/120-specifications/124-console/intent.md\")",
+      "Bash(del \"c:\\Users\\m_fukuda\\Documents\\dwhbi\\documentation\\docs\\01-product\\100-development\\120-specifications\\123-transform\\schema\\core\\006-intent.md\")",
+      "Bash(git -C \"c:/Users/m_fukuda/Documents/dwhbi\" checkout packages/transform/dbt_project.yml)",
+      "Bash(where:*)",
+      "Bash(dbt compile:*)",
+      "Bash(dbt deps:*)",
+      "Bash(PYTHONUTF8=1 PYTHONIOENCODING=utf-8 dbt compile:*)"
     ],
     "deny": [],
     "ask": []

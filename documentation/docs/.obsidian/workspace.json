@@ -1,0 +1,206 @@
+{
+  "main": {
+    "id": "d0df46ed85899c76",
+    "type": "split",
+    "children": [
+      {
+        "id": "e2a843191bace268",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "46724a620c0a8d62",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "01-product/100-development/120-specifications/124-console/intent.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "intent"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "67504168b4d8e24f",
+    "type": "split",
+    "children": [
+      {
+        "id": "5505c70c12b9a70c",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "a2217d3365354781",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "a0db3599e4a16547",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "3905cd5439ec2223",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "4321a1bd48499744",
+    "type": "split",
+    "children": [
+      {
+        "id": "ef7967cbc5088177",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "78f2e27ff4eb4967",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "01-product/100-development/120-specifications/124-console/intent.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for intent"
+            }
+          },
+          {
+            "id": "fbd09ab1552a0ee1",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "01-product/100-development/120-specifications/124-console/intent.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from intent"
+            }
+          },
+          {
+            "id": "101f4f4c5e52adc6",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "1c29e10bb15a08d6",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "91d683804f6606db",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "01-product/100-development/120-specifications/124-console/intent.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of intent"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "46724a620c0a8d62",
+  "lastOpenFiles": [
+    "01-product/100-development/120-specifications/124-console/intent.md.tmp.18932.1765428396931",
+    "01-product/100-development/120-specifications/124-console/intent.md.tmp.18932.1765428106930",
+    "01-product/000-foundations/020-philosophy/022-user-focus.md",
+    "01-product/100-development/120-specifications/124-console/intent.md.tmp.18932.1765422539789",
+    "01-product/100-development/120-specifications/124-console/intent.md.tmp.18932.1765418975130",
+    "01-product/100-development/120-specifications/124-console/intent.md.tmp.18932.1765413784361",
+    "01-product/100-development/120-specifications/124-console/intent.md",
+    "01-product/100-development/120-specifications/124-console/intent.md.tmp.18932.1765412921491",
+    "01-product/100-development/120-specifications/123-transform/schema/core/006-intent.md",
+    "01-product/100-development/120-specifications/125-analyzer/time/002-adjust-target-by-estimate.md",
+    "01-product/100-development/120-specifications/123-transform/schema/core/004-target.md",
+    "01-product/000-foundations/020-philosophy/021-design-philosophy.md",
+    "index.md",
+    "02-project/300-management/310-planning/migration-plan.md",
+    "02-project/300-management/310-planning/infrastructure-plan.md",
+    "01-product/100-development/130-design/architecture.md",
+    "01-product/100-development/130-design/131-decisions/adr_008-server-communication-security.md"
+  ]
+}

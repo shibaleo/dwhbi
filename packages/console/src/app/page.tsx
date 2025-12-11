@@ -100,6 +100,21 @@ export default async function Home() {
           </div>
         </section>
       </main>
+
+      {/* DAG Viewer Link */}
+      <a
+        href="/dbt-docs/index.html"
+        className="fixed bottom-6 left-6 flex items-center gap-2 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 px-4 py-3 rounded-full shadow-lg hover:bg-zinc-700 dark:hover:bg-zinc-300 transition-colors"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="6" cy="6" r="3"/>
+          <circle cx="18" cy="6" r="3"/>
+          <circle cx="12" cy="18" r="3"/>
+          <line x1="6" y1="9" x2="12" y2="15"/>
+          <line x1="18" y1="9" x2="12" y2="15"/>
+        </svg>
+        <span className="font-medium">DAG</span>
+      </a>
     </div>
   );
 }
