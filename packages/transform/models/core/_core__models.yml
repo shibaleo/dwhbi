@@ -40,11 +40,17 @@ models:
               min_value: 1
       - name: description
         description: "Togglのdescription"
-      - name: time_category_social
+      - name: project_name
+        description: "Togglのプロジェクト名"
+      - name: project_color
+        description: "Togglのプロジェクト色（HEX）"
+      - name: tag_names
+        description: "Togglのタグ名配列（text[]）"
+      - name: social_category
         description: "社会的分類（WORK, LEISURE等）"
         data_tests:
           - not_null
-      - name: time_category_personal
+      - name: personal_category
         description: "個人的分類（Work, Study等）"
         data_tests:
           - not_null
@@ -89,11 +95,11 @@ models:
               min_value: 1
       - name: description
         description: "GCalのsummary"
-      - name: time_category_social
+      - name: social_category
         description: "社会的分類（WORK, LEISURE等）"
         data_tests:
           - not_null
-      - name: time_category_personal
+      - name: personal_category
         description: "個人的分類（Work, Study等）"
         data_tests:
           - not_null
@@ -138,11 +144,11 @@ models:
               min_value: 1
       - name: description
         description: "説明/タイトル"
-      - name: time_category_social
+      - name: social_category
         description: "社会的分類"
         data_tests:
           - not_null
-      - name: time_category_personal
+      - name: personal_category
         description: "個人的分類"
         data_tests:
           - not_null

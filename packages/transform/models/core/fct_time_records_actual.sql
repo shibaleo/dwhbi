@@ -14,6 +14,7 @@ with recursive source_records as (
 projects as (
     select
         project_id,
+        project_name,
         client_id,
         color as project_color
     from {{ ref('stg_toggl_track__projects') }}
@@ -26,24 +27,42 @@ clients as (
     from {{ ref('stg_toggl_track__clients') }}
 ),
 
+tags as (
+    select
+        tag_id,
+        tag_name
+    from {{ ref('stg_toggl_track__tags') }}
+),
+
 -- Category mappings from seeds
 map_color_to_personal as (
     select
         toggl_color_hex,
-        time_category_personal
+        personal_category
     from {{ ref('map_toggl_color_to_time_personal') }}
 ),
 
 map_client_to_social as (
     select
         toggl_client_name,
-        time_category_social
+        social_category
     from {{ ref('map_toggl_client_to_time_social') }}
 ),
 
 -- =============================================================================
 -- Enrich records with categories
 -- =============================================================================
+-- Convert tag_ids to tag_names array
+tag_names_agg as (
+    select
+        sr.time_entry_id,
+        array_agg(t.tag_name order by t.tag_name) filter (where t.tag_name is not null) as tag_names
+    from source_records sr
+    cross join lateral unnest(sr.tag_ids) as tid(tag_id)
+    left join tags t on t.tag_id = tid.tag_id
+    group by sr.time_entry_id
+),
+
 enriched_records as (
     select
         sr.time_entry_id::text as source_id,
@@ -52,12 +71,18 @@ enriched_records as (
         -- Running records: use CURRENT_TIMESTAMP; otherwise use stopped_at
         (coalesce(sr.stopped_at, current_timestamp) at time zone 'Asia/Tokyo')::timestamp as end_jst,
         sr.description,
+        -- Project info
+        p.project_name,
+        p.project_color,
+        -- Tags
+        coalesce(tn.tag_names, array[]::text[]) as tag_names,
         -- Category mappings
-        coalesce(mcs.time_category_social, 'UNKNOWN') as time_category_social,
-        coalesce(mcp.time_category_personal, 'Uncategorized') as time_category_personal
+        coalesce(mcs.social_category, 'UNKNOWN') as social_category,
+        coalesce(mcp.personal_category, 'Uncategorized') as personal_category
     from source_records sr
     left join projects p on p.project_id = sr.project_id
     left join clients c on c.client_id = p.client_id
+    left join tag_names_agg tn on tn.time_entry_id = sr.time_entry_id
     left join map_color_to_personal mcp on mcp.toggl_color_hex = p.project_color
     left join map_client_to_social mcs on mcs.toggl_client_name = c.client_name
 ),
@@ -73,8 +98,11 @@ split_records as (
         start_jst,
         end_jst,
         description,
-        time_category_social,
-        time_category_personal
+        project_name,
+        project_color,
+        tag_names,
+        social_category,
+        personal_category
     from enriched_records
 
     union all
@@ -86,8 +114,11 @@ split_records as (
         (start_jst::date + interval '1 day')::timestamp as start_jst,
         end_jst,
         description,
-        time_category_social,
-        time_category_personal
+        project_name,
+        project_color,
+        tag_names,
+        social_category,
+        personal_category
     from split_records
     where start_jst::date < end_jst::date  -- Still spans multiple days
 )
@@ -104,8 +135,11 @@ select
         least(end_jst, (start_jst::date + interval '1 day')::timestamp) - start_jst
     )::integer as duration_seconds,
     description,
-    time_category_social,
-    time_category_personal,
+    project_name,
+    project_color,
+    tag_names,
+    social_category,
+    personal_category,
     'toggl_track' as source
 from split_records
 where start_jst < least(end_jst, (start_jst::date + interval '1 day')::timestamp)
