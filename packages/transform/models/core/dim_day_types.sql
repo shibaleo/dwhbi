@@ -25,7 +25,7 @@ daily_hours as (
     -- Aggregate hours by date and personal category
     select
         start_at::date as date_day,
-        time_category_personal,
+        personal_category,
         sum(duration_seconds) / 3600.0 as total_hours
     from {{ ref('fct_time_records_unified') }}
     group by 1, 2
@@ -33,7 +33,7 @@ daily_hours as (
 
 eligible_categories as (
     -- Categories eligible for day_type determination
-    select name as time_category_personal
+    select name as personal_category
     from {{ ref('mst_time_personal_categories') }}
     where is_day_type_eligible = true
 ),
@@ -41,25 +41,25 @@ eligible_categories as (
 work_hours as (
     select date_day, total_hours
     from daily_hours
-    where time_category_personal = 'Work'
+    where personal_category = 'Work'
 ),
 
 drift_hours as (
     select date_day, total_hours
     from daily_hours
-    where time_category_personal = 'Drift'
+    where personal_category = 'Drift'
 ),
 
 max_eligible as (
     -- Find the category with max hours among eligible categories
     select
         dh.date_day,
-        dh.time_category_personal,
+        dh.personal_category,
         dh.total_hours,
         row_number() over (partition by dh.date_day order by dh.total_hours desc) as rn
     from daily_hours dh
     inner join eligible_categories ec
-        on dh.time_category_personal = ec.time_category_personal
+        on dh.personal_category = ec.personal_category
 )
 
 select
@@ -80,7 +80,7 @@ select
         when coalesce(drh.total_hours, 0) >= {{ drift_threshold_hours }}
             then 'Drift'
         -- Step 3: max eligible category (fallback)
-        else coalesce(me.time_category_personal, 'Unused')
+        else coalesce(me.personal_category, 'Unused')
     end as day_type,
     -- Total hours recorded
     coalesce(

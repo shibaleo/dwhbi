@@ -15,14 +15,14 @@ with recursive source_records as (
 map_color_to_personal as (
     select
         gcal_color_id,
-        time_category_personal
+        time_category_personal as personal_category
     from {{ ref('map_gcal_color_to_time_personal') }}
 ),
 
 map_desc_to_social as (
     select
         gcal_description_first_line,
-        time_category_social
+        time_category_social as social_category
     from {{ ref('map_gcal_desc_to_time_social') }}
 ),
 
@@ -38,8 +38,8 @@ enriched_records as (
         -- Map summary to description
         sr.summary as description,
         -- Category mappings
-        coalesce(mds.time_category_social, 'UNKNOWN') as time_category_social,
-        coalesce(mcp.time_category_personal, 'Uncategorized') as time_category_personal
+        coalesce(mds.social_category, 'UNKNOWN') as social_category,
+        coalesce(mcp.personal_category, 'Uncategorized') as personal_category
     from source_records sr
     left join map_color_to_personal mcp on mcp.gcal_color_id = sr.color_id
     -- Extract first line of description for social category mapping
@@ -58,8 +58,8 @@ split_records as (
         start_jst,
         end_jst,
         description,
-        time_category_social,
-        time_category_personal
+        social_category,
+        personal_category
     from enriched_records
 
     union all
@@ -71,8 +71,8 @@ split_records as (
         (start_jst::date + interval '1 day')::timestamp as start_jst,
         end_jst,
         description,
-        time_category_social,
-        time_category_personal
+        social_category,
+        personal_category
     from split_records
     where start_jst::date < end_jst::date  -- Still spans multiple days
 )
@@ -89,8 +89,8 @@ select
         least(end_jst, (start_jst::date + interval '1 day')::timestamp) - start_jst
     )::integer as duration_seconds,
     description,
-    time_category_social,
-    time_category_personal,
+    social_category,
+    personal_category,
     'google_calendar' as source
 from split_records
 where start_jst < least(end_jst, (start_jst::date + interval '1 day')::timestamp)

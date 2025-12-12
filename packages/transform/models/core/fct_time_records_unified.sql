@@ -4,6 +4,7 @@
 -- Features:
 --   - CURRENT_TIMESTAMP boundary between actual and plan
 --   - In-progress records adjusted at boundary
+--   - Uses split versions for day-boundary consistency
 -- =============================================================================
 
 {% set current_jst = "(current_timestamp at time zone 'Asia/Tokyo')::timestamp" %}
@@ -18,11 +19,11 @@ select
     end_at,
     duration_seconds,
     description,
-    time_category_social,
-    time_category_personal,
+    social_category,
+    personal_category,
     source,
     'actual' as record_type
-from {{ ref('fct_time_records_actual') }}
+from {{ ref('fct_time_records_actual_split') }}
 where end_at <= {{ current_jst }}
 
 union all
@@ -38,11 +39,11 @@ select
     {{ current_jst }} as end_at,
     extract(epoch from {{ current_jst }} - start_at)::integer as duration_seconds,
     description,
-    time_category_social,
-    time_category_personal,
+    social_category,
+    personal_category,
     source,
     'actual' as record_type
-from {{ ref('fct_time_records_actual') }}
+from {{ ref('fct_time_records_actual_split') }}
 where start_at < {{ current_jst }}
   and end_at > {{ current_jst }}
 
@@ -58,8 +59,8 @@ select
     end_at,
     duration_seconds,
     description,
-    time_category_social,
-    time_category_personal,
+    social_category,
+    personal_category,
     source,
     'plan' as record_type
 from {{ ref('fct_time_records_plan') }}
@@ -78,8 +79,8 @@ select
     end_at,
     extract(epoch from end_at - {{ current_jst }})::integer as duration_seconds,
     description,
-    time_category_social,
-    time_category_personal,
+    social_category,
+    personal_category,
     source,
     'plan' as record_type
 from {{ ref('fct_time_records_plan') }}

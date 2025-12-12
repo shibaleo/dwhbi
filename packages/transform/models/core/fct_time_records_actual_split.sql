@@ -1,15 +1,15 @@
--- fct_time_records_actual.sql
+-- fct_time_records_actual_split.sql
 -- =============================================================================
--- Core fact table for actual time records (from Toggl) - ENTRY LEVEL
+-- Core fact table for actual time records (from Toggl) - DAY SPLIT VERSION
 -- Features:
---   - Original entries without day-splitting
+--   - JST 00:00:00 boundary day-splitting via recursive CTE
 --   - Running records: end_at = CURRENT_TIMESTAMP (NOT NULL guaranteed)
 --   - Category mapping from project color and client
 --   - Zero-duration entries filtered out
--- Use case: Entry-level analysis, sleep tracking, session duration analysis
+-- Use case: Daily aggregation, day-boundary analysis
 -- =============================================================================
 
-with source_records as (
+with recursive source_records as (
     select * from {{ ref('stg_toggl_track__time_entries') }}
 ),
 
@@ -87,17 +87,56 @@ enriched_records as (
     left join tag_names_agg tn on tn.time_entry_id = sr.time_entry_id
     left join map_color_to_personal mcp on mcp.toggl_color_hex = p.project_color
     left join map_client_to_social mcs on mcs.toggl_client_name = c.client_name
+    where (sr.started_at at time zone 'Asia/Tokyo') < (coalesce(sr.stopped_at, current_timestamp) at time zone 'Asia/Tokyo')  -- Filter out zero-duration entries
+),
+
+-- =============================================================================
+-- Day-split using recursive CTE (JST 00:00:00 boundary)
+-- =============================================================================
+split_records as (
+    -- Base case: original records
+    select
+        source_id,
+        1 as split_index,
+        start_jst,
+        end_jst,
+        description,
+        project_name,
+        project_color,
+        tag_names,
+        social_category,
+        personal_category
+    from enriched_records
+
+    union all
+
+    -- Recursive case: split at midnight JST
+    select
+        source_id,
+        split_index + 1,
+        (start_jst::date + interval '1 day')::timestamp as start_jst,
+        end_jst,
+        description,
+        project_name,
+        project_color,
+        tag_names,
+        social_category,
+        personal_category
+    from split_records
+    where start_jst::date < end_jst::date  -- Still spans multiple days
 )
 
 -- =============================================================================
--- Final output (filter out zero-duration entries)
+-- Final output with calculated duration
 -- =============================================================================
 select
-    source_id as id,
+    source_id || '_' || split_index as id,
     source_id,
     start_jst as start_at,
-    end_jst as end_at,
-    extract(epoch from (end_jst - start_jst))::integer as duration_seconds,
+    least(end_jst, (start_jst::date + interval '1 day')::timestamp) as end_at,
+    extract(epoch from
+        least(end_jst, (start_jst::date + interval '1 day')::timestamp) - start_jst
+    )::integer as duration_seconds,
     description,
     project_name,
     project_color,
@@ -105,5 +144,5 @@ select
     social_category,
     personal_category,
     'toggl_track' as source
-from enriched_records
-where start_jst < end_jst  -- Filter out zero-duration entries
+from split_records
+where start_jst < least(end_jst, (start_jst::date + interval '1 day')::timestamp)

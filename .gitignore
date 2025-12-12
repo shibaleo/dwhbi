@@ -2,6 +2,7 @@
 bin
 .secrets
 .claude
+.mcp.json
 
 # Logs
 logs

@@ -13,7 +13,7 @@ with daily_sleep as (
         start_at::date as record_date,
         sum(duration_seconds) / 60.0 as duration_min
     from {{ ref('fct_time_records_actual') }}
-    where time_category_personal = 'Sleep'
+    where personal_category = 'Sleep'
       and start_at::date between '2025-08-01' and '2025-10-31'
     group by 1
 ),
