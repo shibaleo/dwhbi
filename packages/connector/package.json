@@ -17,6 +17,10 @@
     "./google-calendar": {
       "import": "./src/services/google-calendar/index.ts",
       "types": "./src/services/google-calendar/index.ts"
+    },
+    "./coda": {
+      "import": "./src/services/coda/index.ts",
+      "types": "./src/services/coda/index.ts"
     }
   },
   "scripts": {
@@ -25,7 +29,8 @@
     "test": "vitest",
     "test:run": "vitest run",
     "sync:toggl": "npx tsx src/services/toggl-track/cli.ts",
-    "sync:gcal": "npx tsx src/services/google-calendar/cli.ts"
+    "sync:gcal": "npx tsx src/services/google-calendar/cli.ts",
+    "sync:coda": "npx tsx src/services/coda/cli.ts"
   },
   "dependencies": {
     "dotenv": "^16.4.0",

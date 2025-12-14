@@ -10,6 +10,7 @@ export const SERVICES = [
   "trello",
   "ticktick",
   "airtable",
+  "coda",
 ] as const;
 
 export type ServiceName = (typeof SERVICES)[number];
@@ -24,6 +25,7 @@ export const SERVICE_DISPLAY_NAMES: Record<ServiceName, string> = {
   trello: "Trello",
   ticktick: "TickTick",
   airtable: "Airtable",
+  coda: "Coda",
 };
 
 // 認証タイプ
@@ -36,6 +38,7 @@ export const SERVICE_AUTH_TYPES: Record<ServiceName, "api_key" | "oauth"> = {
   trello: "api_key",
   ticktick: "oauth",
   airtable: "api_key",
+  coda: "api_key",
 };
 
 export interface ServiceStatus {
@@ -185,6 +188,67 @@ export async function deleteServiceCredentials(
     await sql`
       DELETE FROM vault.secrets WHERE name = ${service}
     `;
+  } finally {
+    await sql.end();
+  }
+}
+
+/**
+ * サービスの認証情報を部分更新
+ * 既存の認証情報を保持しつつ、特定フィールドのみ更新/削除
+ */
+export async function updateServiceCredentials(
+  service: ServiceName,
+  updates: Record<string, unknown>,
+  deletes: string[] = []
+): Promise<void> {
+  const sql = getDbConnection();
+
+  try {
+    // 既存の認証情報を取得
+    const rows = await sql`
+      SELECT decrypted_secret
+      FROM vault.decrypted_secrets
+      WHERE name = ${service}
+    `;
+
+    if (rows.length === 0) {
+      throw new Error("Service credentials not found");
+    }
+
+    const existingSecret = typeof rows[0].decrypted_secret === "string"
+      ? JSON.parse(rows[0].decrypted_secret)
+      : rows[0].decrypted_secret;
+
+    // 削除するフィールドを除去
+    for (const key of deletes) {
+      delete existingSecret[key];
+    }
+
+    // 更新するフィールドをマージ
+    const updatedSecret = {
+      ...existingSecret,
+      ...updates,
+    };
+
+    const secretJson = JSON.stringify(updatedSecret);
+    const description = `${SERVICE_DISPLAY_NAMES[service]} credentials`;
+
+    // 既存のシークレットを更新
+    const existing = await sql`
+      SELECT id FROM vault.secrets WHERE name = ${service}
+    `;
+
+    if (existing.length > 0) {
+      await sql`
+        SELECT vault.update_secret(
+          ${existing[0].id}::uuid,
+          ${secretJson}::text,
+          ${service}::text,
+          ${description}::text
+        )
+      `;
+    }
   } finally {
     await sql.end();
   }

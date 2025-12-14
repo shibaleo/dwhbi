@@ -1,0 +1,25 @@
+# Coda Sources
+# =============================================================================
+# raw層テーブルの定義
+# =============================================================================
+
+version: 2
+
+sources:
+  - name: raw_coda
+    description: "Coda raw API responses"
+    schema: raw
+    tables:
+      - name: coda__table_rows
+        description: "Coda table rows (Time Intent document)"
+        columns:
+          - name: id
+            description: "Primary key (UUID)"
+          - name: source_id
+            description: "Composite key: doc_id:table_id:row_id"
+          - name: data
+            description: "Raw JSON response from Coda API"
+          - name: synced_at
+            description: "同期日時"
+          - name: api_version
+            description: "API version (v1)"

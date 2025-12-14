@@ -10,6 +10,9 @@ interface Field {
   type?: string;
   placeholder?: string;
   required?: boolean;
+  multiline?: boolean;
+  hint?: string;
+  editable?: boolean; // 連携後も個別に編集可能
 }
 
 interface ServiceFormProps {
@@ -34,6 +37,8 @@ export function ServiceForm({ service, fields, authType, oauthCallbackUrl }: Ser
   const [oauthLoading, setOauthLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [editableData, setEditableData] = useState<Record<string, string>>({});
+  const [savingEditable, setSavingEditable] = useState<string | null>(null);
 
   // URLパラメータからエラー/成功メッセージを取得
   useEffect(() => {
@@ -56,6 +61,15 @@ export function ServiceForm({ service, fields, authType, oauthCallbackUrl }: Ser
         setConnected(data.connected);
         if (data.credentials) {
           setMaskedData(data.credentials);
+          // editable フィールドの初期値を設定
+          const editableFields = fields.filter(f => f.editable);
+          const initialEditable: Record<string, string> = {};
+          for (const field of editableFields) {
+            if (data.credentials[field.key]) {
+              initialEditable[field.key] = data.credentials[field.key];
+            }
+          }
+          setEditableData(initialEditable);
         }
       } catch {
         setError("認証情報の取得に失敗しました");
@@ -64,7 +78,7 @@ export function ServiceForm({ service, fields, authType, oauthCallbackUrl }: Ser
       }
     }
     fetchCredentials();
-  }, [service]);
+  }, [service, fields]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -154,6 +168,86 @@ export function ServiceForm({ service, fields, authType, oauthCallbackUrl }: Ser
     }
   };
 
+  // editableフィールドを保存
+  const handleSaveEditable = async (fieldKey: string) => {
+    setSavingEditable(fieldKey);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const value = editableData[fieldKey];
+      const res = await fetch(`/api/services/${service}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          updates: value ? { [fieldKey]: value } : undefined,
+          deletes: value ? undefined : [fieldKey],
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "更新に失敗しました");
+      }
+
+      setSuccess("保存しました");
+
+      // 再取得
+      const refreshRes = await fetch(`/api/services/${service}`);
+      if (refreshRes.ok) {
+        const refreshData = await refreshRes.json();
+        setMaskedData(refreshData.credentials);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "更新に失敗しました");
+    } finally {
+      setSavingEditable(null);
+    }
+  };
+
+  // editableフィールドを削除
+  const handleDeleteEditable = async (fieldKey: string) => {
+    if (!confirm("この設定を削除しますか？")) {
+      return;
+    }
+
+    setSavingEditable(fieldKey);
+    setError(null);
+
+    try {
+      const res = await fetch(`/api/services/${service}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deletes: [fieldKey],
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "削除に失敗しました");
+      }
+
+      setEditableData((prev) => {
+        const next = { ...prev };
+        delete next[fieldKey];
+        return next;
+      });
+      setSuccess("削除しました");
+
+      // 再取得
+      const refreshRes = await fetch(`/api/services/${service}`);
+      if (refreshRes.ok) {
+        const refreshData = await refreshRes.json();
+        setMaskedData(refreshData.credentials);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "削除に失敗しました");
+    } finally {
+      setSavingEditable(null);
+    }
+  };
+
   // OAuth認証を開始
   const handleOAuthStart = async () => {
     setOauthLoading(true);
@@ -188,6 +282,10 @@ export function ServiceForm({ service, fields, authType, oauthCallbackUrl }: Ser
     );
   }
 
+  // editable と non-editable フィールドを分離
+  const editableFields = fields.filter(f => f.editable);
+  const nonEditableFields = fields.filter(f => !f.editable);
+
   return (
     <div className="bg-white dark:bg-zinc-950 rounded-lg border border-zinc-200 dark:border-zinc-800 p-6">
       {connected && maskedData && (
@@ -196,17 +294,84 @@ export function ServiceForm({ service, fields, authType, oauthCallbackUrl }: Ser
             連携中
           </p>
           <div className="space-y-1">
-            {Object.entries(maskedData).map(([key, value]) => (
-              <p key={key} className="text-sm text-green-700 dark:text-green-300">
-                {key}: {value}
-              </p>
-            ))}
+            {Object.entries(maskedData)
+              .filter(([key]) => !editableFields.some(f => f.key === key))
+              .map(([key, value]) => (
+                <p key={key} className="text-sm text-green-700 dark:text-green-300">
+                  {key}: {value}
+                </p>
+              ))}
           </div>
         </div>
       )}
 
+      {/* Editable フィールド（連携後に個別編集可能） */}
+      {connected && editableFields.length > 0 && (
+        <div className="mb-6 space-y-4">
+          {editableFields.map((field) => (
+            <div key={field.key} className="p-4 bg-zinc-50 dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800">
+              <label
+                htmlFor={`editable-${field.key}`}
+                className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2"
+              >
+                {field.label}
+              </label>
+              {field.multiline ? (
+                <textarea
+                  id={`editable-${field.key}`}
+                  value={editableData[field.key] || ""}
+                  onChange={(e) =>
+                    setEditableData((prev) => ({ ...prev, [field.key]: e.target.value }))
+                  }
+                  placeholder={field.placeholder}
+                  rows={4}
+                  className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                />
+              ) : (
+                <input
+                  id={`editable-${field.key}`}
+                  type={field.type || "text"}
+                  value={editableData[field.key] || ""}
+                  onChange={(e) =>
+                    setEditableData((prev) => ({ ...prev, [field.key]: e.target.value }))
+                  }
+                  placeholder={field.placeholder}
+                  className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              )}
+              {field.hint && (
+                <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                  {field.hint}
+                </p>
+              )}
+              <div className="flex gap-2 mt-3">
+                <button
+                  type="button"
+                  onClick={() => handleSaveEditable(field.key)}
+                  disabled={savingEditable === field.key}
+                  className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {savingEditable === field.key ? "保存中..." : "保存"}
+                </button>
+                {editableData[field.key] && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteEditable(field.key)}
+                    disabled={savingEditable === field.key}
+                    className="px-3 py-1.5 text-sm bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg font-medium hover:bg-red-200 dark:hover:bg-red-900/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    削除
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-4">
-        {fields.map((field) => (
+        {/* 未連携時は全フィールド、連携時はnon-editableフィールドのみ */}
+        {(connected ? nonEditableFields : fields).map((field) => (
           <div key={field.key}>
             <label
               htmlFor={field.key}
@@ -215,16 +380,34 @@ export function ServiceForm({ service, fields, authType, oauthCallbackUrl }: Ser
               {field.label}
               {field.required && <span className="text-red-500 ml-1">*</span>}
             </label>
-            <input
-              id={field.key}
-              type={field.type || "text"}
-              value={formData[field.key] || ""}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, [field.key]: e.target.value }))
-              }
-              placeholder={connected ? "(変更する場合のみ入力)" : field.placeholder}
-              className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            {field.multiline ? (
+              <textarea
+                id={field.key}
+                value={formData[field.key] || ""}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, [field.key]: e.target.value }))
+                }
+                placeholder={connected ? "(変更する場合のみ入力)" : field.placeholder}
+                rows={4}
+                className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+              />
+            ) : (
+              <input
+                id={field.key}
+                type={field.type || "text"}
+                value={formData[field.key] || ""}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, [field.key]: e.target.value }))
+                }
+                placeholder={connected ? "(変更する場合のみ入力)" : field.placeholder}
+                className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            )}
+            {field.hint && (
+              <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                {field.hint}
+              </p>
+            )}
           </div>
         ))}
 

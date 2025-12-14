@@ -4,6 +4,7 @@ import {
   getServiceCredentials,
   saveServiceCredentials,
   deleteServiceCredentials,
+  updateServiceCredentials,
   SERVICES,
   type ServiceName,
 } from "@/lib/vault";
@@ -37,10 +38,14 @@ export async function GET(
       return NextResponse.json({ connected: false, credentials: null });
     }
 
-    // 認証情報をマスク
+    // 認証情報をマスク（マスク不要なフィールドは除外）
+    const NO_MASK_FIELDS = ["doc_ids", "calendar_id", "base_id"];
     const maskedCredentials: Record<string, string> = {};
     for (const [key, value] of Object.entries(credentials)) {
-      if (typeof value === "string" && value.length > 8) {
+      if (NO_MASK_FIELDS.includes(key)) {
+        // マスク不要フィールドはそのまま表示
+        maskedCredentials[key] = String(value);
+      } else if (typeof value === "string" && value.length > 8) {
         maskedCredentials[key] = value.slice(0, 4) + "..." + value.slice(-4);
       } else if (typeof value === "string") {
         maskedCredentials[key] = "****";
@@ -104,6 +109,56 @@ export async function POST(
     console.error("Failed to save service credentials:", error);
     return NextResponse.json(
       { error: "Failed to save service credentials" },
+      { status: 500 }
+    );
+  }
+}
+
+// サービスの認証情報を部分更新（既存の認証情報を保持しつつ特定フィールドのみ更新/削除）
+export async function PATCH(
+  request: Request,
+  { params }: { params: Params }
+) {
+  const { service } = await params;
+
+  // 認証チェック
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // サービス名の検証
+  if (!SERVICES.includes(service as ServiceName)) {
+    return NextResponse.json({ error: "Invalid service" }, { status: 400 });
+  }
+
+  try {
+    const body = await request.json();
+    const { updates, deletes } = body;
+
+    // updates: 更新するフィールド { key: value }
+    // deletes: 削除するフィールド名の配列 ["key1", "key2"]
+
+    if (!updates && !deletes) {
+      return NextResponse.json(
+        { error: "updates or deletes is required" },
+        { status: 400 }
+      );
+    }
+
+    await updateServiceCredentials(
+      service as ServiceName,
+      updates || {},
+      deletes || []
+    );
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Failed to update service credentials:", error);
+    return NextResponse.json(
+      { error: "Failed to update service credentials" },
       { status: 500 }
     );
   }

@@ -37,6 +37,7 @@ const WORKFLOW_TO_SERVICE: Record<string, string> = {
   "Trello Fetch": "trello",
   "TickTick Fetch": "ticktick",
   "Airtable Fetch": "airtable",
+  "Coda Fetch": "coda",
 };
 
 function formatDuration(seconds: number): string {

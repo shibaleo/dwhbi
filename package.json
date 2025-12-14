@@ -14,8 +14,8 @@
     "affected:test": "nx affected --target=test",
     "graph": "nx graph",
     "gen:types": "supabase gen types typescript --project-id liegivvinbwmeujddzif > packages/database-types/src/database.ts",
-    "dbt": "python packages/transform/scripts/run_dbt.py",
-    "dbt:deploy": "python packages/transform/scripts/run_dbt.py deploy"
+    "dbt": "py -3.12 packages/transform/scripts/run_dbt.py",
+    "dbt:deploy": "py -3.12 packages/transform/scripts/run_dbt.py deploy"
   },
   "devDependencies": {
     "nx": "^22.2.0",

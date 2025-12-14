@@ -1,0 +1,59 @@
+# Coda Staging Models
+# =============================================================================
+# staging層モデルの定義
+# =============================================================================
+
+version: 2
+
+models:
+  - name: stg_coda__intents
+    description: "Time Intent テーブルのstaging層モデル"
+    columns:
+      - name: intent_id
+        description: "Intent unique ID (row_id)"
+        data_tests:
+          - unique
+          - not_null
+
+      - name: description
+        description: "Intent description"
+        data_tests:
+          - not_null
+
+      - name: personal_category
+        description: "Personal category name (Work, Leisure, etc.)"
+
+      - name: project
+        description: "Project name (Accounting, etc.)"
+
+      - name: hours
+        description: "Target hours"
+        data_tests:
+          - not_null
+
+      - name: unit
+        description: "Time unit (day, week)"
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['day', 'week']
+
+      - name: direction
+        description: "Direction (more, less)"
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['more', 'less']
+
+      - name: is_archived
+        description: "Archived flag"
+        data_tests:
+          - not_null
+
+      - name: notes
+        description: "Additional notes"
+
+      - name: synced_at
+        description: "Last sync timestamp"
+        data_tests:
+          - not_null

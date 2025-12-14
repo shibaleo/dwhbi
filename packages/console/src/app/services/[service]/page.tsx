@@ -13,7 +13,8 @@ const OAUTH_CALLBACK_PATHS: Partial<Record<ServiceName, string>> = {
 
 // サービスごとの入力フィールド定義
 // required: true の場合、更新時も必ず入力が必要（セットで更新するフィールド）
-const SERVICE_FIELDS: Record<ServiceName, { key: string; label: string; type?: string; placeholder?: string; required?: boolean }[]> = {
+// multiline: true の場合、複数行入力可能なテキストエリアになる
+const SERVICE_FIELDS: Record<ServiceName, { key: string; label: string; type?: string; placeholder?: string; required?: boolean; multiline?: boolean; hint?: string }[]> = {
   toggl_track: [
     { key: "api_token", label: "API Token", placeholder: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", required: true },
   ],
@@ -45,6 +46,10 @@ const SERVICE_FIELDS: Record<ServiceName, { key: string; label: string; type?: s
   ticktick: [
     { key: "client_id", label: "Client ID" },
     { key: "client_secret", label: "Client Secret", type: "password" },
+  ],
+  coda: [
+    { key: "api_token", label: "API Token", placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx", required: true, hint: "https://coda.io/account → API settings で取得" },
+    { key: "doc_ids", label: "Doc IDs", placeholder: "AbCdEfGhIj\nKlMnOpQrSt\nUvWxYz1234", multiline: true, hint: "1行に1つのDoc IDを入力（複数可）", editable: true },
   ],
 };
 

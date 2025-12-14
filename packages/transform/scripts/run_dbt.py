@@ -54,7 +54,7 @@ def run_dbt(transform_dir: Path, args: list[str]) -> int:
     print(f"{'='*60}")
 
     result = subprocess.run(
-        ["dbt"] + args,
+        [sys.executable, "-m", "dbt.cli.main"] + args,
         cwd=transform_dir,
         env=os.environ,
     )
