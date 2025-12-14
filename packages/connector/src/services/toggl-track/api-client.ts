@@ -59,7 +59,7 @@ async function handleRateLimit(response: Response): Promise<number> {
 }
 
 /**
- * HTTP request with retry for rate limits
+ * HTTP request with retry for rate limits and quota exceeded
  */
 async function requestWithRetry(
   method: string,
@@ -74,6 +74,14 @@ async function requestWithRetry(
     // Success
     if (response.status < 400) {
       return response;
+    }
+
+    // Quota exceeded (402) - wait 60 minutes
+    if (response.status === 402) {
+      const waitMinutes = 60;
+      logger.warn(`Quota exceeded (402). Waiting ${waitMinutes} minutes...`);
+      await new Promise((r) => setTimeout(r, waitMinutes * 60 * 1000));
+      continue;
     }
 
     // Rate limit (429)
@@ -319,7 +327,47 @@ export async function fetchDetailedReport(
 }
 
 /**
+ * Flatten grouped report response
+ *
+ * Reports API v3 returns grouped responses where each row has:
+ * - user_id, username, project_id, description, tag_ids, etc. (common fields)
+ * - time_entries: array of actual time entries with id, seconds, start, stop, at
+ *
+ * This function flattens it so each time entry becomes a separate record
+ * with the common fields merged in.
+ */
+function flattenGroupedEntries(
+  groupedRows: Record<string, unknown>[]
+): Record<string, unknown>[] {
+  const flattened: Record<string, unknown>[] = [];
+
+  for (const row of groupedRows) {
+    const timeEntries = row.time_entries as Record<string, unknown>[] | undefined;
+
+    if (timeEntries && Array.isArray(timeEntries)) {
+      // Extract common fields (everything except time_entries)
+      const { time_entries: _, ...commonFields } = row;
+
+      // Flatten each time entry
+      for (const entry of timeEntries) {
+        flattened.push({
+          ...commonFields,
+          ...entry,
+        });
+      }
+    } else {
+      // Not grouped, use as-is
+      flattened.push(row);
+    }
+  }
+
+  return flattened;
+}
+
+/**
  * Fetch all detailed report (with pagination)
+ *
+ * Handles Reports API v3 grouped response format and flattens it.
  */
 export async function fetchAllDetailedReport(
   startDate: string,
@@ -332,24 +380,26 @@ export async function fetchAllDetailedReport(
   while (true) {
     const result = await fetchDetailedReport(startDate, endDate, firstRow, pageSize);
 
-    let entries: Record<string, unknown>[];
+    let rawRows: Record<string, unknown>[];
     if (Array.isArray(result)) {
-      entries = result;
+      rawRows = result;
     } else {
-      entries =
+      rawRows =
         (result.time_entries as Record<string, unknown>[]) ||
         (result.data as Record<string, unknown>[]) ||
         [];
     }
 
-    if (entries.length === 0) {
+    if (rawRows.length === 0) {
       break;
     }
 
+    // Flatten grouped responses
+    const entries = flattenGroupedEntries(rawRows);
     allEntries.push(...entries);
     logger.info(`Fetched ${entries.length} entries (total: ${allEntries.length})`);
 
-    if (entries.length < pageSize) {
+    if (rawRows.length < pageSize) {
       break;
     }
 
