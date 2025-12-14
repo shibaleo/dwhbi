@@ -6,6 +6,7 @@
 --   - Running records: end_at = CURRENT_TIMESTAMP (NOT NULL guaranteed)
 --   - Category mapping from project color and client
 --   - Zero-duration entries filtered out
+--   - Output: UTC timestamptz for all timestamp columns
 -- Use case: Daily aggregation, day-boundary analysis
 -- =============================================================================
 
@@ -36,19 +37,19 @@ tags as (
     from {{ ref('stg_toggl_track__tags') }}
 ),
 
--- Category mappings from seeds
+-- Category mappings from ref layer
 map_color_to_personal as (
     select
         toggl_color_hex,
         time_category_personal as personal_category
-    from {{ ref('map_toggl_color_to_time_personal') }}
+    from {{ ref('map_toggl_color_to_personal') }}
 ),
 
 map_client_to_social as (
     select
         toggl_client_name,
         time_category_social as social_category
-    from {{ ref('map_toggl_client_to_time_social') }}
+    from {{ ref('map_toggl_client_to_social') }}
 ),
 
 -- =============================================================================
@@ -68,9 +69,11 @@ tag_names_agg as (
 enriched_records as (
     select
         sr.time_entry_id::text as source_id,
-        -- Convert to JST (TIMESTAMP WITHOUT TIME ZONE)
+        -- Keep original UTC timestamptz
+        sr.started_at as start_at_utc,
+        coalesce(sr.stopped_at, current_timestamp) as end_at_utc,
+        -- Convert to JST for day-boundary splitting (timestamp without timezone)
         (sr.started_at at time zone 'Asia/Tokyo')::timestamp as start_jst,
-        -- Running records: use CURRENT_TIMESTAMP; otherwise use stopped_at
         (coalesce(sr.stopped_at, current_timestamp) at time zone 'Asia/Tokyo')::timestamp as end_jst,
         sr.description,
         -- Project info
@@ -87,11 +90,12 @@ enriched_records as (
     left join tag_names_agg tn on tn.time_entry_id = sr.time_entry_id
     left join map_color_to_personal mcp on mcp.toggl_color_hex = p.project_color
     left join map_client_to_social mcs on mcs.toggl_client_name = c.client_name
-    where (sr.started_at at time zone 'Asia/Tokyo') < (coalesce(sr.stopped_at, current_timestamp) at time zone 'Asia/Tokyo')  -- Filter out zero-duration entries
+    where sr.started_at < coalesce(sr.stopped_at, current_timestamp)  -- Filter out zero-duration entries
 ),
 
 -- =============================================================================
 -- Day-split using recursive CTE (JST 00:00:00 boundary)
+-- Internal calculation uses JST timestamp for date boundary detection
 -- =============================================================================
 split_records as (
     -- Base case: original records
@@ -128,12 +132,14 @@ split_records as (
 
 -- =============================================================================
 -- Final output with calculated duration
+-- Convert JST back to UTC timestamptz for output
 -- =============================================================================
 select
     source_id || '_' || split_index as id,
     source_id,
-    start_jst as start_at,
-    least(end_jst, (start_jst::date + interval '1 day')::timestamp) as end_at,
+    -- Convert JST timestamp back to UTC timestamptz
+    (start_jst at time zone 'Asia/Tokyo')::timestamptz as start_at,
+    (least(end_jst, (start_jst::date + interval '1 day')::timestamp) at time zone 'Asia/Tokyo')::timestamptz as end_at,
     extract(epoch from
         least(end_jst, (start_jst::date + interval '1 day')::timestamp) - start_jst
     )::integer as duration_seconds,

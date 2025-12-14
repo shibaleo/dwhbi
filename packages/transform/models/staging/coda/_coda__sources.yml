@@ -23,3 +23,79 @@ sources:
             description: "同期日時"
           - name: api_version
             description: "API version (v1)"
+
+      # =========================================================================
+      # Master Tables
+      # =========================================================================
+      - name: coda__mst_personal_time_category
+        description: "Personal time category master (内省的・個人的分類)"
+        columns:
+          - name: id
+            description: "Primary key (UUID)"
+          - name: source_id
+            description: "Coda row_id"
+          - name: data
+            description: "Raw JSON response from Coda API"
+          - name: synced_at
+            description: "同期日時"
+          - name: api_version
+            description: "API version (v1)"
+
+      - name: coda__mst_social_time_category
+        description: "Social time category master (対外的・共有可能な分類)"
+        columns:
+          - name: id
+            description: "Primary key (UUID)"
+          - name: source_id
+            description: "Coda row_id"
+          - name: data
+            description: "Raw JSON response from Coda API"
+          - name: synced_at
+            description: "同期日時"
+          - name: api_version
+            description: "API version (v1)"
+
+      - name: coda__mst_toggl_projects
+        description: "Toggl projects master (synced from Toggl API)"
+        columns:
+          - name: id
+            description: "Primary key (UUID)"
+          - name: source_id
+            description: "Coda row_id"
+          - name: data
+            description: "Raw JSON response from Coda API"
+          - name: synced_at
+            description: "同期日時"
+          - name: api_version
+            description: "API version (v1)"
+
+      # =========================================================================
+      # Mapping Tables
+      # =========================================================================
+      - name: coda__map_toggl_color_to_personal
+        description: "Toggl color to personal time category mapping"
+        columns:
+          - name: id
+            description: "Primary key (UUID)"
+          - name: source_id
+            description: "Coda row_id"
+          - name: data
+            description: "Raw JSON response from Coda API"
+          - name: synced_at
+            description: "同期日時"
+          - name: api_version
+            description: "API version (v1)"
+
+      - name: coda__map_toggl_client_to_social
+        description: "Toggl client to social time category mapping"
+        columns:
+          - name: id
+            description: "Primary key (UUID)"
+          - name: source_id
+            description: "Coda row_id"
+          - name: data
+            description: "Raw JSON response from Coda API"
+          - name: synced_at
+            description: "同期日時"
+          - name: api_version
+            description: "API version (v1)"

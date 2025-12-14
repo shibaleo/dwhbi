@@ -214,3 +214,68 @@ export async function fetchTables(
   logger.debug(`Found ${data.items.length} tables`);
   return data.items;
 }
+
+// =============================================================================
+// Coda API v1 - Data writing
+// =============================================================================
+
+export interface CodaCell {
+  column: string;
+  value: string | number | boolean;
+}
+
+export interface CodaRowInput {
+  cells: CodaCell[];
+}
+
+/**
+ * Upsert rows to a table
+ */
+export async function upsertRows(
+  docId: string,
+  tableId: string,
+  rows: CodaRowInput[],
+  keyColumns: string[]
+): Promise<void> {
+  const auth = await getAuthInfo();
+  const url = `${CODA_API_BASE}/docs/${docId}/tables/${tableId}/rows`;
+
+  logger.debug(`Upserting ${rows.length} rows to doc=${docId}, table=${tableId}`);
+
+  const response = await requestWithRetry("POST", url, {
+    headers: auth.headers,
+    body: JSON.stringify({ rows, keyColumns }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Failed to upsert rows: ${text}`);
+  }
+
+  logger.info(`Upserted ${rows.length} rows to table ${tableId}`);
+}
+
+/**
+ * Delete a row from a table
+ */
+export async function deleteRow(
+  docId: string,
+  tableId: string,
+  rowId: string
+): Promise<void> {
+  const auth = await getAuthInfo();
+  const url = `${CODA_API_BASE}/docs/${docId}/tables/${tableId}/rows/${rowId}`;
+
+  logger.debug(`Deleting row ${rowId} from doc=${docId}, table=${tableId}`);
+
+  const response = await requestWithRetry("DELETE", url, {
+    headers: auth.headers,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Failed to delete row: ${text}`);
+  }
+
+  logger.debug(`Deleted row ${rowId}`);
+}

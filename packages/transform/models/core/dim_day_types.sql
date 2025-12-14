@@ -5,7 +5,7 @@
 --   - day_type derived from fct_time_records_unified (hybrid logic)
 --   - Work >= 5h → Work
 --   - Drift >= 2h → Drift
---   - Otherwise: max duration among eligible categories
+--   - Otherwise: max duration category
 -- =============================================================================
 
 {% set work_threshold_hours = 5 %}
@@ -31,13 +31,6 @@ daily_hours as (
     group by 1, 2
 ),
 
-eligible_categories as (
-    -- Categories eligible for day_type determination
-    select name as personal_category
-    from {{ ref('mst_time_personal_categories') }}
-    where is_day_type_eligible = true
-),
-
 work_hours as (
     select date_day, total_hours
     from daily_hours
@@ -50,16 +43,14 @@ drift_hours as (
     where personal_category = 'Drift'
 ),
 
-max_eligible as (
-    -- Find the category with max hours among eligible categories
+max_category as (
+    -- Find the category with max hours
     select
-        dh.date_day,
-        dh.personal_category,
-        dh.total_hours,
-        row_number() over (partition by dh.date_day order by dh.total_hours desc) as rn
-    from daily_hours dh
-    inner join eligible_categories ec
-        on dh.personal_category = ec.personal_category
+        date_day,
+        personal_category,
+        total_hours,
+        row_number() over (partition by date_day order by total_hours desc) as rn
+    from daily_hours
 )
 
 select
@@ -79,8 +70,8 @@ select
         -- Step 2: Drift >= 2h → Drift
         when coalesce(drh.total_hours, 0) >= {{ drift_threshold_hours }}
             then 'Drift'
-        -- Step 3: max eligible category (fallback)
-        else coalesce(me.personal_category, 'Unused')
+        -- Step 3: max category (fallback)
+        else coalesce(mc.personal_category, 'Unused')
     end as day_type,
     -- Total hours recorded
     coalesce(
@@ -90,4 +81,4 @@ select
 from date_spine ds
 left join work_hours wh on wh.date_day = ds.date_day
 left join drift_hours drh on drh.date_day = ds.date_day
-left join max_eligible me on me.date_day = ds.date_day and me.rn = 1
+left join max_category mc on mc.date_day = ds.date_day and mc.rn = 1

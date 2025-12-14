@@ -38,6 +38,16 @@ models:
       google_calendar:
         +tags: ['google', 'calendar']
 
+    # ref層: ソース非依存の共有マスタ・マッピング
+    ref:
+      +materialized: view
+      +schema: ref
+      +post-hook:
+        - "ALTER VIEW {{ this }} SET (security_invoker = on)"
+        - "GRANT SELECT ON {{ this }} TO authenticated"
+        - "GRANT SELECT ON {{ this }} TO service_role"
+      +tags: ['ref', 'master']
+
     # core層: ビジネスエンティティ
     core:
       +materialized: view

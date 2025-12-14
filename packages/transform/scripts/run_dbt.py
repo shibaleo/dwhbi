@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """Run dbt with environment variables loaded from .env file.
 
 Usage:

@@ -6,6 +6,7 @@
 --   - Running records: end_at = CURRENT_TIMESTAMP (NOT NULL guaranteed)
 --   - Category mapping from project color and client
 --   - Zero-duration entries filtered out
+--   - Output: UTC timestamptz for all timestamp columns
 -- Use case: Entry-level analysis, sleep tracking, session duration analysis
 -- =============================================================================
 
@@ -36,19 +37,19 @@ tags as (
     from {{ ref('stg_toggl_track__tags') }}
 ),
 
--- Category mappings from seeds
+-- Category mappings from ref layer
 map_color_to_personal as (
     select
         toggl_color_hex,
         time_category_personal as personal_category
-    from {{ ref('map_toggl_color_to_time_personal') }}
+    from {{ ref('map_toggl_color_to_personal') }}
 ),
 
 map_client_to_social as (
     select
         toggl_client_name,
         time_category_social as social_category
-    from {{ ref('map_toggl_client_to_time_social') }}
+    from {{ ref('map_toggl_client_to_social') }}
 ),
 
 -- =============================================================================
@@ -68,10 +69,9 @@ tag_names_agg as (
 enriched_records as (
     select
         sr.time_entry_id::text as source_id,
-        -- Convert to JST (TIMESTAMP WITHOUT TIME ZONE)
-        (sr.started_at at time zone 'Asia/Tokyo')::timestamp as start_jst,
-        -- Running records: use CURRENT_TIMESTAMP; otherwise use stopped_at
-        (coalesce(sr.stopped_at, current_timestamp) at time zone 'Asia/Tokyo')::timestamp as end_jst,
+        -- Keep original UTC timestamptz
+        sr.started_at as start_at,
+        coalesce(sr.stopped_at, current_timestamp) as end_at,
         sr.description,
         -- Project info
         p.project_name,
@@ -95,9 +95,9 @@ enriched_records as (
 select
     source_id as id,
     source_id,
-    start_jst as start_at,
-    end_jst as end_at,
-    extract(epoch from (end_jst - start_jst))::integer as duration_seconds,
+    start_at,
+    end_at,
+    extract(epoch from (end_at - start_at))::integer as duration_seconds,
     description,
     project_name,
     project_color,
@@ -106,4 +106,4 @@ select
     personal_category,
     'toggl_track' as source
 from enriched_records
-where start_jst < end_jst  -- Filter out zero-duration entries
+where start_at < end_at  -- Filter out zero-duration entries

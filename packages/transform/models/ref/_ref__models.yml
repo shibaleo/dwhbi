@@ -1,76 +1,24 @@
-# Coda Staging Models
+# Reference Layer Models
 # =============================================================================
-# staging層モデルの定義
+# Source-independent shared masters and mappings for DWH-wide usage
 # =============================================================================
 
 version: 2
 
 models:
-  - name: stg_coda__intents
-    description: "Time Intent テーブルのstaging層モデル"
-    columns:
-      - name: intent_id
-        description: "Intent unique ID (row_id)"
-        data_tests:
-          - unique
-          - not_null
-
-      - name: description
-        description: "Intent description"
-        data_tests:
-          - not_null
-
-      - name: personal_category
-        description: "Personal category name (Work, Leisure, etc.)"
-
-      - name: project
-        description: "Project name (Accounting, etc.)"
-
-      - name: hours
-        description: "Target hours"
-        data_tests:
-          - not_null
-
-      - name: unit
-        description: "Time unit (day, week)"
-        data_tests:
-          - not_null
-          - accepted_values:
-              values: ['day', 'week']
-
-      - name: direction
-        description: "Direction (more, less)"
-        data_tests:
-          - not_null
-          - accepted_values:
-              values: ['more', 'less']
-
-      - name: is_archived
-        description: "Archived flag"
-        data_tests:
-          - not_null
-
-      - name: notes
-        description: "Additional notes"
-
-      - name: synced_at
-        description: "Last sync timestamp"
-        data_tests:
-          - not_null
-
   # ===========================================================================
   # Master Tables
   # ===========================================================================
-  - name: stg_coda__mst_personal_time_category
-    description: "Personal time category master from Coda"
+  - name: mst_personal_time_category
+    description: "Personal time category master (source-independent)"
     columns:
       - name: row_id
-        description: "Coda row ID"
+        description: "Source row ID"
         data_tests:
           - unique
           - not_null
       - name: name
-        description: "Category name (Vitals, Sleep, etc.)"
+        description: "Category name (Vitals, Sleep, Work, etc.)"
         data_tests:
           - unique
           - not_null
@@ -81,11 +29,11 @@ models:
       - name: sort_order
         description: "Sort order"
 
-  - name: stg_coda__mst_social_time_category
-    description: "Social time category master from Coda"
+  - name: mst_social_time_category
+    description: "Social time category master (source-independent)"
     columns:
       - name: row_id
-        description: "Coda row ID"
+        description: "Source row ID"
         data_tests:
           - unique
           - not_null
@@ -104,11 +52,11 @@ models:
   # ===========================================================================
   # Mapping Tables
   # ===========================================================================
-  - name: stg_coda__map_toggl_color_to_personal
-    description: "Toggl color to personal time category mapping from Coda"
+  - name: map_toggl_color_to_personal
+    description: "Toggl color to personal time category mapping (source-independent)"
     columns:
       - name: row_id
-        description: "Coda row ID"
+        description: "Source row ID"
         data_tests:
           - unique
           - not_null
@@ -122,11 +70,11 @@ models:
       - name: time_category_personal
         description: "Personal time category name (nullable for unmapped colors)"
 
-  - name: stg_coda__map_toggl_client_to_social
-    description: "Toggl client to social time category mapping from Coda"
+  - name: map_toggl_client_to_social
+    description: "Toggl client to social time category mapping (source-independent)"
     columns:
       - name: row_id
-        description: "Coda row ID"
+        description: "Source row ID"
         data_tests:
           - unique
           - not_null
