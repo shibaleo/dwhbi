@@ -78,6 +78,8 @@ models:
         description: "Japanese name"
       - name: description
         description: "Description"
+      - name: coarse_category
+        description: "Coarse category (Essentials, Leisure, Obligation)"
       - name: sort_order
         description: "Sort order"
 

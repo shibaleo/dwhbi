@@ -69,6 +69,20 @@ sources:
           - name: api_version
             description: "API version (v1)"
 
+      - name: coda__mst_coarse_personal_time_category
+        description: "Coarse personal time category master (粗い個人的分類)"
+        columns:
+          - name: id
+            description: "Primary key (UUID)"
+          - name: source_id
+            description: "Coda row_id"
+          - name: data
+            description: "Raw JSON response from Coda API"
+          - name: synced_at
+            description: "同期日時"
+          - name: api_version
+            description: "API version (v1)"
+
       # =========================================================================
       # Mapping Tables
       # =========================================================================

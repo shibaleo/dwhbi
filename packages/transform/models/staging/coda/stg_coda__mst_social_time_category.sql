@@ -11,12 +11,12 @@ parsed as (
     select
         source_id as row_id,
         data->>'name' as name,
-        (data->>'index')::integer + 1 as sort_order,
         -- Column mappings from Coda:
-        -- c-sEvySWZAmk: name (redundant with data.name)
-        -- c-O1uHAp-nUm: name_ja
-        -- c-jPWGpzBvYU: description
-        -- c-bwYPuDnuo3: sort_order
+        -- c-sEvySWZAmk: name (text)
+        -- c-O1uHAp-nUm: name_ja (text)
+        -- c-jPWGpzBvYU: description (text)
+        -- c-bwYPuDnuo3: sort_order (number)
+        (data->'values'->>'c-bwYPuDnuo3')::integer as sort_order,
         regexp_replace(data->'values'->>'c-O1uHAp-nUm', '^```|```$', '', 'g') as name_ja,
         regexp_replace(data->'values'->>'c-jPWGpzBvYU', '^```|```$', '', 'g') as description,
         synced_at

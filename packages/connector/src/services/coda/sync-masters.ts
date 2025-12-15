@@ -19,6 +19,7 @@ const TABLE_MAPPINGS: Record<string, string> = {
   "grid-1a2cLMloN0": "coda__mst_personal_time_category",
   "grid-qqVwHqBfCz": "coda__mst_social_time_category",
   "grid-LxGswbLt-q": "coda__mst_toggl_projects",
+  "grid-N8i-IPxGVf": "coda__mst_coarse_personal_time_category",
   "grid-tx-SGor2xN": "coda__map_toggl_color_to_personal",
   "grid-CI5rehwM3k": "coda__map_toggl_client_to_social",
 };
