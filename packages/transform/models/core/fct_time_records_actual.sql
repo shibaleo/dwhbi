@@ -14,20 +14,15 @@ with source_records as (
     select * from {{ ref('stg_toggl_track__time_entries') }}
 ),
 
+-- Core master: Toggl projects + Coda metadata (includes sort_order, client_name)
 projects as (
     select
         project_id,
         project_name,
-        client_id,
-        color as project_color
-    from {{ ref('stg_toggl_track__projects') }}
-),
-
-clients as (
-    select
-        client_id,
-        client_name
-    from {{ ref('stg_toggl_track__clients') }}
+        project_color,
+        client_name,
+        sort_order as project_order
+    from {{ ref('mst_time_projects') }}
 ),
 
 tags as (
@@ -37,44 +32,25 @@ tags as (
     from {{ ref('stg_toggl_track__tags') }}
 ),
 
--- Category mappings from ref layer
-map_color_to_personal as (
+-- Core master: Personal time categories + color mapping (includes sort_order)
+-- Unnest color_hex_codes to enable join by project_color
+mst_personal_colors as (
     select
-        toggl_color_hex,
-        time_category_personal as personal_category
-    from {{ ref('map_toggl_color_to_personal') }}
+        mp.name as personal_category,
+        mp.coarse_category,
+        mp.sort_order as personal_order,
+        unnest(mp.color_hex_codes) as toggl_color_hex
+    from {{ ref('mst_personal_time_category') }} mp
 ),
 
-map_client_to_social as (
+-- Core master: Social time categories + client mapping (includes sort_order)
+-- Unnest client_names to enable join by client_name
+mst_social_clients as (
     select
-        toggl_client_name,
-        time_category_social as social_category
-    from {{ ref('map_toggl_client_to_social') }}
-),
-
--- Personal category master for coarse_category lookup and sort_order
-mst_personal as (
-    select
-        name as personal_category,
-        coarse_category,
-        sort_order as personal_order
-    from {{ ref('mst_personal_time_category') }}
-),
-
--- Social category master for sort_order
-mst_social as (
-    select
-        name as social_category,
-        sort_order as social_order
-    from {{ ref('mst_social_time_category') }}
-),
-
--- Toggl projects master for sort_order (from Coda)
-mst_projects as (
-    select
-        toggl_project_id,
-        sort_order as project_order
-    from {{ ref('mst_toggl_projects') }}
+        ms.name as social_category,
+        ms.sort_order as social_order,
+        unnest(ms.client_names) as client_name
+    from {{ ref('mst_social_time_category') }} ms
 ),
 
 -- Coarse personal category master for sort_order
@@ -102,56 +78,54 @@ tag_names_agg as (
 enriched_records as (
     select
         sr.time_entry_id::text as source_id,
-        sr.project_id,
         -- Keep original UTC timestamptz
         sr.started_at as start_at,
         coalesce(sr.stopped_at, current_timestamp) as end_at,
         sr.description,
-        -- Project info
+        -- Project info (from core.mst_time_projects)
         p.project_name,
         p.project_color,
+        coalesce(p.project_order, 999) as project_order,
         -- Tags
         coalesce(tn.tag_names, array[]::text[]) as tag_names,
-        -- Category mappings
-        coalesce(mcs.social_category, 'UNKNOWN') as social_category,
-        coalesce(mcp.personal_category, 'Uncategorized') as personal_category,
-        coalesce(mp.coarse_category, 'Uncategorized') as coarse_personal_category,
-        -- Sort orders
-        coalesce(ms.social_order, 999) as social_order,
-        coalesce(mp.personal_order, 999) as personal_order,
+        -- Category mappings (via core masters only)
+        coalesce(msc.social_category, 'UNKNOWN') as social_category,
+        coalesce(mpc.personal_category, 'Uncategorized') as personal_category,
+        coalesce(mpc.coarse_category, 'Uncategorized') as coarse_personal_category,
+        -- Sort orders (from core masters)
+        coalesce(msc.social_order, 999) as social_order,
+        coalesce(mpc.personal_order, 999) as personal_order,
         coalesce(mc.coarse_order, 999) as coarse_order
     from source_records sr
     left join projects p on p.project_id = sr.project_id
-    left join clients c on c.client_id = p.client_id
     left join tag_names_agg tn on tn.time_entry_id = sr.time_entry_id
-    left join map_color_to_personal mcp on mcp.toggl_color_hex = p.project_color
-    left join map_client_to_social mcs on mcs.toggl_client_name = c.client_name
-    left join mst_personal mp on mp.personal_category = mcp.personal_category
-    left join mst_social ms on ms.social_category = coalesce(mcs.social_category, 'UNKNOWN')
-    left join mst_coarse mc on mc.coarse_category = coalesce(mp.coarse_category, 'Uncategorized')
+    -- Personal category via color mapping (from core.mst_personal_time_category)
+    left join mst_personal_colors mpc on mpc.toggl_color_hex = p.project_color
+    -- Social category via client mapping (from core.mst_social_time_category)
+    left join mst_social_clients msc on msc.client_name = p.client_name
+    left join mst_coarse mc on mc.coarse_category = coalesce(mpc.coarse_category, 'Uncategorized')
 )
 
 -- =============================================================================
 -- Final output (filter out zero-duration entries)
 -- =============================================================================
 select
-    er.source_id as id,
-    er.source_id,
-    er.start_at,
-    er.end_at,
-    extract(epoch from (er.end_at - er.start_at))::integer as duration_seconds,
-    er.description,
-    er.project_name,
-    er.project_color,
-    er.tag_names,
-    er.social_category,
-    er.personal_category,
-    er.coarse_personal_category,
-    er.social_order,
-    er.personal_order,
-    er.coarse_order,
-    coalesce(mproj.project_order, 999) as project_order,
+    source_id as id,
+    source_id,
+    start_at,
+    end_at,
+    extract(epoch from (end_at - start_at))::integer as duration_seconds,
+    description,
+    project_name,
+    project_color,
+    tag_names,
+    social_category,
+    personal_category,
+    coarse_personal_category,
+    social_order,
+    personal_order,
+    coarse_order,
+    project_order,
     'toggl_track' as source
-from enriched_records er
-left join mst_projects mproj on mproj.toggl_project_id = er.project_id
-where er.start_at < er.end_at  -- Filter out zero-duration entries
+from enriched_records
+where start_at < end_at  -- Filter out zero-duration entries

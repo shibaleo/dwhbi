@@ -6,6 +6,108 @@
 version: 2
 
 models:
+  # ===========================================================================
+  # Master Tables
+  # ===========================================================================
+  - name: mst_time_projects
+    description: |
+      Togglプロジェクトマスタ（Codaメタデータ統合）
+
+      Features:
+      - stg_toggl_track__projects: Toggl APIからのプロジェクトデータ
+      - stg_toggl_track__clients: クライアント名
+      - stg_coda__mst_toggl_projects: Codaからの補足情報（sort_order, name_ja）
+    columns:
+      - name: project_id
+        description: "TogglプロジェクトID（PK）"
+        data_tests:
+          - unique
+          - not_null
+      - name: project_name
+        description: "プロジェクト名"
+        data_tests:
+          - not_null
+      - name: project_color
+        description: "プロジェクト色（HEX）"
+      - name: client_id
+        description: "クライアントID（FK）"
+      - name: client_name
+        description: "クライアント名"
+      - name: name_ja
+        description: "日本語名（Codaから）"
+      - name: description
+        description: "説明（Codaから）"
+      - name: sort_order
+        description: "表示順（Codaから、デフォルト999）"
+        data_tests:
+          - not_null
+      - name: is_active
+        description: "アクティブフラグ"
+      - name: is_private
+        description: "プライベートフラグ"
+      - name: is_billable
+        description: "請求可能フラグ"
+      - name: created_at
+        description: "作成日時"
+      - name: updated_at
+        description: "更新日時"
+
+  - name: mst_personal_time_category
+    description: |
+      Personal time categoryマスタ（カラーマッピング統合）
+
+      Features:
+      - stg_coda__mst_personal_time_category: カテゴリ定義
+      - stg_coda__map_toggl_color_to_personal: カラーとカテゴリのマッピング
+    columns:
+      - name: name
+        description: "カテゴリ名（Vitals, Sleep, Work等）"
+        data_tests:
+          - unique
+          - not_null
+      - name: name_ja
+        description: "日本語名"
+      - name: description
+        description: "説明"
+      - name: coarse_category
+        description: "粗いカテゴリ"
+      - name: sort_order
+        description: "表示順"
+        data_tests:
+          - not_null
+      - name: color_hex_codes
+        description: "このカテゴリにマッピングされたTogglカラーHEX（配列）"
+      - name: color_names
+        description: "このカテゴリにマッピングされたTogglカラー名（配列）"
+
+  - name: mst_social_time_category
+    description: |
+      Social time categoryマスタ（Togglクライアント統合）
+
+      Features:
+      - stg_coda__mst_social_time_category: カテゴリ定義
+      - map_toggl_client_to_social: クライアントとカテゴリのマッピング
+      - stg_toggl_track__clients: Togglクライアントデータ
+    columns:
+      - name: name
+        description: "カテゴリ名（PRIMARY, SECONDARY等）"
+        data_tests:
+          - unique
+          - not_null
+      - name: name_ja
+        description: "日本語名"
+      - name: description
+        description: "説明"
+      - name: sort_order
+        description: "表示順"
+        data_tests:
+          - not_null
+      - name: client_names
+        description: "このカテゴリにマッピングされたTogglクライアント名（配列）"
+
+  # ===========================================================================
+  # Fact Tables
+  # ===========================================================================
   - name: fct_time_records_actual
     description: |
       Togglからの実績時間レコード（エントリー単位、分割なし）

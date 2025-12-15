@@ -7,10 +7,10 @@ version: 2
 
 models:
   # ===========================================================================
-  # Master Tables
+  # Master Tables (Coda-only, no Toggl counterpart)
   # ===========================================================================
-  - name: mst_personal_time_category
-    description: "Personal time category master (source-independent)"
+  - name: mst_coarse_personal_time_category
+    description: "Coarse personal time category master (source-independent)"
     columns:
       - name: row_id
         description: "Source row ID"
@@ -18,72 +18,9 @@ models:
           - unique
           - not_null
       - name: name
-        description: "Category name (Vitals, Sleep, Work, etc.)"
+        description: "Coarse category name"
         data_tests:
           - unique
           - not_null
-      - name: name_ja
-        description: "Japanese name"
-      - name: description
-        description: "Description"
       - name: sort_order
         description: "Sort order"
-
-  - name: mst_social_time_category
-    description: "Social time category master (source-independent)"
-    columns:
-      - name: row_id
-        description: "Source row ID"
-        data_tests:
-          - unique
-          - not_null
-      - name: name
-        description: "Category name (PRIMARY, SECONDARY, TERTIARY)"
-        data_tests:
-          - unique
-          - not_null
-      - name: name_ja
-        description: "Japanese name"
-      - name: description
-        description: "Description"
-      - name: sort_order
-        description: "Sort order"
-
-  # ===========================================================================
-  # Mapping Tables
-  # ===========================================================================
-  - name: map_toggl_color_to_personal
-    description: "Toggl color to personal time category mapping (source-independent)"
-    columns:
-      - name: row_id
-        description: "Source row ID"
-        data_tests:
-          - unique
-          - not_null
-      - name: toggl_color_hex
-        description: "Toggl color hex code (#0b83d9 etc.)"
-        data_tests:
-          - unique
-          - not_null
-      - name: toggl_color_name
-        description: "Toggl color name (Blue, Red, etc.)"
-      - name: time_category_personal
-        description: "Personal time category name (nullable for unmapped colors)"
-
-  - name: map_toggl_client_to_social
-    description: "Toggl client to social time category mapping (source-independent)"
-    columns:
-      - name: row_id
-        description: "Source row ID"
-        data_tests:
-          - unique
-          - not_null
-      - name: toggl_client_name
-        description: "Toggl client name"
-        data_tests:
-          - unique
-          - not_null
-      - name: time_category_social
-        description: "Social time category name"
-        data_tests:
-          - not_null
