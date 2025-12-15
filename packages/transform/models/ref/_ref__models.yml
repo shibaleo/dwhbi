@@ -24,3 +24,55 @@ models:
           - not_null
       - name: sort_order
         description: "Sort order"
+
+  - name: mst_personal_time_category
+    description: |
+      Personal time categoryマスタ（カラーマッピング統合）
+
+      Features:
+      - stg_coda__mst_personal_time_category: カテゴリ定義
+      - stg_coda__map_toggl_color_to_personal: カラーとカテゴリのマッピング
+    columns:
+      - name: name
+        description: "カテゴリ名（Vitals, Sleep, Work等）"
+        data_tests:
+          - unique
+          - not_null
+      - name: name_ja
+        description: "日本語名"
+      - name: description
+        description: "説明"
+      - name: coarse_category
+        description: "粗いカテゴリ"
+      - name: sort_order
+        description: "表示順"
+        data_tests:
+          - not_null
+      - name: color_hex_codes
+        description: "このカテゴリにマッピングされたTogglカラーHEX（配列）"
+      - name: color_names
+        description: "このカテゴリにマッピングされたTogglカラー名（配列）"
+
+  - name: mst_social_time_category
+    description: |
+      Social time categoryマスタ（Togglクライアント統合）
+
+      Features:
+      - stg_coda__mst_social_time_category: カテゴリ定義
+      - stg_coda__map_toggl_client_to_social: クライアントとカテゴリのマッピング
+    columns:
+      - name: name
+        description: "カテゴリ名（PRIMARY, SECONDARY等）"
+        data_tests:
+          - unique
+          - not_null
+      - name: name_ja
+        description: "日本語名"
+      - name: description
+        description: "説明"
+      - name: sort_order
+        description: "表示順"
+        data_tests:
+          - not_null
+      - name: client_names
+        description: "このカテゴリにマッピングされたTogglクライアント名（配列）"

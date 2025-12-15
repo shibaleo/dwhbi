@@ -52,59 +52,6 @@ models:
       - name: updated_at
         description: "更新日時"
 
-  - name: mst_personal_time_category
-    description: |
-      Personal time categoryマスタ（カラーマッピング統合）
-
-      Features:
-      - stg_coda__mst_personal_time_category: カテゴリ定義
-      - stg_coda__map_toggl_color_to_personal: カラーとカテゴリのマッピング
-    columns:
-      - name: name
-        description: "カテゴリ名（Vitals, Sleep, Work等）"
-        data_tests:
-          - unique
-          - not_null
-      - name: name_ja
-        description: "日本語名"
-      - name: description
-        description: "説明"
-      - name: coarse_category
-        description: "粗いカテゴリ"
-      - name: sort_order
-        description: "表示順"
-        data_tests:
-          - not_null
-      - name: color_hex_codes
-        description: "このカテゴリにマッピングされたTogglカラーHEX（配列）"
-      - name: color_names
-        description: "このカテゴリにマッピングされたTogglカラー名（配列）"
-
-  - name: mst_social_time_category
-    description: |
-      Social time categoryマスタ（Togglクライアント統合）
-
-      Features:
-      - stg_coda__mst_social_time_category: カテゴリ定義
-      - map_toggl_client_to_social: クライアントとカテゴリのマッピング
-      - stg_toggl_track__clients: Togglクライアントデータ
-    columns:
-      - name: name
-        description: "カテゴリ名（PRIMARY, SECONDARY等）"
-        data_tests:
-          - unique
-          - not_null
-      - name: name_ja
-        description: "日本語名"
-      - name: description
-        description: "説明"
-      - name: sort_order
-        description: "表示順"
-        data_tests:
-          - not_null
-      - name: client_names
-        description: "このカテゴリにマッピングされたTogglクライアント名（配列）"
-
   # ===========================================================================
   # Fact Tables
   # ===========================================================================
@@ -226,14 +173,106 @@ models:
           - accepted_values:
               values: ['toggl_track']
 
-  - name: fct_time_records_plan
+  - name: fct_time_records_target
     description: |
-      Google Calendarからの計画時間レコード
+      Google Calendarからの目標時間レコード（エントリー単位、分割なし）
+
+      Features:
+      - 元のエントリーをそのまま保持（日跨ぎ分割なし）
+      - summary → mst_time_projects.project_nameでプロジェクトマッピング
+      - プロジェクト色・クライアントからのカテゴリマッピング
+      - キャンセル済みイベント除外
+      - fct_time_records_actualと同一列構成
+
+      Use case:
+      - エントリー単位の所要時間分析
+    columns:
+      - name: id
+        description: "ユニークID（source_id）"
+        data_tests:
+          - unique
+          - not_null
+      - name: source_id
+        description: "元のGCal event_id"
+        data_tests:
+          - not_null
+      - name: start_at
+        description: "開始時刻（UTC timestamptz）"
+        data_tests:
+          - not_null
+      - name: end_at
+        description: "終了時刻（UTC timestamptz）"
+        data_tests:
+          - not_null
+      - name: duration_seconds
+        description: "時間（秒）"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: description
+        description: "GCalのsummary"
+      - name: project_name
+        description: "プロジェクト名"
+        data_tests:
+          - not_null
+      - name: project_color
+        description: "プロジェクト色（HEX）"
+        data_tests:
+          - not_null
+      - name: tag_names
+        description: "タグ名配列（text[]）"
+        data_tests:
+          - not_null
+      - name: social_category
+        description: "社会的分類（WORK, LEISURE等）"
+        data_tests:
+          - not_null
+      - name: personal_category
+        description: "個人的分類（Work, Study等）"
+        data_tests:
+          - not_null
+      - name: coarse_personal_category
+        description: "粗い個人的分類"
+        data_tests:
+          - not_null
+      - name: social_order
+        description: "Social分類のソート順"
+        data_tests:
+          - not_null
+      - name: personal_order
+        description: "Personal分類のソート順"
+        data_tests:
+          - not_null
+      - name: coarse_order
+        description: "粗いPersonal分類のソート順"
+        data_tests:
+          - not_null
+      - name: project_order
+        description: "プロジェクトのソート順"
+        data_tests:
+          - not_null
+      - name: source
+        description: "データソース"
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['google_calendar']
+
+  - name: fct_time_records_target_split
+    description: |
+      Google Calendarからの目標時間レコード（日分割版）
 
       Features:
       - JST 00:00:00 境界での日跨ぎ分割
-      - イベント色・説明1行目からのカテゴリマッピング
+      - summary → mst_time_projects.project_nameでプロジェクトマッピング
+      - プロジェクト色・クライアントからのカテゴリマッピング
       - キャンセル済みイベント除外
+      - fct_time_records_actual_splitと同一列構成
+
+      Use case:
+      - 日別集計
+      - 日境界での時間分析
     columns:
       - name: id
         description: "ユニークID（{source_id}_{split_index}）"
@@ -245,11 +284,11 @@ models:
         data_tests:
           - not_null
       - name: start_at
-        description: "開始時刻（JST、分割後）"
+        description: "開始時刻（UTC timestamptz、分割後）"
         data_tests:
           - not_null
       - name: end_at
-        description: "終了時刻（JST、分割後）"
+        description: "終了時刻（UTC timestamptz、分割後）"
         data_tests:
           - not_null
       - name: duration_seconds
@@ -260,12 +299,44 @@ models:
               min_value: 1
       - name: description
         description: "GCalのsummary"
+      - name: project_name
+        description: "プロジェクト名"
+        data_tests:
+          - not_null
+      - name: project_color
+        description: "プロジェクト色（HEX）"
+        data_tests:
+          - not_null
+      - name: tag_names
+        description: "タグ名配列（text[]）"
+        data_tests:
+          - not_null
       - name: social_category
         description: "社会的分類（WORK, LEISURE等）"
         data_tests:
           - not_null
       - name: personal_category
         description: "個人的分類（Work, Study等）"
+        data_tests:
+          - not_null
+      - name: coarse_personal_category
+        description: "粗い個人的分類"
+        data_tests:
+          - not_null
+      - name: social_order
+        description: "Social分類のソート順"
+        data_tests:
+          - not_null
+      - name: personal_order
+        description: "Personal分類のソート順"
+        data_tests:
+          - not_null
+      - name: coarse_order
+        description: "粗いPersonal分類のソート順"
+        data_tests:
+          - not_null
+      - name: project_order
+        description: "プロジェクトのソート順"
         data_tests:
           - not_null
       - name: source
@@ -275,100 +346,3 @@ models:
           - accepted_values:
               values: ['google_calendar']
 
-  - name: fct_time_records_unified
-    description: |
-      actual（実績）とplan（計画）をCURRENT_TIMESTAMP境界で統合
-
-      Boundary rules:
-      - end_at <= now: actual（そのまま）
-      - start_at < now < end_at: actual（end_at を now に調整）
-      - start_at >= now: plan（そのまま）
-      - start_at < now < end_at: plan（start_at を now に調整）
-    columns:
-      - name: id
-        description: "ユニークID"
-        data_tests:
-          - not_null
-      - name: source_id
-        description: "元のレコードID"
-        data_tests:
-          - not_null
-      - name: start_at
-        description: "開始時刻（JST）"
-        data_tests:
-          - not_null
-      - name: end_at
-        description: "終了時刻（JST）"
-        data_tests:
-          - not_null
-      - name: duration_seconds
-        description: "時間（秒）"
-        data_tests:
-          - not_null
-          - dbt_utils.accepted_range:
-              min_value: 1
-      - name: description
-        description: "説明/タイトル"
-      - name: social_category
-        description: "社会的分類"
-        data_tests:
-          - not_null
-      - name: personal_category
-        description: "個人的分類"
-        data_tests:
-          - not_null
-      - name: source
-        description: "データソース"
-        data_tests:
-          - not_null
-          - accepted_values:
-              values: ['toggl_track', 'google_calendar']
-      - name: record_type
-        description: "レコードタイプ（actual/plan）"
-        data_tests:
-          - not_null
-          - accepted_values:
-              values: ['actual', 'plan']
-
-  - name: dim_day_types
-    description: |
-      日タイプディメンション（day_typeを動的導出）
-
-      day_type導出ロジック（ADR-004）:
-      - Work >= 5h → Work
-      - Drift >= 2h → Drift
-      - それ以外: eligible内で最大時間のカテゴリ
-    columns:
-      - name: date_day
-        description: "日付"
-        data_tests:
-          - unique
-          - not_null
-      - name: day_of_week
-        description: "曜日（0=日曜, 6=土曜）"
-        data_tests:
-          - not_null
-      - name: year
-        description: "年"
-        data_tests:
-          - not_null
-      - name: month
-        description: "月"
-        data_tests:
-          - not_null
-      - name: day
-        description: "日"
-        data_tests:
-          - not_null
-      - name: week_of_year
-        description: "ISO週番号"
-        data_tests:
-          - not_null
-      - name: day_type
-        description: "日タイプ（Work, Leisure, Education等）"
-        data_tests:
-          - not_null
-      - name: total_hours_recorded
-        description: "記録された合計時間"
-        data_tests:
-          - not_null
