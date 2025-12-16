@@ -1,4 +1,4 @@
--- stg_coda__mst_social_time_category.sql
+-- stg_coda__time_category_social.sql
 -- =============================================================================
 -- Staging model for social time category master from Coda
 -- =============================================================================

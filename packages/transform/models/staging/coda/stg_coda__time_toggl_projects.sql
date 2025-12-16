@@ -1,4 +1,4 @@
--- stg_coda__mst_toggl_projects.sql
+-- stg_coda__time_toggl_projects.sql
 -- =============================================================================
 -- Staging model for Toggl projects master from Coda
 -- =============================================================================

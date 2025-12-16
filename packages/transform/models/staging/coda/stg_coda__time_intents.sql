@@ -1,4 +1,4 @@
--- stg_coda__intents
+-- stg_coda__time_intents.sql
 -- =============================================================================
 -- Time Intent テーブルの staging 層モデル
 -- Coda の Table (grid-Wu3URkM3rF) から Intent データを抽出

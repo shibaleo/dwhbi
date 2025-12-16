@@ -1,6 +1,6 @@
 # dbt Profiles Configuration
 # =============================================================================
-# Supabase PostgreSQL connection settings
+# DWHBI - Supabase PostgreSQL connection settings
 #
 # 使用方法:
 #   1. 環境変数 DIRECT_DATABASE_URL を設定
@@ -17,7 +17,7 @@
 # Note: DIRECT_DATABASE_URL から自動設定する場合は setup_dbt_env.py を使用
 # =============================================================================
 
-supabase_sync_dwh:
+dwhbi:
   target: dev
   outputs:
     dev:

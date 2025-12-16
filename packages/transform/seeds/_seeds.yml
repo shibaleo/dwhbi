@@ -2,49 +2,6 @@ version: 2
 
 seeds:
   # =============================================================================
-  # Mapping Tables (Google Calendar)
-  # =============================================================================
-  - name: map_gcal_desc_to_time_social
-    description: "Calendar descriptionから時間socialへのマッピング"
-    config:
-      column_types:
-        gcal_description_first_line: text
-        time_category_social: text
-    columns:
-      - name: gcal_description_first_line
-        description: "PK, description 1行目"
-        data_tests:
-          - unique
-          - not_null
-      - name: time_category_social
-        description: "FK → stg_coda__mst_social_time_category.name"
-        data_tests:
-          - not_null
-
-  - name: map_gcal_color_to_time_personal
-    description: "Calendar色から時間personalへのマッピング（API色情報を統合）"
-    config:
-      column_types:
-        gcal_color_id: text
-        gcal_color_name: text
-        gcal_color_hex: text
-        time_category_personal: text
-    columns:
-      - name: gcal_color_id
-        description: "PK, Calendar API色ID（1〜11）"
-        data_tests:
-          - unique
-          - not_null
-      - name: gcal_color_name
-        description: "色名（Lavender等）"
-      - name: gcal_color_hex
-        description: "HEX値（参考用）"
-      - name: time_category_personal
-        description: "FK → stg_coda__mst_personal_time_category.name"
-        data_tests:
-          - not_null
-
-  # =============================================================================
   # Target Tables (Goal Management)
   # =============================================================================
   - name: mst_time_target_groups
@@ -71,7 +28,7 @@ seeds:
           - unique
           - not_null
       - name: time_category_personal
-        description: "FK → stg_coda__mst_personal_time_category.name"
+        description: "FK → stg_coda__time_category_personal.name"
         data_tests:
           - not_null
       - name: day_type

@@ -1,4 +1,4 @@
--- stg_coda__map_toggl_client_to_social.sql
+-- stg_coda__time_toggl_client_to_category_social.sql
 -- =============================================================================
 -- Staging model for Toggl client to social time category mapping from Coda
 -- =============================================================================

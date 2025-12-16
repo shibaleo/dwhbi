@@ -1,16 +1,16 @@
 # Reference Layer Models
 # =============================================================================
-# Source-independent shared masters and mappings for DWH-wide usage
+# Source-independent shared dimensions for DWH-wide usage
 # =============================================================================
 
 version: 2
 
 models:
   # ===========================================================================
-  # Master Tables (Coda-only, no Toggl counterpart)
+  # Dimension Tables (Coda-only, no Toggl counterpart)
   # ===========================================================================
-  - name: mst_coarse_personal_time_category
-    description: "Coarse personal time category master (source-independent)"
+  - name: dim_category_time_personal_coarse
+    description: "Coarse personal time category dimension (source-independent)"
     columns:
       - name: row_id
         description: "Source row ID"
@@ -25,13 +25,13 @@ models:
       - name: sort_order
         description: "Sort order"
 
-  - name: mst_personal_time_category
+  - name: dim_category_time_personal
     description: |
-      Personal time categoryマスタ（カラーマッピング統合）
+      Personal time categoryディメンション（カラーマッピング統合）
 
       Features:
-      - stg_coda__mst_personal_time_category: カテゴリ定義
-      - stg_coda__map_toggl_color_to_personal: カラーとカテゴリのマッピング
+      - stg_coda__time_category_personal: カテゴリ定義
+      - stg_coda__time_toggl_color_to_category_personal: カラーとカテゴリのマッピング
     columns:
       - name: name
         description: "カテゴリ名（Vitals, Sleep, Work等）"
@@ -53,13 +53,13 @@ models:
       - name: color_names
         description: "このカテゴリにマッピングされたTogglカラー名（配列）"
 
-  - name: mst_social_time_category
+  - name: dim_category_time_social
     description: |
-      Social time categoryマスタ（Togglクライアント統合）
+      Social time categoryディメンション（Togglクライアント統合）
 
       Features:
-      - stg_coda__mst_social_time_category: カテゴリ定義
-      - stg_coda__map_toggl_client_to_social: クライアントとカテゴリのマッピング
+      - stg_coda__time_category_social: カテゴリ定義
+      - stg_coda__time_toggl_client_to_category_social: クライアントとカテゴリのマッピング
     columns:
       - name: name
         description: "カテゴリ名（PRIMARY, SECONDARY等）"
@@ -76,3 +76,46 @@ models:
           - not_null
       - name: client_names
         description: "このカテゴリにマッピングされたTogglクライアント名（配列）"
+
+  - name: dim_time_projects
+    description: |
+      Togglプロジェクトディメンション（Codaメタデータ統合）
+
+      Features:
+      - stg_toggl_track__projects: Toggl APIからのプロジェクトデータ
+      - stg_toggl_track__clients: クライアント名
+      - stg_coda__time_toggl_projects: Codaからの補足情報（sort_order, name_ja）
+    columns:
+      - name: project_id
+        description: "TogglプロジェクトID（PK）"
+        data_tests:
+          - unique
+          - not_null
+      - name: project_name
+        description: "プロジェクト名"
+        data_tests:
+          - not_null
+      - name: project_color
+        description: "プロジェクト色（HEX）"
+      - name: client_id
+        description: "クライアントID（FK）"
+      - name: client_name
+        description: "クライアント名"
+      - name: name_ja
+        description: "日本語名（Codaから）"
+      - name: description
+        description: "説明（Codaから）"
+      - name: sort_order
+        description: "表示順（Codaから、デフォルト999）"
+        data_tests:
+          - not_null
+      - name: is_active
+        description: "アクティブフラグ"
+      - name: is_private
+        description: "プライベートフラグ"
+      - name: is_billable
+        description: "請求可能フラグ"
+      - name: created_at
+        description: "作成日時"
+      - name: updated_at
+        description: "更新日時"

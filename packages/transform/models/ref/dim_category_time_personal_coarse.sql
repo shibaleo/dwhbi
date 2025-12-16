@@ -1,6 +1,6 @@
--- mst_coarse_personal_time_category.sql
+-- dim_category_time_personal_coarse.sql
 -- =============================================================================
--- Reference layer: Coarse personal time category master
+-- Dimension: Coarse personal time category
 -- Source-independent view for DWH-wide usage
 -- =============================================================================
 
@@ -9,4 +9,4 @@ select
     name,
     sort_order,
     synced_at
-from {{ ref('stg_coda__mst_coarse_personal_time_category') }}
+from {{ ref('stg_coda__time_category_personal_coarse') }}

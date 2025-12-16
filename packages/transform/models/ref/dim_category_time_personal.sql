@@ -1,9 +1,9 @@
--- mst_personal_time_category.sql
+-- dim_category_time_personal.sql
 -- =============================================================================
--- Core master: Personal time categories with Toggl color mapping
+-- Dimension: Personal time categories with Toggl color mapping
 -- Integrates:
---   - stg_coda__mst_personal_time_category: Category definitions
---   - stg_coda__map_toggl_color_to_personal: Color to category mapping
+--   - stg_coda__time_category_personal: Category definitions
+--   - stg_coda__time_toggl_color_to_category_personal: Color to category mapping
 -- =============================================================================
 
 with personal_categories as (
@@ -13,7 +13,7 @@ with personal_categories as (
         description,
         coarse_category,
         sort_order
-    from {{ ref('stg_coda__mst_personal_time_category') }}
+    from {{ ref('stg_coda__time_category_personal') }}
 ),
 
 color_mapping as (
@@ -21,7 +21,7 @@ color_mapping as (
         toggl_color_hex,
         toggl_color_name,
         time_category_personal
-    from {{ ref('stg_coda__map_toggl_color_to_personal') }}
+    from {{ ref('stg_coda__time_toggl_color_to_category_personal') }}
 )
 
 select

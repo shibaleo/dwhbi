@@ -1,12 +1,16 @@
 # Coda Staging Models
 # =============================================================================
 # staging層モデルの定義
+# Domain: time (時間管理)
 # =============================================================================
 
 version: 2
 
 models:
-  - name: stg_coda__intents
+  # ===========================================================================
+  # Time Domain - Intent
+  # ===========================================================================
+  - name: stg_coda__time_intents
     description: "Time Intent テーブルのstaging層モデル"
     columns:
       - name: intent_id
@@ -59,9 +63,9 @@ models:
           - not_null
 
   # ===========================================================================
-  # Master Tables
+  # Time Domain - Categories
   # ===========================================================================
-  - name: stg_coda__mst_personal_time_category
+  - name: stg_coda__time_category_personal
     description: "Personal time category master from Coda"
     columns:
       - name: row_id
@@ -83,7 +87,25 @@ models:
       - name: sort_order
         description: "Sort order"
 
-  - name: stg_coda__mst_social_time_category
+  - name: stg_coda__time_category_personal_coarse
+    description: "Coarse personal time category master from Coda"
+    columns:
+      - name: row_id
+        description: "Coda row ID"
+        data_tests:
+          - unique
+          - not_null
+      - name: name
+        description: "Coarse category name (Essentials, Leisure, Obligation)"
+        data_tests:
+          - unique
+          - not_null
+      - name: sort_order
+        description: "Sort order"
+      - name: synced_at
+        description: "Last sync timestamp"
+
+  - name: stg_coda__time_category_social
     description: "Social time category master from Coda"
     columns:
       - name: row_id
@@ -104,9 +126,9 @@ models:
         description: "Sort order"
 
   # ===========================================================================
-  # Mapping Tables
+  # Time Domain - Toggl Mappings
   # ===========================================================================
-  - name: stg_coda__map_toggl_color_to_personal
+  - name: stg_coda__time_toggl_color_to_category_personal
     description: "Toggl color to personal time category mapping from Coda"
     columns:
       - name: row_id
@@ -124,7 +146,7 @@ models:
       - name: time_category_personal
         description: "Personal time category name (nullable for unmapped colors)"
 
-  - name: stg_coda__map_toggl_client_to_social
+  - name: stg_coda__time_toggl_client_to_category_social
     description: "Toggl client to social time category mapping from Coda"
     columns:
       - name: row_id
@@ -141,3 +163,28 @@ models:
         description: "Social time category name"
         data_tests:
           - not_null
+
+  # ===========================================================================
+  # Time Domain - Toggl Projects Metadata
+  # ===========================================================================
+  - name: stg_coda__time_toggl_projects
+    description: "Toggl project metadata from Coda (sort_order, name_ja)"
+    columns:
+      - name: row_id
+        description: "Coda row ID"
+        data_tests:
+          - unique
+          - not_null
+      - name: toggl_project_id
+        description: "Toggl project ID"
+        data_tests:
+          - unique
+          - not_null
+      - name: name_ja
+        description: "Japanese name"
+      - name: description
+        description: "Description"
+      - name: sort_order
+        description: "Sort order"
+      - name: synced_at
+        description: "Last sync timestamp"

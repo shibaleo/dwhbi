@@ -22,7 +22,7 @@ projects as (
         project_color,
         client_name,
         sort_order as project_order
-    from {{ ref('mst_time_projects') }}
+    from {{ ref('dim_time_projects') }}
 ),
 
 tags as (
@@ -32,33 +32,33 @@ tags as (
     from {{ ref('stg_toggl_track__tags') }}
 ),
 
--- Core master: Personal time categories + color mapping (includes sort_order)
+-- Dimension: Personal time categories + color mapping (includes sort_order)
 -- Unnest color_hex_codes to enable join by project_color
-mst_personal_colors as (
+dim_personal_colors as (
     select
-        mp.name as personal_category,
-        mp.coarse_category,
-        mp.sort_order as personal_order,
-        unnest(mp.color_hex_codes) as toggl_color_hex
-    from {{ ref('mst_personal_time_category') }} mp
+        dp.name as personal_category,
+        dp.coarse_category,
+        dp.sort_order as personal_order,
+        unnest(dp.color_hex_codes) as toggl_color_hex
+    from {{ ref('dim_category_time_personal') }} dp
 ),
 
--- Core master: Social time categories + client mapping (includes sort_order)
+-- Dimension: Social time categories + client mapping (includes sort_order)
 -- Unnest client_names to enable join by client_name
-mst_social_clients as (
+dim_social_clients as (
     select
-        ms.name as social_category,
-        ms.sort_order as social_order,
-        unnest(ms.client_names) as client_name
-    from {{ ref('mst_social_time_category') }} ms
+        ds.name as social_category,
+        ds.sort_order as social_order,
+        unnest(ds.client_names) as client_name
+    from {{ ref('dim_category_time_social') }} ds
 ),
 
--- Coarse personal category master for sort_order
-mst_coarse as (
+-- Dimension: Coarse personal category for sort_order
+dim_coarse as (
     select
         name as coarse_category,
         sort_order as coarse_order
-    from {{ ref('mst_coarse_personal_time_category') }}
+    from {{ ref('dim_category_time_personal_coarse') }}
 ),
 
 -- =============================================================================
@@ -82,28 +82,28 @@ enriched_records as (
         sr.started_at as start_at,
         coalesce(sr.stopped_at, current_timestamp) as end_at,
         sr.description,
-        -- Project info (from core.mst_time_projects)
+        -- Project info (from core.dim_time_projects)
         p.project_name,
         p.project_color,
         coalesce(p.project_order, 999) as project_order,
         -- Tags
         coalesce(tn.tag_names, array[]::text[]) as tag_names,
-        -- Category mappings (via core masters only)
-        coalesce(msc.social_category, 'UNKNOWN') as social_category,
-        coalesce(mpc.personal_category, 'Uncategorized') as personal_category,
-        coalesce(mpc.coarse_category, 'Uncategorized') as coarse_personal_category,
-        -- Sort orders (from core masters)
-        coalesce(msc.social_order, 999) as social_order,
-        coalesce(mpc.personal_order, 999) as personal_order,
-        coalesce(mc.coarse_order, 999) as coarse_order
+        -- Category mappings (via dimensions)
+        coalesce(dsc.social_category, 'UNKNOWN') as social_category,
+        coalesce(dpc.personal_category, 'Uncategorized') as personal_category,
+        coalesce(dpc.coarse_category, 'Uncategorized') as coarse_personal_category,
+        -- Sort orders (from dimensions)
+        coalesce(dsc.social_order, 999) as social_order,
+        coalesce(dpc.personal_order, 999) as personal_order,
+        coalesce(dc.coarse_order, 999) as coarse_order
     from source_records sr
     left join projects p on p.project_id = sr.project_id
     left join tag_names_agg tn on tn.time_entry_id = sr.time_entry_id
-    -- Personal category via color mapping (from core.mst_personal_time_category)
-    left join mst_personal_colors mpc on mpc.toggl_color_hex = p.project_color
-    -- Social category via client mapping (from core.mst_social_time_category)
-    left join mst_social_clients msc on msc.client_name = p.client_name
-    left join mst_coarse mc on mc.coarse_category = coalesce(mpc.coarse_category, 'Uncategorized')
+    -- Personal category via color mapping (from ref.dim_category_time_personal)
+    left join dim_personal_colors dpc on dpc.toggl_color_hex = p.project_color
+    -- Social category via client mapping (from ref.dim_category_time_social)
+    left join dim_social_clients dsc on dsc.client_name = p.client_name
+    left join dim_coarse dc on dc.coarse_category = coalesce(dpc.coarse_category, 'Uncategorized')
 )
 
 -- =============================================================================

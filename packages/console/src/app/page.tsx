@@ -103,7 +103,9 @@ export default async function Home() {
 
       {/* DAG Viewer Link */}
       <a
-        href="/dbt-docs/index.html"
+        href="/dag"
+        target="_blank"
+        rel="noopener noreferrer"
         className="fixed bottom-6 left-6 flex items-center gap-2 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 px-4 py-3 rounded-full shadow-lg hover:bg-zinc-700 dark:hover:bg-zinc-300 transition-colors"
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

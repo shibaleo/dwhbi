@@ -1,14 +1,14 @@
 # dbt Project Configuration
 # =============================================================================
-# supabase-sync-jobs DWH transformation layer
+# DWHBI - Data Warehouse for Business Intelligence
 # =============================================================================
 
-name: 'supabase_sync_dwh'
+name: 'dwhbi'
 version: '1.0.0'
 config-version: 2
 
 # プロジェクト構成
-profile: 'supabase_sync_dwh'
+profile: 'dwhbi'
 model-paths: ["models"]
 analysis-paths: ["analyses"]
 test-paths: ["tests"]
@@ -25,7 +25,7 @@ clean-targets:
 #       +schema を指定するとサフィックスとして追加される
 #       staging層はデフォルトの staging スキーマを使用
 models:
-  supabase_sync_dwh:
+  dwhbi:
     # staging層: raw → staging変換（デフォルトスキーマ使用）
     staging:
       +materialized: view
@@ -57,16 +57,6 @@ models:
         - "GRANT SELECT ON {{ this }} TO authenticated"
         - "GRANT SELECT ON {{ this }} TO service_role"
 
-    # conceive層: intent（目標意図）評価モデル
-    conceive:
-      +materialized: view
-      +schema: conceive
-      +post-hook:
-        - "ALTER VIEW {{ this }} SET (security_invoker = on)"
-        - "GRANT SELECT ON {{ this }} TO authenticated"
-        - "GRANT SELECT ON {{ this }} TO service_role"
-      +tags: ['intent']
-
     # marts層: 分析用ビュー（将来用）
     # Note: モデル追加時にコメント解除
     # marts:
@@ -75,7 +65,7 @@ models:
 
 # Seed設定
 seeds:
-  supabase_sync_dwh:
+  dwhbi:
     +schema: seeds
     +post-hook:
       - "GRANT SELECT ON {{ this }} TO authenticated"

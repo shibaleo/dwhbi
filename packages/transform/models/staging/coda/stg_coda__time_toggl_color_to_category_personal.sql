@@ -1,4 +1,4 @@
--- stg_coda__map_toggl_color_to_personal.sql
+-- stg_coda__time_toggl_color_to_category_personal.sql
 -- =============================================================================
 -- Staging model for Toggl color to personal time category mapping from Coda
 -- =============================================================================

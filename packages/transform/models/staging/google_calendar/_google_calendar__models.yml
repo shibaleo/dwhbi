@@ -44,11 +44,11 @@ models:
       - name: event_type
         description: "Event type: default, outOfOffice, focusTime, workingLocation"
       - name: summary
-        description: "Event title/summary (FK to mst_time_projects.project_name)"
+        description: "Event title/summary (FK to dim_time_projects.project_name)"
         data_tests:
           - not_null
           - relationships:
-              to: ref('mst_time_projects')
+              to: ref('dim_time_projects')
               field: project_name
       - name: description
         description: "Event description (may contain HTML)"

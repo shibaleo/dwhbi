@@ -1,9 +1,9 @@
--- mst_social_time_category.sql
+-- dim_category_time_social.sql
 -- =============================================================================
--- Core master: Social time categories with Toggl client mapping
+-- Dimension: Social time categories with Toggl client mapping
 -- Integrates:
---   - stg_coda__mst_social_time_category: Category definitions
---   - stg_coda__map_toggl_client_to_social: Client to category mapping
+--   - stg_coda__time_category_social: Category definitions
+--   - stg_coda__time_toggl_client_to_category_social: Client to category mapping
 --   - stg_toggl_track__clients: Toggl client data
 -- =============================================================================
 
@@ -13,14 +13,14 @@ with social_categories as (
         name_ja,
         description,
         sort_order
-    from {{ ref('stg_coda__mst_social_time_category') }}
+    from {{ ref('stg_coda__time_category_social') }}
 ),
 
 client_mapping as (
     select
         toggl_client_name,
         time_category_social
-    from {{ ref('stg_coda__map_toggl_client_to_social') }}
+    from {{ ref('stg_coda__time_toggl_client_to_category_social') }}
 ),
 
 toggl_clients as (

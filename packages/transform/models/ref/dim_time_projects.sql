@@ -1,10 +1,10 @@
--- mst_time_projects.sql
+-- dim_time_projects.sql
 -- =============================================================================
--- Core master: Toggl projects with Coda metadata
+-- Dimension: Toggl projects with Coda metadata
 -- Integrates:
 --   - stg_toggl_track__projects: Toggl API project data (source of truth)
 --   - stg_toggl_track__clients: Toggl API client data (for client_name)
---   - stg_coda__mst_toggl_projects: Coda supplementary metadata (sort_order, name_ja)
+--   - stg_coda__time_toggl_projects: Coda supplementary metadata (sort_order, name_ja)
 -- =============================================================================
 
 with toggl_projects as (
@@ -34,7 +34,7 @@ coda_metadata as (
         name_ja,
         description,
         sort_order
-    from {{ ref('stg_coda__mst_toggl_projects') }}
+    from {{ ref('stg_coda__time_toggl_projects') }}
 )
 
 select

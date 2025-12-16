@@ -1,4 +1,4 @@
--- stg_coda__mst_personal_time_category.sql
+-- stg_coda__time_category_personal.sql
 -- =============================================================================
 -- Staging model for personal time category master from Coda
 -- =============================================================================
@@ -16,7 +16,7 @@ parsed as (
         -- c-_Vs5TQWJBP: sort_order (number)
         -- c-hGwytcONV9: name_ja (text)
         -- c-mfoE0PLZ3O: description (text)
-        -- c-lR-bdMOECK: mst_coarse_personal_time_category (lookup)
+        -- c-lR-bdMOECK: mst_category_time_personal_coarse (lookup)
         (data->'values'->>'c-_Vs5TQWJBP')::integer as sort_order,
         regexp_replace(data->'values'->>'c-hGwytcONV9', '^```|```$', '', 'g') as name_ja,
         regexp_replace(data->'values'->>'c-mfoE0PLZ3O', '^```|```$', '', 'g') as description,

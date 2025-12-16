@@ -1,4 +1,4 @@
--- stg_coda__mst_coarse_personal_time_category.sql
+-- stg_coda__time_category_personal_coarse.sql
 -- =============================================================================
 -- Staging model for coarse personal time category master from Coda
 -- =============================================================================
