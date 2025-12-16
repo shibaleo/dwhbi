@@ -300,3 +300,48 @@ models:
           - accepted_values:
               values: ['google_calendar']
 
+  # ===========================================================================
+  # Health Domain
+  # ===========================================================================
+  - name: fct_health_sleep_actual_timer
+    description: |
+      Togglタイマーによる睡眠記録（日別集計）
+
+      Features:
+      - Sleepプロジェクトのエントリーを日別に集計
+      - sleep_date = end_at(JST) - 1日（睡眠は前夜に帰属）
+      - 複数エントリーがある場合はstart_at/end_atは最小/最大値
+
+      Use case:
+      - 睡眠時間の日別分析
+      - 就寝・起床時刻のトレンド分析
+    columns:
+      - name: id
+        description: "ユニークID（sleep_dateから生成したMD5ハッシュ）"
+        data_tests:
+          - unique
+          - not_null
+      - name: sleep_date
+        description: "睡眠日（起床日の前日、JST基準）"
+        data_tests:
+          - unique
+          - not_null
+      - name: start_at
+        description: "就寝時刻（UTC timestamptz）"
+        data_tests:
+          - not_null
+      - name: end_at
+        description: "起床時刻（UTC timestamptz）"
+        data_tests:
+          - not_null
+      - name: duration_seconds
+        description: "睡眠時間（秒）"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: source_ids
+        description: "元のTogglエントリーID配列"
+        data_tests:
+          - not_null
+
