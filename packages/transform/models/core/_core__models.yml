@@ -17,7 +17,11 @@ models:
       - 元のエントリーをそのまま保持（日跨ぎ分割なし）
       - 進行中レコード: end_at = CURRENT_TIMESTAMP (NOT NULL保証)
       - プロジェクト色・クライアントからのカテゴリマッピング
-      
+      - 連続時間調整:
+        - ギャップ ≤ 5分: end_atを次エントリーのstart_atに延長
+        - ギャップ > 5分: 'Untracked'エントリーを挿入
+        - オーバーラップ: end_atを次エントリーのstart_atにトリム
+
       Use case:
       - 睡眠分析（1セッション単位）
       - エントリー単位の所要時間分析
@@ -28,15 +32,15 @@ models:
           - unique
           - not_null
       - name: source_id
-        description: "元のToggl time_entry_id"
+        description: "元のToggl time_entry_id（Untrackedは'untracked_{id}'）"
         data_tests:
           - not_null
       - name: start_at
-        description: "開始時刻（JST）"
+        description: "開始時刻（UTC timestamptz）"
         data_tests:
           - not_null
       - name: end_at
-        description: "終了時刻（JST）"
+        description: "終了時刻（UTC timestamptz）"
         data_tests:
           - not_null
       - name: duration_seconds
@@ -46,27 +50,27 @@ models:
           - dbt_utils.accepted_range:
               min_value: 1
       - name: description
-        description: "Togglのdescription"
+        description: "Togglのdescription（Untrackedはnull）"
       - name: project_name
-        description: "Togglのプロジェクト名"
+        description: "Togglのプロジェクト名（Untrackedはnull）"
       - name: project_color
-        description: "Togglのプロジェクト色（HEX）"
+        description: "Togglのプロジェクト色（HEX、Untrackedはnull）"
       - name: tag_names
         description: "Togglのタグ名配列（text[]）"
       - name: social_category
-        description: "社会的分類（WORK, LEISURE等）"
+        description: "社会的分類（WORK, LEISURE, UNKNOWN等）"
         data_tests:
           - not_null
       - name: personal_category
-        description: "個人的分類（Work, Study等）"
+        description: "個人的分類（Work, Sleep, Untracked等）"
         data_tests:
           - not_null
       - name: source
-        description: "データソース"
+        description: "データソース（toggl_track: Togglから, generated: システム生成）"
         data_tests:
           - not_null
           - accepted_values:
-              values: ['toggl_track']
+              values: ['toggl_track', 'generated']
 
   - name: fct_time_records_actual_split
     description: |
@@ -76,7 +80,8 @@ models:
       - JST 00:00:00 境界での日跨ぎ分割
       - 進行中レコード: end_at = CURRENT_TIMESTAMP (NOT NULL保証)
       - プロジェクト色・クライアントからのカテゴリマッピング
-      
+      - fct_time_records_actualからの連続時間調整を継承
+
       Use case:
       - 日別集計
       - 日境界での時間分析
@@ -87,15 +92,15 @@ models:
           - unique
           - not_null
       - name: source_id
-        description: "元のToggl time_entry_id"
+        description: "元のToggl time_entry_id（Untrackedは'untracked_{id}'）"
         data_tests:
           - not_null
       - name: start_at
-        description: "開始時刻（JST、分割後）"
+        description: "開始時刻（UTC timestamptz、分割後）"
         data_tests:
           - not_null
       - name: end_at
-        description: "終了時刻（JST、分割後）"
+        description: "終了時刻（UTC timestamptz、分割後）"
         data_tests:
           - not_null
       - name: duration_seconds
@@ -105,27 +110,27 @@ models:
           - dbt_utils.accepted_range:
               min_value: 1
       - name: description
-        description: "Togglのdescription"
+        description: "Togglのdescription（Untrackedはnull）"
       - name: project_name
-        description: "Togglのプロジェクト名"
+        description: "Togglのプロジェクト名（Untrackedはnull）"
       - name: project_color
-        description: "Togglのプロジェクト色（HEX）"
+        description: "Togglのプロジェクト色（HEX、Untrackedはnull）"
       - name: tag_names
         description: "Togglのタグ名配列（text[]）"
       - name: social_category
-        description: "社会的分類（WORK, LEISURE等）"
+        description: "社会的分類（WORK, LEISURE, UNKNOWN等）"
         data_tests:
           - not_null
       - name: personal_category
-        description: "個人的分類（Work, Study等）"
+        description: "個人的分類（Work, Sleep, Untracked等）"
         data_tests:
           - not_null
       - name: source
-        description: "データソース"
+        description: "データソース（toggl_track: Togglから, generated: システム生成）"
         data_tests:
           - not_null
           - accepted_values:
-              values: ['toggl_track']
+              values: ['toggl_track', 'generated']
 
   - name: fct_time_records_target
     description: |
