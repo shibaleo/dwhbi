@@ -81,22 +81,48 @@ function generateDateChunks(
   return chunks;
 }
 
+export interface SyncOptions {
+  /** Number of days to sync (from today backwards). Ignored if start is provided. */
+  days?: number;
+  /** Start date (YYYY-MM-DD). If provided, days is ignored. */
+  start?: string;
+  /** End date (YYYY-MM-DD). Defaults to tomorrow. */
+  end?: string;
+}
+
 /**
  * Sync time entries from Reports API v3
  *
- * @param days - Number of days to sync (from today backwards)
+ * @param options - Sync options (days, start, end)
  * @returns Sync result
  */
-export async function syncTimeEntriesReport(days: number = 365): Promise<SyncResult> {
+export async function syncTimeEntriesReport(options: SyncOptions = {}): Promise<SyncResult> {
   const startTime = performance.now();
-  logger.info(`Starting Toggl time entries report sync (${days} days)`);
 
   // Calculate date range
-  const endDate = new Date();
-  endDate.setDate(endDate.getDate() + 1); // Include today
+  let startDate: Date;
+  let endDate: Date;
 
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days);
+  if (options.start) {
+    // Use explicit start date
+    startDate = new Date(options.start);
+    if (options.end) {
+      endDate = new Date(options.end);
+    } else {
+      // Default end = tomorrow
+      endDate = new Date();
+      endDate.setDate(endDate.getDate() + 1);
+    }
+    logger.info(`Starting Toggl time entries report sync (${options.start} to ${formatDate(endDate)})`);
+  } else {
+    // Use days (backwards from today)
+    const days = options.days ?? 365;
+    endDate = new Date();
+    endDate.setDate(endDate.getDate() + 1); // Include today
+    startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    logger.info(`Starting Toggl time entries report sync (${days} days)`);
+  }
 
   // Generate chunks if range > 1 year
   const chunks = generateDateChunks(startDate, endDate);

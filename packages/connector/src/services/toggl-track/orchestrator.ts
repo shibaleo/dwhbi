@@ -8,7 +8,7 @@
 
 import { setupLogger } from "../../lib/logger.js";
 import { getDbClient, closeDbClient } from "../../db/raw-client.js";
-import { syncTimeEntries } from "./sync-time-entries.js";
+import { syncTimeEntries, type SyncOptions } from "./sync-time-entries.js";
 import { syncMasters } from "./sync-masters.js";
 
 const logger = setupLogger("toggl-orchestrator");
@@ -27,12 +27,16 @@ export interface SyncAllResult {
  * Executes in order: masters -> time entries
  * Database connection is opened once and reused throughout.
  *
- * @param days - Number of days for time entries
+ * @param daysOrOptions - Number of days or SyncOptions for time entries
  * @returns Sync result
  */
-export async function syncAll(days: number = 3): Promise<SyncAllResult> {
+export async function syncAll(daysOrOptions: number | SyncOptions = 3): Promise<SyncAllResult> {
   const startTime = performance.now();
-  logger.info(`Starting Toggl Track full sync (${days} days)`);
+  const options: SyncOptions = typeof daysOrOptions === "number" ? { days: daysOrOptions } : daysOrOptions;
+  const logMsg = options.start
+    ? `${options.start} to ${options.end ?? "tomorrow"}`
+    : `${options.days ?? 3} days`;
+  logger.info(`Starting Toggl Track full sync (${logMsg})`);
 
   const errors: string[] = [];
   let timeEntriesCount = 0;
@@ -54,7 +58,7 @@ export async function syncAll(days: number = 3): Promise<SyncAllResult> {
 
     // 2. Time entries sync
     logger.info("Step 2: Syncing time entries...");
-    const entriesResult = await syncTimeEntries(days);
+    const entriesResult = await syncTimeEntries(options);
     timeEntriesCount = entriesResult.count;
 
     const elapsed = Math.round((performance.now() - startTime) / 10) / 100;
