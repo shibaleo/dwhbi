@@ -63,6 +63,15 @@ models:
     #   +materialized: view
     #   +schema: marts
 
+    # analysis層: 分析・実験用ビュー
+    analysis:
+      +materialized: view
+      +schema: analysis
+      +post-hook:
+        - "ALTER VIEW {{ this }} SET (security_invoker = on)"
+        - "GRANT SELECT ON {{ this }} TO authenticated"
+        - "GRANT SELECT ON {{ this }} TO service_role"
+
 # Seed設定
 seeds:
   dwhbi:
