@@ -14,7 +14,7 @@ const OAUTH_CALLBACK_PATHS: Partial<Record<ServiceName, string>> = {
 // サービスごとの入力フィールド定義
 // required: true の場合、更新時も必ず入力が必要（セットで更新するフィールド）
 // multiline: true の場合、複数行入力可能なテキストエリアになる
-const SERVICE_FIELDS: Record<ServiceName, { key: string; label: string; type?: string; placeholder?: string; required?: boolean; multiline?: boolean; hint?: string }[]> = {
+const SERVICE_FIELDS: Record<ServiceName, { key: string; label: string; type?: string; placeholder?: string; required?: boolean; multiline?: boolean; hint?: string; editable?: boolean }[]> = {
   toggl_track: [
     { key: "api_token", label: "API Token", placeholder: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", required: true },
   ],

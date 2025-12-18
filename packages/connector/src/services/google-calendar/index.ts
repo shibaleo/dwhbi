@@ -4,9 +4,9 @@
  * TypeScript connector for Google Calendar API.
  */
 
-export { syncAll } from "./orchestrator.js";
-export { syncEvents } from "./sync-events.js";
-export { syncMasters } from "./sync-masters.js";
+export { syncAll } from "./orchestrator.ts";
+export { syncEvents } from "./sync-events.ts";
+export { syncMasters } from "./sync-masters.ts";
 export {
   fetchEvents,
   fetchColors,
@@ -14,10 +14,12 @@ export {
   fetchCalendar,
   getAuthInfo,
   resetCache,
-} from "./api-client.js";
+  createEvent,
+  createEvents,
+} from "./api-client.ts";
 
 // Types
-export type { SyncAllResult } from "./orchestrator.js";
-export type { SyncResult } from "./sync-events.js";
-export type { MasterSyncResult } from "./sync-masters.js";
-export type { AuthInfo } from "./api-client.js";
+export type { SyncAllResult } from "./orchestrator.ts";
+export type { SyncResult } from "./sync-events.ts";
+export type { MasterSyncResult } from "./sync-masters.ts";
+export type { AuthInfo, CreateEventInput, CreateEventResult } from "./api-client.ts";

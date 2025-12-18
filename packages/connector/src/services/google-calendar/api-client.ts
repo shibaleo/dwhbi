@@ -410,3 +410,124 @@ export async function fetchCalendar(
   logger.debug(`Response: calendar metadata fetched`);
   return data;
 }
+
+// =============================================================================
+// Calendar API - Event Creation
+// =============================================================================
+
+/**
+ * Event creation input
+ */
+export interface CreateEventInput {
+  summary: string;
+  description?: string;
+  startDateTime: string; // ISO 8601 format with timezone (e.g., "2025-01-15T09:00:00+09:00")
+  endDateTime: string; // ISO 8601 format with timezone
+  colorId?: string; // Google Calendar color ID (1-11 for events)
+}
+
+/**
+ * Event creation result
+ */
+export interface CreateEventResult {
+  id: string;
+  htmlLink: string;
+  summary: string;
+  start: { dateTime: string };
+  end: { dateTime: string };
+}
+
+/**
+ * Create a single event
+ */
+export async function createEvent(
+  event: CreateEventInput,
+  calendarId?: string
+): Promise<CreateEventResult> {
+  const auth = await getAuthInfo();
+  const targetCalendarId = calendarId || auth.calendarId;
+  const calendarIdEncoded = encodeURIComponent(targetCalendarId);
+
+  const url = `${CALENDAR_API_BASE}/calendars/${calendarIdEncoded}/events`;
+
+  const body: Record<string, unknown> = {
+    summary: event.summary,
+    start: { dateTime: event.startDateTime },
+    end: { dateTime: event.endDateTime },
+  };
+
+  if (event.description) {
+    body.description = event.description;
+  }
+
+  if (event.colorId) {
+    body.colorId = event.colorId;
+  }
+
+  logger.debug(`POST /calendars/{id}/events: ${event.summary}`);
+
+  let response: Response;
+  try {
+    response = await requestWithRetry("POST", url, {
+      headers: {
+        Authorization: `Bearer ${auth.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    // Token expired, refresh and retry
+    if (String(error).includes("401")) {
+      logger.warn("Token expired, refreshing...");
+      const newAuth = await getAuthInfo(true);
+      response = await requestWithRetry("POST", url, {
+        headers: {
+          Authorization: `Bearer ${newAuth.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+    } else {
+      throw error;
+    }
+  }
+
+  const data = (await response.json()) as CreateEventResult;
+  logger.debug(`Created event: ${data.id}`);
+  return data;
+}
+
+/**
+ * Create multiple events in batch
+ * Note: Google Calendar API doesn't support true batch creation,
+ * so we create events sequentially with small delays to avoid rate limits
+ */
+export async function createEvents(
+  events: CreateEventInput[],
+  calendarId?: string
+): Promise<{ created: CreateEventResult[]; failed: { event: CreateEventInput; error: string }[] }> {
+  const created: CreateEventResult[] = [];
+  const failed: { event: CreateEventInput; error: string }[] = [];
+
+  logger.info(`Creating ${events.length} events...`);
+
+  for (const event of events) {
+    try {
+      const result = await createEvent(event, calendarId);
+      created.push(result);
+      // Small delay to avoid rate limits
+      await new Promise((r) => setTimeout(r, 100));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`Failed to create event "${event.summary}": ${message}`);
+      failed.push({ event, error: message });
+    }
+  }
+
+  logger.info(`Created ${created.length}/${events.length} events`);
+  if (failed.length > 0) {
+    logger.warn(`Failed: ${failed.length} events`);
+  }
+
+  return { created, failed };
+}

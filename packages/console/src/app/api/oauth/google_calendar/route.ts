@@ -5,7 +5,8 @@ import { getServiceCredentials } from "@/lib/vault";
 
 // Google OAuth2 設定
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
-const SCOPES = "https://www.googleapis.com/auth/calendar.readonly";
+// calendar scope includes read/write access to events
+const SCOPES = "https://www.googleapis.com/auth/calendar";
 
 async function getRedirectUri() {
   const headersList = await headers();

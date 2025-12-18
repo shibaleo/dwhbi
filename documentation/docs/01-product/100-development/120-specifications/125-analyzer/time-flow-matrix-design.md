@@ -28,7 +28,7 @@ target（計画）からactual（実績）への乖離パターンを分析し�
 全日を集計 → フロー行列 F[i,j]
 ```
 
-**F[i,j]** = カテゴリ i から j へ流れた累計時間（hours）
+**F[i,j]** = カテゴリ i から j へ流れた累計時間（seconds）
 
 ### コスト行列への変換
 
@@ -78,12 +78,12 @@ source = np.maximum(-delta, 0)  # 流出量（正の値）
 sink = np.maximum(delta, 0)     # 流入量（正の値）
 ```
 
-### 2. 最適輸送によるフロー計算（Sinkhorn）
+### 2. エントロピー正則化付き最適輸送
 
-source と sink を満たすフロー F をエントロピー正則化付き最適輸送（Sinkhorn）で求める:
+source と sink を満たすフロー F を、エントロピー最大化で一意に求める:
 
 ```
-min  Σᵢⱼ Fᵢⱼ Cᵢⱼ + ε H(F)
+max  -Σᵢⱼ Fᵢⱼ log(Fᵢⱼ)  （エントロピー最大化）
 
 s.t.
   Σⱼ Fᵢⱼ = sourceᵢ  (供給制約)
@@ -91,14 +91,41 @@ s.t.
   Fᵢⱼ ≥ 0
 ```
 
-- H(F) = -Σᵢⱼ Fᵢⱼ log(Fᵢⱼ) はエントロピー項
-- ε は正則化パラメータ（0.01〜0.1程度）
-- コスト行列 C は初回は均一（全要素1）、以降は推定済み行列を使用可能
+#### なぜエントロピー正則化か
 
+単純な実行可能解を求める場合、解が一意に定まらない（複数の最適解が存在）。
 エントロピー正則化により:
-- 解が安定する（同じ入力なら同じ結果）
-- フローが滑らかになる（特定経路への偏り抑制）
-- 行列演算のみで高速計算
+
+- **一意性を保証**: 凸最適化問題となり、唯一の最適解が存在
+- **最大エントロピー原理**: 情報がない場合、フローは可能な限り均等に分散
+- **解釈**: 「特別な理由がなければ、時間はどのカテゴリにも均等に流れうる」
+
+#### Sinkhorn アルゴリズム
+
+エントロピー正則化問題は Sinkhorn アルゴリズムで効率的に解ける:
+
+```python
+def sinkhorn(source: np.ndarray, sink: np.ndarray, eps: float = 1.0, max_iter: int = 100) -> np.ndarray:
+    """エントロピー正則化付き最適輸送（一様コスト）"""
+    n_source, n_sink = len(source), len(sink)
+
+    # 一様コスト → 初期カーネルは全て1
+    K = np.ones((n_source, n_sink))
+
+    # スケーリングベクトル
+    u = np.ones(n_source)
+    v = np.ones(n_sink)
+
+    for _ in range(max_iter):
+        u = source / (K @ v)
+        v = sink / (K.T @ u)
+
+    # フロー行列
+    F = np.diag(u) @ K @ np.diag(v)
+    return F
+```
+
+注: コスト行列が一様なので、正則化強度 `eps` は解に影響しない（マージナル制約のみで決まる）。
 
 ### 3. 全日の集計
 
@@ -158,9 +185,10 @@ dependencies = [
     "seaborn>=0.13.0",
     "psycopg2-binary>=2.9.0",
     "python-dotenv>=1.0.0",
-    "POT>=0.9.0",
 ]
 ```
+
+POT は不要（scipy.optimize.linprog で十分）。
 
 ### 実行手順
 

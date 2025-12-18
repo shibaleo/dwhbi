@@ -113,3 +113,31 @@ sources:
             description: "同期日時"
           - name: api_version
             description: "API version (v1)"
+
+      - name: coda__map_toggl_project_to_gcal_color
+        description: "Toggl project to Google Calendar color mapping"
+        columns:
+          - name: id
+            description: "Primary key (UUID)"
+          - name: source_id
+            description: "Coda row_id"
+          - name: data
+            description: "Raw JSON response from Coda API"
+          - name: synced_at
+            description: "同期日時"
+          - name: api_version
+            description: "API version (v1)"
+
+      - name: coda__mst_google_calendar_colors
+        description: "Google Calendar color master (color name and hex code)"
+        columns:
+          - name: id
+            description: "Primary key (UUID)"
+          - name: source_id
+            description: "Coda row_id"
+          - name: data
+            description: "Raw JSON response from Coda API"
+          - name: synced_at
+            description: "同期日時"
+          - name: api_version
+            description: "API version (v1)"

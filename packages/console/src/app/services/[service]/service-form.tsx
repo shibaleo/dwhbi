@@ -461,10 +461,20 @@ export function ServiceForm({ service, fields, authType, oauthCallbackUrl }: Ser
           )}
 
           {hasOAuthToken ? (
-            <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-              <p className="text-sm text-green-700 dark:text-green-300">
-                OAuth認証済み
-              </p>
+            <div className="space-y-3">
+              <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                <p className="text-sm text-green-700 dark:text-green-300">
+                  OAuth認証済み
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleOAuthStart}
+                disabled={oauthLoading}
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg font-medium hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {oauthLoading ? "認証中..." : "再認証（スコープ変更時など）"}
+              </button>
             </div>
           ) : hasClientCredentials ? (
             <div className="space-y-3">

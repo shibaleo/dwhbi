@@ -21,6 +21,10 @@
     "./coda": {
       "import": "./src/services/coda/index.ts",
       "types": "./src/services/coda/index.ts"
+    },
+    "./google-calendar/create-events": {
+      "import": "./src/services/google-calendar/create-events.ts",
+      "types": "./src/services/google-calendar/create-events.ts"
     }
   },
   "scripts": {

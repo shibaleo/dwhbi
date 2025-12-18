@@ -22,6 +22,8 @@ const TABLE_MAPPINGS: Record<string, string> = {
   "grid-N8i-IPxGVf": "coda__mst_coarse_personal_time_category",
   "grid-tx-SGor2xN": "coda__map_toggl_color_to_personal",
   "grid-CI5rehwM3k": "coda__map_toggl_client_to_social",
+  "grid-VuRqdmXK0_": "coda__map_toggl_project_to_gcal_color",
+  "grid-wT_gtiZYux": "coda__mst_google_calendar_colors",
 };
 
 export interface MasterSyncResult {
