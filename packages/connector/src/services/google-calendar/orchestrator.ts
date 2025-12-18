@@ -21,18 +21,29 @@ export interface SyncAllResult {
   elapsedSeconds: number;
 }
 
+export interface SyncOptions {
+  days?: number;
+  startDate?: string;
+  endDate?: string;
+}
+
 /**
  * Sync all Google Calendar data
  *
  * Executes in order: masters -> events
  * Database connection is opened once and reused throughout.
  *
- * @param days - Number of days for events
+ * @param options - Sync options (days, startDate, endDate)
  * @returns Sync result
  */
-export async function syncAll(days: number = 3): Promise<SyncAllResult> {
+export async function syncAll(options: SyncOptions = {}): Promise<SyncAllResult> {
+  const { days = 3, startDate, endDate } = options;
   const startTime = performance.now();
-  logger.info(`Starting Google Calendar full sync (${days} days)`);
+
+  const rangeDesc = startDate && endDate
+    ? `${startDate} to ${endDate}`
+    : `${days} days`;
+  logger.info(`Starting Google Calendar full sync (${rangeDesc})`);
 
   const errors: string[] = [];
   let eventsCount = 0;
@@ -54,7 +65,7 @@ export async function syncAll(days: number = 3): Promise<SyncAllResult> {
 
     // 2. Events sync
     logger.info("Step 2: Syncing events...");
-    const eventsResult = await syncEvents(days);
+    const eventsResult = await syncEvents(days, startDate, endDate);
     eventsCount = eventsResult.count;
 
     const elapsed = Math.round((performance.now() - startTime) / 10) / 100;

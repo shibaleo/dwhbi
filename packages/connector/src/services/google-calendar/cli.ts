@@ -3,7 +3,7 @@
  * Google Calendar CLI
  *
  * Usage:
- *   npx tsx src/services/google-calendar/cli.ts [--days N] [--log-level debug|info|warn|error]
+ *   npx tsx src/services/google-calendar/cli.ts [--days N] [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--log-level debug|info|warn|error]
  */
 
 import { syncAll } from "./orchestrator.js";
@@ -11,10 +11,16 @@ import { setLogLevel, type LogLevel } from "../../lib/logger.js";
 
 const VALID_LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
 
+function isValidDate(dateStr: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(dateStr) && !isNaN(Date.parse(dateStr));
+}
+
 async function main(): Promise<void> {
   // Parse args
   const args = process.argv.slice(2);
   let days = 3;
+  let startDate: string | undefined;
+  let endDate: string | undefined;
   let logLevel: LogLevel = "info";
 
   for (let i = 0; i < args.length; i++) {
@@ -22,6 +28,20 @@ async function main(): Promise<void> {
       days = parseInt(args[i + 1], 10);
       if (isNaN(days) || days < 1) {
         console.error("Invalid --days value");
+        process.exit(1);
+      }
+      i++;
+    } else if (args[i] === "--start" && args[i + 1]) {
+      startDate = args[i + 1];
+      if (!isValidDate(startDate)) {
+        console.error("Invalid --start value. Use YYYY-MM-DD format.");
+        process.exit(1);
+      }
+      i++;
+    } else if (args[i] === "--end" && args[i + 1]) {
+      endDate = args[i + 1];
+      if (!isValidDate(endDate)) {
+        console.error("Invalid --end value. Use YYYY-MM-DD format.");
         process.exit(1);
       }
       i++;
@@ -40,7 +60,7 @@ async function main(): Promise<void> {
   setLogLevel(logLevel);
 
   try {
-    const result = await syncAll(days);
+    const result = await syncAll({ days, startDate, endDate });
 
     if (result.success) {
       console.log(`[OK] Google Calendar sync completed:`);

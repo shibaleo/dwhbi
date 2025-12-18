@@ -1,32 +1,43 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import {
-  getPattern,
-  getProjectGcalColorMappings,
-  type PatternEntry,
-} from "@/lib/patterns";
+import { getPattern, type PatternEntry } from "@/lib/patterns";
 import {
   createEvents,
   type CreateEventInput,
 } from "@repo/connector/google-calendar/create-events";
+
+// Toggl color hex -> GCal colorId (static mapping, no DB query needed)
+// GCal colors: 1=Lavender, 2=Sage, 3=Grape, 4=Flamingo, 5=Banana, 6=Tangerine, 7=Peacock, 8=Graphite, 9=Blueberry, 10=Basil, 11=Tomato
+const TOGGL_HEX_TO_GCAL_COLOR: Record<string, string> = {
+  "#0b83d9": "7",  // Peacock
+  "#2da608": "10",
+  "#465bb3": "9",  // Blueberry
+  "#990099": "3",
+  "#9e5bd9": "1",
+  "#c7af14": "5",
+  "#c9806b": "4",
+  "#d92b2b": "11",
+  "#d94182": "3",
+  "#e36a00": "6",
+};
 
 interface RouteParams {
   params: Promise<{ groupId: string }>;
 }
 
 interface RegisterRequest {
-  date: string; // YYYY-MM-DD format
+  date?: string; // YYYY-MM-DD format (single date, for backward compatibility)
+  dates?: string[]; // Array of YYYY-MM-DD (multiple dates)
 }
 
 interface RegisterResult {
   success: boolean;
   created: number;
   failed: number;
-  events?: {
-    summary: string;
-    startTime: string;
-    endTime: string;
-    colorId?: string;
+  dateResults?: {
+    date: string;
+    created: number;
+    failed: number;
   }[];
   errors?: string[];
 }
@@ -35,11 +46,12 @@ interface RegisterResult {
  * Convert pattern entries to Google Calendar events
  * - End time = next entry's start time
  * - Last entry ends at first entry's start time (next day)
+ * - Color is derived from entry.projectColor (Toggl hex) using static mapping
  */
 function convertToEvents(
   entries: PatternEntry[],
   date: string,
-  colorMappings: Map<string, string>
+  groupId: string
 ): CreateEventInput[] {
   if (entries.length === 0) return [];
 
@@ -48,6 +60,7 @@ function convertToEvents(
 
   const events: CreateEventInput[] = [];
   const timezone = "+09:00"; // JST
+  const registeredAt = new Date().toISOString();
 
   for (let i = 0; i < sorted.length; i++) {
     const entry = sorted[i];
@@ -71,15 +84,23 @@ function convertToEvents(
       endDateTime = `${date}T${endTime}:00${timezone}`;
     }
 
-    // Get color ID from mapping
-    const colorId = colorMappings.get(entry.projectName);
+    // Get color ID from Toggl hex using static mapping
+    const colorId = entry.projectColor
+      ? TOGGL_HEX_TO_GCAL_COLOR[entry.projectColor]
+      : undefined;
 
     events.push({
       summary: entry.projectName,
-      description: `project_id: ${entry.projectId}`,
       startDateTime,
       endDateTime,
       colorId,
+      extendedProperties: {
+        source: "dwhbi-console",
+        toggl_track_project_id: entry.projectId,
+        pattern_group_id: groupId,
+        registered_at: registeredAt,
+        tags: [],
+      },
     });
   }
 
@@ -89,7 +110,7 @@ function convertToEvents(
 /**
  * POST /api/time-intent-patterns/[groupId]/register-calendar
  * Register pattern entries as Google Calendar events
- * Body: { date: "YYYY-MM-DD" }
+ * Body: { date: "YYYY-MM-DD" } or { dates: ["YYYY-MM-DD", ...] }
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
   const supabase = await createClient();
@@ -102,12 +123,23 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { groupId } = await params;
     const body = await request.json() as RegisterRequest;
-    const { date } = body;
 
-    // Validate date format
-    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    // Support both single date and multiple dates
+    const dates: string[] = body.dates || (body.date ? [body.date] : []);
+
+    // Validate dates
+    if (dates.length === 0) {
       return NextResponse.json(
-        { error: "Invalid date format. Use YYYY-MM-DD" },
+        { error: "No dates provided. Use 'date' or 'dates' field." },
+        { status: 400 }
+      );
+    }
+
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+    const invalidDates = dates.filter(d => !datePattern.test(d));
+    if (invalidDates.length > 0) {
+      return NextResponse.json(
+        { error: `Invalid date format: ${invalidDates.join(", ")}. Use YYYY-MM-DD` },
         { status: 400 }
       );
     }
@@ -128,25 +160,36 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Get color mappings
-    const colorMappings = await getProjectGcalColorMappings();
-
-    // Convert to events
-    const eventInputs = convertToEvents(pattern.entries, date, colorMappings);
+    // Convert to events for all dates (color mapping uses static lookup, no DB query)
+    const allEventInputs: CreateEventInput[] = [];
+    for (const date of dates) {
+      const eventInputs = convertToEvents(pattern.entries, date, groupId);
+      allEventInputs.push(...eventInputs);
+    }
 
     // Create events in Google Calendar
-    const { created, failed } = await createEvents(eventInputs);
+    const { created, failed } = await createEvents(allEventInputs);
+
+    // Calculate per-date results
+    const entriesPerDay = pattern.entries.length;
+    const dateResults = dates.map((date, i) => {
+      const startIdx = i * entriesPerDay;
+      const endIdx = startIdx + entriesPerDay;
+      const dateCreated = created.filter(e =>
+        e.start.dateTime.startsWith(date)
+      ).length;
+      const dateFailed = failed.filter(f =>
+        f.event.startDateTime.startsWith(date)
+      ).length;
+      return { date, created: dateCreated, failed: dateFailed };
+    });
 
     const result: RegisterResult = {
       success: failed.length === 0,
       created: created.length,
       failed: failed.length,
-      events: created.map(e => ({
-        summary: e.summary,
-        startTime: e.start.dateTime,
-        endTime: e.end.dateTime,
-      })),
-      errors: failed.map(f => `${f.event.summary}: ${f.error}`),
+      dateResults,
+      errors: failed.length > 0 ? failed.map(f => `${f.event.summary}: ${f.error}`) : undefined,
     };
 
     return NextResponse.json(result);

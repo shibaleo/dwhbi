@@ -24,6 +24,8 @@ const logger = setupLogger("gcal-api");
 // Configuration
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3";
+const BATCH_API_URL = "https://www.googleapis.com/batch/calendar/v3";
+const BATCH_SIZE = 50; // Max 50 requests per batch
 const DEFAULT_THRESHOLD_MINUTES = 5;
 const MAX_RESULTS_PER_PAGE = 2500;
 const DEFAULT_RETRY_DELAY_SEC = 1;
@@ -530,4 +532,226 @@ export async function createEvents(
   }
 
   return { created, failed };
+}
+
+// =============================================================================
+// Batch API - Event Fetching
+// =============================================================================
+
+interface DateRange {
+  startDate: string;
+  endDate: string;
+}
+
+/**
+ * Build batch request for fetching events from multiple date ranges
+ */
+function buildBatchGetRequest(
+  dateRanges: DateRange[],
+  calendarId: string,
+  boundary: string
+): string {
+  const parts: string[] = [];
+  const calendarIdEncoded = encodeURIComponent(calendarId);
+
+  for (let i = 0; i < dateRanges.length; i++) {
+    const { startDate, endDate } = dateRanges[i];
+    const timeMin = encodeURIComponent(`${startDate}T00:00:00${JST_OFFSET}`);
+    const timeMax = encodeURIComponent(`${endDate}T23:59:59${JST_OFFSET}`);
+
+    const queryParams = `timeMin=${timeMin}&timeMax=${timeMax}&maxResults=${MAX_RESULTS_PER_PAGE}&singleEvents=true&orderBy=startTime`;
+
+    parts.push(`--${boundary}`);
+    parts.push("Content-Type: application/http");
+    parts.push(`Content-ID: <item${i}>`);
+    parts.push("");
+    parts.push(`GET /calendar/v3/calendars/${calendarIdEncoded}/events?${queryParams} HTTP/1.1`);
+    parts.push("");
+  }
+
+  parts.push(`--${boundary}--`);
+  return parts.join("\r\n");
+}
+
+/**
+ * Parse batch response for event fetching
+ */
+function parseBatchGetResponse(
+  responseText: string,
+  boundary: string,
+  dateRanges: DateRange[],
+  calendarId: string
+): { results: Array<{ dateRange: DateRange; events?: Record<string, unknown>[]; error?: string }> } {
+  const results: Array<{ dateRange: DateRange; events?: Record<string, unknown>[]; error?: string }> = [];
+
+  // Split by boundary
+  const parts = responseText.split(`--${boundary}`);
+
+  for (const part of parts) {
+    if (!part.trim() || part.trim() === "--") continue;
+
+    // Extract Content-ID to match with request
+    const contentIdMatch = part.match(/Content-ID:\s*<response-item(\d+)>/i);
+    if (!contentIdMatch) continue;
+
+    const index = parseInt(contentIdMatch[1], 10);
+    const dateRange = dateRanges[index];
+    if (!dateRange) continue;
+
+    // Find the HTTP status line
+    const httpMatch = part.match(/HTTP\/1\.1\s+(\d+)/);
+    const statusCode = httpMatch ? parseInt(httpMatch[1], 10) : 0;
+
+    // Extract JSON body (after empty line following headers)
+    const jsonMatch = part.match(/\r?\n\r?\n({[\s\S]*})/);
+
+    if (statusCode >= 200 && statusCode < 300 && jsonMatch) {
+      try {
+        const data = JSON.parse(jsonMatch[1]) as { items?: Record<string, unknown>[] };
+        const events = data.items || [];
+        // Add calendar_id to each event
+        for (const event of events) {
+          event._calendar_id = calendarId;
+        }
+        results.push({ dateRange, events });
+      } catch {
+        results.push({ dateRange, error: `Failed to parse response: ${jsonMatch[1]}` });
+      }
+    } else {
+      const errorMsg = jsonMatch ? jsonMatch[1] : `HTTP ${statusCode}`;
+      results.push({ dateRange, error: errorMsg });
+    }
+  }
+
+  return { results };
+}
+
+/**
+ * Execute batch GET request for events
+ */
+async function executeBatchGet(
+  dateRanges: DateRange[],
+  calendarId: string,
+  accessToken: string
+): Promise<Array<{ dateRange: DateRange; events?: Record<string, unknown>[]; error?: string }>> {
+  const boundary = `batch_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const body = buildBatchGetRequest(dateRanges, calendarId, boundary);
+
+  const response = await fetch(BATCH_API_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": `multipart/mixed; boundary=${boundary}`,
+    },
+    body,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Batch request failed: ${response.status} ${text}`);
+  }
+
+  // Get boundary from response Content-Type
+  const contentType = response.headers.get("Content-Type") || "";
+  const responseBoundaryMatch = contentType.match(/boundary=([^;]+)/);
+  const responseBoundary = responseBoundaryMatch ? responseBoundaryMatch[1] : boundary;
+
+  const responseText = await response.text();
+  const { results } = parseBatchGetResponse(responseText, responseBoundary, dateRanges, calendarId);
+
+  return results;
+}
+
+/**
+ * Split date range into daily chunks
+ */
+function splitDateRange(startDate: string, endDate: string): DateRange[] {
+  const ranges: DateRange[] = [];
+  const current = new Date(startDate);
+  const end = new Date(endDate);
+
+  while (current <= end) {
+    const dateStr = current.toISOString().slice(0, 10);
+    ranges.push({ startDate: dateStr, endDate: dateStr });
+    current.setDate(current.getDate() + 1);
+  }
+
+  return ranges;
+}
+
+/**
+ * Fetch events using Batch API for multiple date ranges
+ * Splits the date range into daily chunks and fetches in batches of 50
+ */
+export async function fetchEventsBatch(
+  startDate: string,
+  endDate: string
+): Promise<Record<string, unknown>[]> {
+  const auth = await getAuthInfo();
+
+  // Split into daily date ranges
+  const dateRanges = splitDateRange(startDate, endDate);
+
+  if (dateRanges.length === 0) {
+    return [];
+  }
+
+  logger.info(`Fetching events for ${dateRanges.length} days using batch API...`);
+
+  const allEvents: Record<string, unknown>[] = [];
+
+  // Split into batches of 50
+  const batches: DateRange[][] = [];
+  for (let i = 0; i < dateRanges.length; i += BATCH_SIZE) {
+    batches.push(dateRanges.slice(i, i + BATCH_SIZE));
+  }
+
+  for (let i = 0; i < batches.length; i++) {
+    const batch = batches[i];
+    logger.debug(`Processing batch ${i + 1}/${batches.length} (${batch.length} date ranges)...`);
+
+    try {
+      const results = await executeBatchGet(batch, auth.calendarId, auth.accessToken);
+
+      for (const { dateRange, events, error } of results) {
+        if (events) {
+          allEvents.push(...events);
+        } else if (error) {
+          logger.error(`Failed to fetch events for ${dateRange.startDate}: ${error}`);
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+
+      // If token expired, refresh and retry
+      if (message.includes("401")) {
+        logger.warn("Token expired, refreshing and retrying batch...");
+        const newAuth = await getAuthInfo(true);
+
+        try {
+          const retryResults = await executeBatchGet(batch, newAuth.calendarId, newAuth.accessToken);
+          for (const { dateRange, events, error: retryError } of retryResults) {
+            if (events) {
+              allEvents.push(...events);
+            } else if (retryError) {
+              logger.error(`Failed to fetch events for ${dateRange.startDate}: ${retryError}`);
+            }
+          }
+          continue;
+        } catch (retryErr) {
+          logger.error(`Batch ${i + 1} retry failed: ${retryErr}`);
+        }
+      } else {
+        logger.error(`Batch ${i + 1} failed: ${message}`);
+      }
+    }
+
+    // Small delay between batches to avoid rate limits
+    if (i < batches.length - 1) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+
+  logger.info(`Fetched ${allEvents.length} events total`);
+  return allEvents;
 }

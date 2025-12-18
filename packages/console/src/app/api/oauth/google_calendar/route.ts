@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getServiceCredentials } from "@/lib/vault";
 
@@ -8,11 +7,8 @@ const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 // calendar scope includes read/write access to events
 const SCOPES = "https://www.googleapis.com/auth/calendar";
 
-async function getRedirectUri() {
-  const headersList = await headers();
-  const host = headersList.get("host") || "localhost:3000";
-  const protocol = headersList.get("x-forwarded-proto") || (host.includes("localhost") ? "http" : "https");
-  return `${protocol}://${host}/api/oauth/google_calendar/callback`;
+function getRedirectUri() {
+  return "http://localhost:3000/api/oauth/google_calendar/callback";
 }
 
 // OAuth認証開始 - 認証URLを返す
@@ -38,7 +34,7 @@ export async function GET() {
 
     const params = new URLSearchParams({
       client_id: credentials.client_id as string,
-      redirect_uri: await getRedirectUri(),
+      redirect_uri: getRedirectUri(),
       response_type: "code",
       scope: SCOPES,
       access_type: "offline",

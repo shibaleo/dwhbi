@@ -1,15 +1,11 @@
 import { NextResponse } from "next/server";
-import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getServiceCredentials, saveServiceCredentials } from "@/lib/vault";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 
-async function getRedirectUri() {
-  const headersList = await headers();
-  const host = headersList.get("host") || "localhost:3000";
-  const protocol = headersList.get("x-forwarded-proto") || (host.includes("localhost") ? "http" : "https");
-  return `${protocol}://${host}/api/oauth/google_calendar/callback`;
+function getRedirectUri() {
+  return "http://localhost:3000/api/oauth/google_calendar/callback";
 }
 
 // OAuthコールバック処理
@@ -61,7 +57,7 @@ export async function GET(request: Request) {
         client_secret: credentials.client_secret as string,
         code,
         grant_type: "authorization_code",
-        redirect_uri: await getRedirectUri(),
+        redirect_uri: getRedirectUri(),
       }),
     });
 

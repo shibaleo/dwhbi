@@ -7,13 +7,12 @@
 
 import { upsertRawBatch, RawRecord } from "../../db/raw-client.js";
 import { setupLogger } from "../../lib/logger.js";
-import { fetchEvents } from "./api-client.js";
+import { fetchEventsBatch } from "./api-client.js";
 
 const logger = setupLogger("gcal-events");
 
 const TABLE_NAME = "google_calendar__events";
 const API_VERSION = "v3";
-const MAX_EVENTS_PER_CHUNK = 2500;
 
 // Types
 export interface SyncResult {
@@ -46,9 +45,9 @@ function formatDate(date: Date): string {
 }
 
 /**
- * Sync events
+ * Sync events using Batch API
  *
- * Fetches from end to start, handling pagination.
+ * Fetches events for the specified date range using batch requests.
  *
  * @param days - Number of days to sync
  * @param startDate - Optional start date (YYYY-MM-DD)
@@ -76,91 +75,66 @@ export async function syncEvents(
     startD.setDate(startD.getDate() - (days - 1));
   }
 
+  const startStr = formatDate(startD);
+  const endStr = formatDate(endD);
+
   logger.info(
-    `Starting Google Calendar events sync (${formatDate(startD)} to ${formatDate(endD)})`
+    `Starting Google Calendar events sync (${startStr} to ${endStr})`
   );
 
-  let totalCount = 0;
-  let currentEnd = endD;
-  let chunkNum = 0;
+  try {
+    // Fetch all events using batch API
+    const events = await fetchEventsBatch(startStr, endStr);
+    logger.info(`Fetched ${events.length} events (may include duplicates)`);
 
-  while (currentEnd > startD) {
-    chunkNum++;
-    const chunkStartStr = formatDate(startD);
-    const chunkEndStr = formatDate(currentEnd);
-
-    logger.info(`Fetching chunk ${chunkNum}: ${chunkStartStr} to ${chunkEndStr}`);
-
-    try {
-      // Fetch from API (pagination handled internally)
-      const events = await fetchEvents(chunkStartStr, chunkEndStr);
-      logger.info(`Fetched ${events.length} events`);
-
-      if (events.length === 0) {
-        break;
-      }
-
-      // Save to DB
-      const records = events.map(toRawRecord);
-      const result = await upsertRawBatch(TABLE_NAME, records, API_VERSION);
-      totalCount += result.total;
-      logger.info(`Saved ${result.total} events to DB (total: ${totalCount})`);
-
-      // If less than max, we got all events
-      if (events.length < MAX_EVENTS_PER_CHUNK) {
-        break;
-      }
-
-      // Find oldest event for next chunk
-      const oldestEvent = events.reduce((oldest, event) => {
-        const eventStart = event.start as Record<string, string> | undefined;
-        const currentStart = oldest.start as Record<string, string> | undefined;
-
-        const eventDate = eventStart?.dateTime || eventStart?.date || "";
-        const currentDate = currentStart?.dateTime || currentStart?.date || "";
-
-        return eventDate < currentDate ? event : oldest;
-      });
-
-      const oldestStart = oldestEvent.start as Record<string, string> | undefined;
-      const oldestDateStr = oldestStart?.dateTime || oldestStart?.date;
-
-      if (oldestDateStr) {
-        currentEnd = new Date(oldestDateStr.slice(0, 10));
-      } else {
-        break;
-      }
-    } catch (error) {
+    if (events.length === 0) {
       const elapsed = Math.round((performance.now() - startTime) / 10) / 100;
-
-      // On rate limit, return what we have
-      if (
-        String(error).includes("429") ||
-        String(error).includes("rateLimitExceeded")
-      ) {
-        logger.warn(
-          `Google Calendar API rate limit. Saved ${totalCount} events before limit.`
-        );
-        return {
-          success: totalCount > 0,
-          count: totalCount,
-          elapsedSeconds: elapsed,
-        };
-      }
-
-      logger.error(`Google Calendar events sync failed after ${elapsed}s: ${error}`);
-      throw error;
+      return {
+        success: true,
+        count: 0,
+        elapsedSeconds: elapsed,
+      };
     }
+
+    // Deduplicate events by source_id (events spanning multiple days appear multiple times)
+    const recordMap = new Map<string, RawRecord>();
+    for (const event of events) {
+      const record = toRawRecord(event);
+      recordMap.set(record.sourceId, record);
+    }
+    const records = Array.from(recordMap.values());
+    logger.info(`Deduplicated to ${records.length} unique events`);
+
+    // Save to DB
+    const result = await upsertRawBatch(TABLE_NAME, records, API_VERSION);
+
+    const elapsed = Math.round((performance.now() - startTime) / 10) / 100;
+    logger.info(
+      `Google Calendar events sync completed: ${result.total} events in ${elapsed}s`
+    );
+
+    return {
+      success: true,
+      count: result.total,
+      elapsedSeconds: elapsed,
+    };
+  } catch (error) {
+    const elapsed = Math.round((performance.now() - startTime) / 10) / 100;
+
+    // On rate limit, return partial result
+    if (
+      String(error).includes("429") ||
+      String(error).includes("rateLimitExceeded")
+    ) {
+      logger.warn(`Google Calendar API rate limit after ${elapsed}s`);
+      return {
+        success: false,
+        count: 0,
+        elapsedSeconds: elapsed,
+      };
+    }
+
+    logger.error(`Google Calendar events sync failed after ${elapsed}s: ${error}`);
+    throw error;
   }
-
-  const elapsed = Math.round((performance.now() - startTime) / 10) / 100;
-  logger.info(
-    `Google Calendar events sync completed: ${totalCount} events in ${elapsed}s`
-  );
-
-  return {
-    success: true,
-    count: totalCount,
-    elapsedSeconds: elapsed,
-  };
 }

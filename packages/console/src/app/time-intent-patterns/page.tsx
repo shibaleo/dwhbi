@@ -80,7 +80,8 @@ export default function PatternsPage() {
 
   // Calendar registration state
   const [registerGroupId, setRegisterGroupId] = useState<string | null>(null);
-  const [registerDate, setRegisterDate] = useState<string>("");
+  const [registerStartDate, setRegisterStartDate] = useState<string>("");
+  const [registerEndDate, setRegisterEndDate] = useState<string>("");
   const [registering, setRegistering] = useState(false);
 
   useEffect(() => {
@@ -437,21 +438,44 @@ export default function PatternsPage() {
   // Open calendar registration popup
   function openRegisterPopup(groupId: string) {
     setRegisterGroupId(groupId);
-    // Default to today
+    // Default to today (single day)
     const today = new Date().toISOString().slice(0, 10);
-    setRegisterDate(today);
+    setRegisterStartDate(today);
+    setRegisterEndDate(today);
+  }
+
+  // Generate date array from start to end
+  function generateDateRange(start: string, end: string): string[] {
+    const dates: string[] = [];
+    const current = new Date(start);
+    const endDate = new Date(end);
+
+    while (current <= endDate) {
+      dates.push(current.toISOString().slice(0, 10));
+      current.setDate(current.getDate() + 1);
+    }
+
+    return dates;
   }
 
   // Register pattern to Google Calendar
   async function handleRegisterToCalendar() {
-    if (!registerGroupId || !registerDate) return;
+    if (!registerGroupId || !registerStartDate || !registerEndDate) return;
+
+    // Validate date range
+    if (registerStartDate > registerEndDate) {
+      alert("開始日は終了日より前である必要があります。");
+      return;
+    }
+
+    const dates = generateDateRange(registerStartDate, registerEndDate);
 
     try {
       setRegistering(true);
       const res = await fetch(`/api/time-intent-patterns/${registerGroupId}/register-calendar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date: registerDate }),
+        body: JSON.stringify({ dates }),
       });
 
       const data = await res.json();
@@ -461,9 +485,14 @@ export default function PatternsPage() {
       }
 
       // Show success message
-      alert(`${data.created}件のイベントを登録しました。${data.failed > 0 ? `\n${data.failed}件失敗しました。` : ""}`);
+      const dateCount = dates.length;
+      const message = dateCount === 1
+        ? `${data.created}件のイベントを登録しました。`
+        : `${dateCount}日分、${data.created}件のイベントを登録しました。`;
+      alert(message + (data.failed > 0 ? `\n${data.failed}件失敗しました。` : ""));
       setRegisterGroupId(null);
-      setRegisterDate("");
+      setRegisterStartDate("");
+      setRegisterEndDate("");
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to register events");
     } finally {
@@ -1081,21 +1110,42 @@ export default function PatternsPage() {
             <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
               パターンのエントリをGoogle Calendarのイベントとして登録します。
             </p>
-            <label className="block text-sm text-zinc-700 dark:text-zinc-300 mb-2">
-              登録する日付
-            </label>
-            <input
-              type="date"
-              value={registerDate}
-              onChange={(e) => setRegisterDate(e.target.value)}
-              className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-md bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 mb-4"
-              autoFocus
-            />
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-sm text-zinc-700 dark:text-zinc-300 mb-2">
+                  開始日
+                </label>
+                <input
+                  type="date"
+                  value={registerStartDate}
+                  onChange={(e) => setRegisterStartDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-md bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-zinc-700 dark:text-zinc-300 mb-2">
+                  終了日
+                </label>
+                <input
+                  type="date"
+                  value={registerEndDate}
+                  onChange={(e) => setRegisterEndDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-md bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
+                />
+              </div>
+            </div>
+            {registerStartDate && registerEndDate && registerStartDate <= registerEndDate && (
+              <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                {generateDateRange(registerStartDate, registerEndDate).length}日分を登録します
+              </p>
+            )}
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => {
                   setRegisterGroupId(null);
-                  setRegisterDate("");
+                  setRegisterStartDate("");
+                  setRegisterEndDate("");
                 }}
                 className="px-4 py-2 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
                 disabled={registering}
@@ -1104,7 +1154,7 @@ export default function PatternsPage() {
               </button>
               <button
                 onClick={handleRegisterToCalendar}
-                disabled={registering || !registerDate}
+                disabled={registering || !registerStartDate || !registerEndDate || registerStartDate > registerEndDate}
                 className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-md text-sm font-medium transition-colors"
               >
                 {registering ? "登録中..." : "登録"}
