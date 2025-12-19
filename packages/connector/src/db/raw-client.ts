@@ -170,6 +170,53 @@ export async function upsertRaw(
 }
 
 /**
+ * Delete records by source_ids
+ *
+ * @param tableName - Table name without schema
+ * @param sourceIds - Array of source_id values to delete
+ * @param batchSize - Batch size for DELETE (default 1000)
+ * @returns Number of deleted records
+ */
+export async function deleteBySourceIds(
+  tableName: string,
+  sourceIds: string[],
+  batchSize: number = 1000
+): Promise<number> {
+  if (sourceIds.length === 0) {
+    return 0;
+  }
+
+  const useShared = sharedClient && clientConnected;
+  const client = useShared ? sharedClient! : new Client({ connectionString: getDatabaseUrl() });
+
+  try {
+    if (!useShared) {
+      logger.debug(`Creating temporary connection for ${tableName} delete`);
+      await client.connect();
+    }
+
+    let totalDeleted = 0;
+
+    // Process in batches
+    for (let i = 0; i < sourceIds.length; i += batchSize) {
+      const batch = sourceIds.slice(i, i + batchSize);
+      const placeholders = batch.map((_, idx) => `$${idx + 1}`).join(", ");
+      const sql = `DELETE FROM raw.${tableName} WHERE source_id IN (${placeholders})`;
+
+      const result = await client.query(sql, batch);
+      totalDeleted += result.rowCount ?? 0;
+    }
+
+    logger.info(`Deleted ${totalDeleted} records from raw.${tableName}`);
+    return totalDeleted;
+  } finally {
+    if (!useShared) {
+      await client.end();
+    }
+  }
+}
+
+/**
  * UPSERT large batch of records (splits into batches)
  *
  * @param tableName - Table name

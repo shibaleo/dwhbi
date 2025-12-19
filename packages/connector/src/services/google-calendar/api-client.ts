@@ -559,7 +559,7 @@ function buildBatchGetRequest(
     const timeMin = encodeURIComponent(`${startDate}T00:00:00${JST_OFFSET}`);
     const timeMax = encodeURIComponent(`${endDate}T23:59:59${JST_OFFSET}`);
 
-    const queryParams = `timeMin=${timeMin}&timeMax=${timeMax}&maxResults=${MAX_RESULTS_PER_PAGE}&singleEvents=true&orderBy=startTime`;
+    const queryParams = `timeMin=${timeMin}&timeMax=${timeMax}&maxResults=${MAX_RESULTS_PER_PAGE}&singleEvents=true&orderBy=startTime&showDeleted=true`;
 
     parts.push(`--${boundary}`);
     parts.push("Content-Type: application/http");

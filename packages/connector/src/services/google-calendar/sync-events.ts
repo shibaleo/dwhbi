@@ -5,7 +5,7 @@
  * Handles pagination for >2500 events.
  */
 
-import { upsertRawBatch, RawRecord } from "../../db/raw-client.js";
+import { upsertRawBatch, deleteBySourceIds, RawRecord } from "../../db/raw-client.js";
 import { setupLogger } from "../../lib/logger.js";
 import { fetchEventsBatch } from "./api-client.js";
 
@@ -18,6 +18,7 @@ const API_VERSION = "v3";
 export interface SyncResult {
   success: boolean;
   count: number;
+  deleted: number;
   elapsedSeconds: number;
 }
 
@@ -83,39 +84,70 @@ export async function syncEvents(
   );
 
   try {
-    // Fetch all events using batch API
+    // Fetch all events using batch API (includes deleted events with showDeleted=true)
     const events = await fetchEventsBatch(startStr, endStr);
-    logger.info(`Fetched ${events.length} events (may include duplicates)`);
+    logger.info(`Fetched ${events.length} events (may include duplicates and cancelled)`);
 
     if (events.length === 0) {
       const elapsed = Math.round((performance.now() - startTime) / 10) / 100;
       return {
         success: true,
         count: 0,
+        deleted: 0,
         elapsedSeconds: elapsed,
       };
     }
 
-    // Deduplicate events by source_id (events spanning multiple days appear multiple times)
-    const recordMap = new Map<string, RawRecord>();
+    // Separate events by status: confirmed (active) vs cancelled (deleted)
+    const confirmedEvents: Record<string, unknown>[] = [];
+    const cancelledSourceIds = new Set<string>();
+
     for (const event of events) {
+      const status = event.status as string;
+      const calendarId = (event._calendar_id as string) || "primary";
+      const eventId = event.id as string;
+      const sourceId = `${calendarId}:${eventId}`;
+
+      if (status === "cancelled") {
+        cancelledSourceIds.add(sourceId);
+      } else {
+        confirmedEvents.push(event);
+      }
+    }
+
+    logger.info(`Events: ${confirmedEvents.length} active, ${cancelledSourceIds.size} cancelled`);
+
+    // Delete cancelled events from DB
+    let deletedCount = 0;
+    if (cancelledSourceIds.size > 0) {
+      deletedCount = await deleteBySourceIds(TABLE_NAME, Array.from(cancelledSourceIds));
+    }
+
+    // Deduplicate active events by source_id (events spanning multiple days appear multiple times)
+    const recordMap = new Map<string, RawRecord>();
+    for (const event of confirmedEvents) {
       const record = toRawRecord(event);
       recordMap.set(record.sourceId, record);
     }
     const records = Array.from(recordMap.values());
-    logger.info(`Deduplicated to ${records.length} unique events`);
+    logger.info(`Deduplicated to ${records.length} unique active events`);
 
-    // Save to DB
-    const result = await upsertRawBatch(TABLE_NAME, records, API_VERSION);
+    // Save active events to DB
+    let upsertedCount = 0;
+    if (records.length > 0) {
+      const result = await upsertRawBatch(TABLE_NAME, records, API_VERSION);
+      upsertedCount = result.total;
+    }
 
     const elapsed = Math.round((performance.now() - startTime) / 10) / 100;
     logger.info(
-      `Google Calendar events sync completed: ${result.total} events in ${elapsed}s`
+      `Google Calendar events sync completed: ${upsertedCount} upserted, ${deletedCount} deleted in ${elapsed}s`
     );
 
     return {
       success: true,
-      count: result.total,
+      count: upsertedCount,
+      deleted: deletedCount,
       elapsedSeconds: elapsed,
     };
   } catch (error) {
@@ -130,6 +162,7 @@ export async function syncEvents(
       return {
         success: false,
         count: 0,
+        deleted: 0,
         elapsedSeconds: elapsed,
       };
     }
