@@ -1,4 +1,4 @@
-import postgres from "postgres";
+import { createClient } from "@/lib/supabase/server";
 
 // サービス一覧
 export const SERVICES = [
@@ -49,50 +49,45 @@ export interface ServiceStatus {
   expiresAt: string | null;
 }
 
-function getDbConnection() {
-  const connectionString = process.env.DIRECT_DATABASE_URL;
-  if (!connectionString) {
-    throw new Error("DIRECT_DATABASE_URL is not set");
-  }
-  return postgres(connectionString);
-}
-
 /**
  * 全サービスの連携状況を取得
  */
 export async function getServicesStatus(): Promise<ServiceStatus[]> {
-  const sql = getDbConnection();
+  const supabase = await createClient();
 
-  try {
-    // Vault から全サービスの情報を取得
-    const rows = await sql`
-      SELECT name, decrypted_secret
-      FROM vault.decrypted_secrets
-      WHERE name = ANY(${SERVICES as unknown as string[]})
-    `;
+  const { data: rows, error } = await supabase
+    .schema("console")
+    .rpc("get_all_service_secrets", {
+      service_names: SERVICES as unknown as string[],
+    });
 
-    const connectedServices = new Map<string, { expiresAt: string | null }>();
-
-    for (const row of rows) {
-      const secret = typeof row.decrypted_secret === "string"
-        ? JSON.parse(row.decrypted_secret)
-        : row.decrypted_secret;
-
-      connectedServices.set(row.name, {
-        expiresAt: secret._expires_at || null,
-      });
-    }
-
+  if (error) {
+    console.error("Failed to get services status:", error);
     return SERVICES.map((service) => ({
       service,
       displayName: SERVICE_DISPLAY_NAMES[service],
       authType: SERVICE_AUTH_TYPES[service],
-      connected: connectedServices.has(service),
-      expiresAt: connectedServices.get(service)?.expiresAt || null,
+      connected: false,
+      expiresAt: null,
     }));
-  } finally {
-    await sql.end();
   }
+
+  const connectedServices = new Map<string, { expiresAt: string | null }>();
+
+  for (const row of rows || []) {
+    const secret = row.decrypted_secret;
+    connectedServices.set(row.name, {
+      expiresAt: secret?._expires_at || null,
+    });
+  }
+
+  return SERVICES.map((service) => ({
+    service,
+    displayName: SERVICE_DISPLAY_NAMES[service],
+    authType: SERVICE_AUTH_TYPES[service],
+    connected: connectedServices.has(service),
+    expiresAt: connectedServices.get(service)?.expiresAt || null,
+  }));
 }
 
 /**
@@ -101,29 +96,21 @@ export async function getServicesStatus(): Promise<ServiceStatus[]> {
 export async function getServiceCredentials(
   service: ServiceName
 ): Promise<Record<string, unknown> | null> {
-  const sql = getDbConnection();
+  const supabase = await createClient();
 
-  try {
-    const rows = await sql`
-      SELECT decrypted_secret
-      FROM vault.decrypted_secrets
-      WHERE name = ${service}
-    `;
+  const { data, error } = await supabase
+    .schema("console")
+    .rpc("get_service_secret", {
+      service_name: service,
+    });
 
-    if (rows.length === 0) {
-      return null;
-    }
-
-    const secret = typeof rows[0].decrypted_secret === "string"
-      ? JSON.parse(rows[0].decrypted_secret)
-      : rows[0].decrypted_secret;
-
-    // メタデータを除外して返す
-    const { _auth_type, _expires_at, ...credentials } = secret;
-    return credentials;
-  } finally {
-    await sql.end();
+  if (error || !data) {
+    return null;
   }
+
+  // メタデータを除外して返す
+  const { _auth_type, _expires_at, ...credentials } = data;
+  return credentials;
 }
 
 /**
@@ -134,45 +121,26 @@ export async function saveServiceCredentials(
   credentials: Record<string, unknown>,
   expiresAt: string | null = null
 ): Promise<void> {
-  const sql = getDbConnection();
+  const supabase = await createClient();
 
-  try {
-    const authType = SERVICE_AUTH_TYPES[service];
-    const secretData = {
-      ...credentials,
-      _auth_type: authType,
-      _expires_at: expiresAt,
-    };
-    const secretJson = JSON.stringify(secretData);
-    const description = `${SERVICE_DISPLAY_NAMES[service]} credentials`;
+  const authType = SERVICE_AUTH_TYPES[service];
+  const secretData = {
+    ...credentials,
+    _auth_type: authType,
+    _expires_at: expiresAt,
+  };
+  const description = `${SERVICE_DISPLAY_NAMES[service]} credentials`;
 
-    // 既存のシークレットがあるか確認
-    const existing = await sql`
-      SELECT id FROM vault.secrets WHERE name = ${service}
-    `;
+  const { error } = await supabase
+    .schema("console")
+    .rpc("upsert_service_secret", {
+      service_name: service,
+      secret_data: secretData,
+      secret_description: description,
+    });
 
-    if (existing.length > 0) {
-      // 更新
-      await sql`
-        SELECT vault.update_secret(
-          ${existing[0].id}::uuid,
-          ${secretJson}::text,
-          ${service}::text,
-          ${description}::text
-        )
-      `;
-    } else {
-      // 新規作成
-      await sql`
-        SELECT vault.create_secret(
-          ${secretJson}::text,
-          ${service}::text,
-          ${description}::text
-        )
-      `;
-    }
-  } finally {
-    await sql.end();
+  if (error) {
+    throw new Error(`Failed to save credentials: ${error.message}`);
   }
 }
 
@@ -182,14 +150,16 @@ export async function saveServiceCredentials(
 export async function deleteServiceCredentials(
   service: ServiceName
 ): Promise<void> {
-  const sql = getDbConnection();
+  const supabase = await createClient();
 
-  try {
-    await sql`
-      DELETE FROM vault.secrets WHERE name = ${service}
-    `;
-  } finally {
-    await sql.end();
+  const { error } = await supabase
+    .schema("console")
+    .rpc("delete_service_secret", {
+      service_name: service,
+    });
+
+  if (error) {
+    throw new Error(`Failed to delete credentials: ${error.message}`);
   }
 }
 
@@ -202,55 +172,38 @@ export async function updateServiceCredentials(
   updates: Record<string, unknown>,
   deletes: string[] = []
 ): Promise<void> {
-  const sql = getDbConnection();
+  const supabase = await createClient();
 
-  try {
-    // 既存の認証情報を取得
-    const rows = await sql`
-      SELECT decrypted_secret
-      FROM vault.decrypted_secrets
-      WHERE name = ${service}
-    `;
+  // 既存の認証情報を取得
+  const { data: existingSecret, error: getError } = await supabase
+    .schema("console")
+    .rpc("get_service_secret", { service_name: service });
 
-    if (rows.length === 0) {
-      throw new Error("Service credentials not found");
-    }
+  if (getError || !existingSecret) {
+    throw new Error("Service credentials not found");
+  }
 
-    const existingSecret = typeof rows[0].decrypted_secret === "string"
-      ? JSON.parse(rows[0].decrypted_secret)
-      : rows[0].decrypted_secret;
+  // 削除するフィールドを除去
+  const updatedSecret = { ...existingSecret };
+  for (const key of deletes) {
+    delete updatedSecret[key];
+  }
 
-    // 削除するフィールドを除去
-    for (const key of deletes) {
-      delete existingSecret[key];
-    }
+  // 更新するフィールドをマージ
+  Object.assign(updatedSecret, updates);
 
-    // 更新するフィールドをマージ
-    const updatedSecret = {
-      ...existingSecret,
-      ...updates,
-    };
+  const description = `${SERVICE_DISPLAY_NAMES[service]} credentials`;
 
-    const secretJson = JSON.stringify(updatedSecret);
-    const description = `${SERVICE_DISPLAY_NAMES[service]} credentials`;
+  const { error } = await supabase
+    .schema("console")
+    .rpc("upsert_service_secret", {
+      service_name: service,
+      secret_data: updatedSecret,
+      secret_description: description,
+    });
 
-    // 既存のシークレットを更新
-    const existing = await sql`
-      SELECT id FROM vault.secrets WHERE name = ${service}
-    `;
-
-    if (existing.length > 0) {
-      await sql`
-        SELECT vault.update_secret(
-          ${existing[0].id}::uuid,
-          ${secretJson}::text,
-          ${service}::text,
-          ${description}::text
-        )
-      `;
-    }
-  } finally {
-    await sql.end();
+  if (error) {
+    throw new Error(`Failed to update credentials: ${error.message}`);
   }
 }
 
@@ -271,71 +224,42 @@ const GITHUB_SECRET_NAME = "github";
  * GitHub設定を取得
  */
 export async function getGitHubConfig(): Promise<GitHubConfig | null> {
-  const sql = getDbConnection();
+  const supabase = await createClient();
 
-  try {
-    const rows = await sql`
-      SELECT decrypted_secret
-      FROM vault.decrypted_secrets
-      WHERE name = ${GITHUB_SECRET_NAME}
-    `;
+  const { data, error } = await supabase
+    .schema("console")
+    .rpc("get_service_secret", {
+      service_name: GITHUB_SECRET_NAME,
+    });
 
-    if (rows.length === 0) {
-      return null;
-    }
-
-    const secret = typeof rows[0].decrypted_secret === "string"
-      ? JSON.parse(rows[0].decrypted_secret)
-      : rows[0].decrypted_secret;
-
-    return {
-      pat: secret.pat || "",
-      owner: secret.owner || "",
-      repo: secret.repo || "",
-      expiresAt: secret.expiresAt || null,
-    };
-  } finally {
-    await sql.end();
+  if (error || !data) {
+    return null;
   }
+
+  return {
+    pat: data.pat || "",
+    owner: data.owner || "",
+    repo: data.repo || "",
+    expiresAt: data.expiresAt || null,
+  };
 }
 
 /**
  * GitHub設定を保存
  */
 export async function saveGitHubConfig(config: GitHubConfig): Promise<void> {
-  const sql = getDbConnection();
+  const supabase = await createClient();
 
-  try {
-    const secretJson = JSON.stringify(config);
-    const description = "GitHub PAT for Actions dispatch";
+  const { error } = await supabase
+    .schema("console")
+    .rpc("upsert_service_secret", {
+      service_name: GITHUB_SECRET_NAME,
+      secret_data: config,
+      secret_description: "GitHub PAT for Actions dispatch",
+    });
 
-    // 既存のシークレットがあるか確認
-    const existing = await sql`
-      SELECT id FROM vault.secrets WHERE name = ${GITHUB_SECRET_NAME}
-    `;
-
-    if (existing.length > 0) {
-      // 更新
-      await sql`
-        SELECT vault.update_secret(
-          ${existing[0].id}::uuid,
-          ${secretJson}::text,
-          ${GITHUB_SECRET_NAME}::text,
-          ${description}::text
-        )
-      `;
-    } else {
-      // 新規作成
-      await sql`
-        SELECT vault.create_secret(
-          ${secretJson}::text,
-          ${GITHUB_SECRET_NAME}::text,
-          ${description}::text
-        )
-      `;
-    }
-  } finally {
-    await sql.end();
+  if (error) {
+    throw new Error(`Failed to save GitHub config: ${error.message}`);
   }
 }
 
@@ -343,14 +267,16 @@ export async function saveGitHubConfig(config: GitHubConfig): Promise<void> {
  * GitHub設定を削除
  */
 export async function deleteGitHubConfig(): Promise<void> {
-  const sql = getDbConnection();
+  const supabase = await createClient();
 
-  try {
-    await sql`
-      DELETE FROM vault.secrets WHERE name = ${GITHUB_SECRET_NAME}
-    `;
-  } finally {
-    await sql.end();
+  const { error } = await supabase
+    .schema("console")
+    .rpc("delete_service_secret", {
+      service_name: GITHUB_SECRET_NAME,
+    });
+
+  if (error) {
+    throw new Error(`Failed to delete GitHub config: ${error.message}`);
   }
 }
 
@@ -358,14 +284,13 @@ export async function deleteGitHubConfig(): Promise<void> {
  * GitHub設定が存在するかチェック
  */
 export async function hasGitHubConfig(): Promise<boolean> {
-  const sql = getDbConnection();
+  const supabase = await createClient();
 
-  try {
-    const rows = await sql`
-      SELECT 1 FROM vault.secrets WHERE name = ${GITHUB_SECRET_NAME}
-    `;
-    return rows.length > 0;
-  } finally {
-    await sql.end();
-  }
+  const { data, error } = await supabase
+    .schema("console")
+    .rpc("get_service_secret", {
+      service_name: GITHUB_SECRET_NAME,
+    });
+
+  return !error && data !== null;
 }

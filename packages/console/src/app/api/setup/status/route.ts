@@ -1,30 +1,39 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
 export async function GET() {
-  // Service Role で profiles テーブルを確認
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const supabase = await createClient();
 
   // セットアップ完了済みのオーナーがいるか確認
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("is_owner", true)
-    .eq("setup_completed", true)
-    .limit(1);
+  // RLS により認証済みユーザーは自分のプロファイルのみ読める
+  // ただし、セットアップ状態の確認は認証前に呼ばれる可能性があるため
+  // anon でもアクセス可能な RPC 関数を使用するか、別の方法が必要
 
-  if (error) {
-    // テーブルが存在しない場合もセットアップ必要
-    return NextResponse.json({ needsSetup: true, error: error.message });
+  // 現在のユーザーを取得
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    // 未認証の場合、セットアップが必要かどうかは判断できない
+    // ログインページにリダイレクトさせる
+    return NextResponse.json({ needsSetup: false, needsLogin: true });
   }
 
-  const hasCompletedOwner = data && data.length > 0;
+  // 認証済みユーザーの場合、自分のプロファイルを確認
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, is_owner, setup_completed")
+    .eq("id", user.id)
+    .single();
+
+  if (error) {
+    // プロファイルが存在しない場合はセットアップが必要
+    return NextResponse.json({ needsSetup: true });
+  }
+
+  const isSetupComplete = data?.is_owner && data?.setup_completed;
 
   return NextResponse.json({
-    needsSetup: !hasCompletedOwner,
-    hasOwner: hasCompletedOwner,
+    needsSetup: !isSetupComplete,
+    hasOwner: data?.is_owner || false,
   });
 }

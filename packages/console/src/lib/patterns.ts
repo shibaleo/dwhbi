@@ -1,5 +1,5 @@
-import postgres from "postgres";
 import crypto from "crypto";
+import { createClient } from "@/lib/supabase/server";
 
 // Types
 export interface PatternEntry {
@@ -49,14 +49,6 @@ export interface ProjectInfo {
   projectColor: string | null;
 }
 
-function getDbConnection() {
-  const connectionString = process.env.DIRECT_DATABASE_URL;
-  if (!connectionString) {
-    throw new Error("DIRECT_DATABASE_URL is not set");
-  }
-  return postgres(connectionString);
-}
-
 export function calculateContentHash(entries: PatternEntry[]): string {
   const sorted = [...entries].sort((a, b) => a.sortOrder - b.sortOrder);
   const content = sorted.map(e => `${e.projectId}|${e.startTime}|${e.memo || ""}`).join("\n");
@@ -67,155 +59,158 @@ export function calculateContentHash(entries: PatternEntry[]): string {
  * Get all pattern groups with their current versions
  */
 export async function getAllPatterns(): Promise<PatternInfo[]> {
-  const sql = getDbConnection();
+  const supabase = await createClient();
 
-  try {
-    const rows = await sql`
-      SELECT
-        g.id as group_id,
-        g.name as group_name,
-        g.description,
-        g.created_at,
-        g.updated_at,
-        v.version_number,
-        v.content_hash,
-        v.valid_from,
-        v.message,
-        v.entries
-      FROM console.time_intent_pattern_groups g
-      LEFT JOIN console.time_intent_pattern_versions v
-        ON g.id = v.group_id AND v.valid_to IS NULL
-      WHERE g.deleted_at IS NULL
-      ORDER BY g.name
-    `;
+  // Get all groups with their current versions (valid_to IS NULL)
+  const { data: groups, error: groupsError } = await supabase
+    .schema("console")
+    .from("time_intent_pattern_groups")
+    .select("id, name, description, created_at, updated_at")
+    .is("deleted_at", null)
+    .order("name");
 
-    return rows.map(row => {
-      // Handle case where postgres returns JSONB as string
-      let entries: PatternEntry[] = [];
-      if (Array.isArray(row.entries)) {
-        entries = row.entries;
-      } else if (typeof row.entries === "string") {
+  if (groupsError) {
+    console.error("Failed to get pattern groups:", groupsError);
+    return [];
+  }
+
+  // Get current versions for all groups
+  const { data: versions, error: versionsError } = await supabase
+    .schema("console")
+    .from("time_intent_pattern_versions")
+    .select("group_id, version_number, content_hash, valid_from, message, entries")
+    .is("valid_to", null);
+
+  if (versionsError) {
+    console.error("Failed to get pattern versions:", versionsError);
+  }
+
+  type VersionRow = NonNullable<typeof versions>[number];
+  const versionMap = new Map<string, VersionRow>();
+  for (const v of versions || []) {
+    versionMap.set(v.group_id, v);
+  }
+
+  return (groups || []).map(group => {
+    const version = versionMap.get(group.id);
+    let entries: PatternEntry[] = [];
+
+    if (version?.entries) {
+      if (Array.isArray(version.entries)) {
+        entries = version.entries as PatternEntry[];
+      } else if (typeof version.entries === "string") {
         try {
-          const parsed = JSON.parse(row.entries);
+          const parsed = JSON.parse(version.entries);
           entries = Array.isArray(parsed) ? parsed : [];
         } catch {
           entries = [];
         }
       }
-      return {
-        group: {
-          id: row.group_id,
-          name: row.group_name,
-          description: row.description,
-          createdAt: row.created_at,
-          updatedAt: row.updated_at,
-        },
-        currentVersion: row.version_number ? {
-          versionNumber: row.version_number,
-          contentHash: row.content_hash,
-          validFrom: row.valid_from,
-          validTo: null,
-          entryCount: entries.length,
-          message: row.message || null,
-        } : null,
-        entries,
-      };
-    });
-  } finally {
-    await sql.end();
-  }
+    }
+
+    return {
+      group: {
+        id: group.id,
+        name: group.name,
+        description: group.description,
+        createdAt: new Date(group.created_at),
+        updatedAt: new Date(group.updated_at),
+      },
+      currentVersion: version ? {
+        versionNumber: version.version_number,
+        contentHash: version.content_hash,
+        validFrom: new Date(version.valid_from),
+        validTo: null,
+        entryCount: entries.length,
+        message: version.message || null,
+      } : null,
+      entries,
+    };
+  });
 }
 
 /**
  * Get a single pattern by group ID
  */
 export async function getPattern(groupId: string): Promise<PatternInfo | null> {
-  const sql = getDbConnection();
+  const supabase = await createClient();
 
-  try {
-    const rows = await sql`
-      SELECT
-        g.id as group_id,
-        g.name as group_name,
-        g.description,
-        g.created_at,
-        g.updated_at,
-        v.version_number,
-        v.content_hash,
-        v.valid_from,
-        v.message,
-        v.entries
-      FROM console.time_intent_pattern_groups g
-      LEFT JOIN console.time_intent_pattern_versions v
-        ON g.id = v.group_id AND v.valid_to IS NULL
-      WHERE g.id = ${groupId}
-    `;
+  const { data: group, error: groupError } = await supabase
+    .schema("console")
+    .from("time_intent_pattern_groups")
+    .select("id, name, description, created_at, updated_at")
+    .eq("id", groupId)
+    .single();
 
-    if (rows.length === 0) {
-      return null;
-    }
+  if (groupError || !group) {
+    return null;
+  }
 
-    const row = rows[0];
-    // Handle case where postgres returns JSONB as string
-    let entries: PatternEntry[] = [];
-    if (Array.isArray(row.entries)) {
-      entries = row.entries;
-    } else if (typeof row.entries === "string") {
+  const { data: version } = await supabase
+    .schema("console")
+    .from("time_intent_pattern_versions")
+    .select("version_number, content_hash, valid_from, message, entries")
+    .eq("group_id", groupId)
+    .is("valid_to", null)
+    .single();
+
+  let entries: PatternEntry[] = [];
+  if (version?.entries) {
+    if (Array.isArray(version.entries)) {
+      entries = version.entries as PatternEntry[];
+    } else if (typeof version.entries === "string") {
       try {
-        const parsed = JSON.parse(row.entries);
+        const parsed = JSON.parse(version.entries);
         entries = Array.isArray(parsed) ? parsed : [];
       } catch {
         entries = [];
       }
     }
-    return {
-      group: {
-        id: row.group_id,
-        name: row.group_name,
-        description: row.description,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-      },
-      currentVersion: row.version_number ? {
-        versionNumber: row.version_number,
-        contentHash: row.content_hash,
-        validFrom: row.valid_from,
-        validTo: null,
-        entryCount: entries.length,
-        message: row.message || null,
-      } : null,
-      entries,
-    };
-  } finally {
-    await sql.end();
   }
+
+  return {
+    group: {
+      id: group.id,
+      name: group.name,
+      description: group.description,
+      createdAt: new Date(group.created_at),
+      updatedAt: new Date(group.updated_at),
+    },
+    currentVersion: version ? {
+      versionNumber: version.version_number,
+      contentHash: version.content_hash,
+      validFrom: new Date(version.valid_from),
+      validTo: null,
+      entryCount: entries.length,
+      message: version.message || null,
+    } : null,
+    entries,
+  };
 }
 
 /**
  * Get all Toggl projects for selection in UI
  */
 export async function getAllProjects(): Promise<ProjectInfo[]> {
-  const sql = getDbConnection();
+  const supabase = await createClient();
 
-  try {
-    const rows = await sql`
-      SELECT
-        project_id,
-        project_name,
-        color as project_color
-      FROM staging.stg_toggl_track__projects
-      WHERE is_active = true
-      ORDER BY project_name
-    `;
+  const { data: rows, error } = await supabase
+    .schema("staging")
+    .from("stg_toggl_track__projects")
+    .select("project_id, project_name, color")
+    .eq("is_active", true)
+    .order("project_name");
 
-    return rows.map(row => ({
-      projectId: String(row.project_id),
-      projectName: row.project_name,
-      projectColor: row.project_color,
-    }));
-  } finally {
-    await sql.end();
+  if (error) {
+    console.error("Failed to get projects:", error);
+    return [];
   }
+
+  return (rows || []).map(row => ({
+    projectId: String(row.project_id),
+    projectName: row.project_name,
+    projectColor: row.color,
+  }));
 }
 
 /**
@@ -225,28 +220,20 @@ export async function createPatternGroup(
   name: string,
   description?: string
 ): Promise<{ success: boolean; groupId?: string; error?: string }> {
-  const sql = getDbConnection();
+  const supabase = await createClient();
 
-  try {
-    const rows = await sql`
-      INSERT INTO console.time_intent_pattern_groups (name, description)
-      VALUES (${name}, ${description || null})
-      RETURNING id
-    `;
+  const { data, error } = await supabase
+    .schema("console")
+    .from("time_intent_pattern_groups")
+    .insert({ name, description: description || null })
+    .select("id")
+    .single();
 
-    return {
-      success: true,
-      groupId: rows[0].id,
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return {
-      success: false,
-      error: message,
-    };
-  } finally {
-    await sql.end();
+  if (error) {
+    return { success: false, error: error.message };
   }
+
+  return { success: true, groupId: data.id };
 }
 
 /**
@@ -257,25 +244,19 @@ export async function updatePatternGroup(
   name: string,
   description?: string | null
 ): Promise<{ success: boolean; error?: string }> {
-  const sql = getDbConnection();
+  const supabase = await createClient();
 
-  try {
-    await sql`
-      UPDATE console.time_intent_pattern_groups
-      SET name = ${name}, description = ${description ?? null}, updated_at = now()
-      WHERE id = ${groupId}
-    `;
+  const { error } = await supabase
+    .schema("console")
+    .from("time_intent_pattern_groups")
+    .update({ name, description: description ?? null, updated_at: new Date().toISOString() })
+    .eq("id", groupId);
 
-    return { success: true };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return {
-      success: false,
-      error: message,
-    };
-  } finally {
-    await sql.end();
+  if (error) {
+    return { success: false, error: error.message };
   }
+
+  return { success: true };
 }
 
 /**
@@ -287,33 +268,43 @@ export async function createVersion(
   entries: PatternEntry[],
   message?: string
 ): Promise<ApplyResult> {
-  const sql = getDbConnection();
+  const supabase = await createClient();
 
   try {
     const contentHash = calculateContentHash(entries);
 
-    await sql.begin(async (tx) => {
-      // Close current version (set valid_to)
-      await tx`
-        UPDATE console.time_intent_pattern_versions
-        SET valid_to = now()
-        WHERE group_id = ${groupId} AND valid_to IS NULL
-      `;
+    // Get pattern_type from group name
+    const { data: group } = await supabase
+      .schema("console")
+      .from("time_intent_pattern_groups")
+      .select("name")
+      .eq("id", groupId)
+      .single();
 
-      // Insert new version
-      await tx`
-        INSERT INTO console.time_intent_pattern_versions
-          (group_id, pattern_type, version_number, content_hash, entries, message)
-        VALUES (
-          ${groupId},
-          (SELECT name FROM console.time_intent_pattern_groups WHERE id = ${groupId}),
-          ${versionNumber},
-          ${contentHash},
-          ${JSON.stringify(entries)}::jsonb,
-          ${message || null}
-        )
-      `;
-    });
+    // Close current version (set valid_to)
+    await supabase
+      .schema("console")
+      .from("time_intent_pattern_versions")
+      .update({ valid_to: new Date().toISOString() })
+      .eq("group_id", groupId)
+      .is("valid_to", null);
+
+    // Insert new version
+    const { error: insertError } = await supabase
+      .schema("console")
+      .from("time_intent_pattern_versions")
+      .insert({
+        group_id: groupId,
+        pattern_type: group?.name || "",
+        version_number: versionNumber,
+        content_hash: contentHash,
+        entries: entries,
+        message: message || null,
+      });
+
+    if (insertError) {
+      throw insertError;
+    }
 
     return {
       groupId,
@@ -322,17 +313,14 @@ export async function createVersion(
       success: true,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return {
       groupId,
       versionNumber,
       entryCount: 0,
       success: false,
-      error: message,
+      error: errorMessage,
     };
-  } finally {
-    await sql.end();
   }
 }
 
@@ -340,33 +328,42 @@ export async function createVersion(
  * Get version history for a pattern group
  */
 export async function getVersionHistory(groupId: string): Promise<PatternVersion[]> {
-  const sql = getDbConnection();
+  const supabase = await createClient();
 
-  try {
-    const rows = await sql`
-      SELECT
-        version_number,
-        content_hash,
-        valid_from,
-        valid_to,
-        message,
-        jsonb_array_length(entries) as entry_count
-      FROM console.time_intent_pattern_versions
-      WHERE group_id = ${groupId}
-      ORDER BY valid_from DESC
-    `;
+  const { data: rows, error } = await supabase
+    .schema("console")
+    .from("time_intent_pattern_versions")
+    .select("version_number, content_hash, valid_from, valid_to, message, entries")
+    .eq("group_id", groupId)
+    .order("valid_from", { ascending: false });
 
-    return rows.map(row => ({
+  if (error) {
+    console.error("Failed to get version history:", error);
+    return [];
+  }
+
+  return (rows || []).map(row => {
+    let entryCount = 0;
+    if (Array.isArray(row.entries)) {
+      entryCount = row.entries.length;
+    } else if (typeof row.entries === "string") {
+      try {
+        const parsed = JSON.parse(row.entries);
+        entryCount = Array.isArray(parsed) ? parsed.length : 0;
+      } catch {
+        entryCount = 0;
+      }
+    }
+
+    return {
       versionNumber: row.version_number,
       contentHash: row.content_hash,
-      validFrom: row.valid_from,
-      validTo: row.valid_to,
-      entryCount: row.entry_count ?? 0,
+      validFrom: new Date(row.valid_from),
+      validTo: row.valid_to ? new Date(row.valid_to) : null,
+      entryCount,
       message: row.message || null,
-    }));
-  } finally {
-    await sql.end();
-  }
+    };
+  });
 }
 
 /**
@@ -376,35 +373,31 @@ export async function getVersionEntries(
   groupId: string,
   versionNumber: string
 ): Promise<PatternEntry[] | null> {
-  const sql = getDbConnection();
+  const supabase = await createClient();
 
-  try {
-    const rows = await sql`
-      SELECT entries
-      FROM console.time_intent_pattern_versions
-      WHERE group_id = ${groupId} AND version_number = ${versionNumber}
-    `;
+  const { data, error } = await supabase
+    .schema("console")
+    .from("time_intent_pattern_versions")
+    .select("entries")
+    .eq("group_id", groupId)
+    .eq("version_number", versionNumber)
+    .single();
 
-    if (rows.length === 0) {
-      return null;
-    }
-
-    // Handle case where postgres returns JSONB as string
-    const rawEntries = rows[0].entries;
-    if (Array.isArray(rawEntries)) {
-      return rawEntries;
-    } else if (typeof rawEntries === "string") {
-      try {
-        const parsed = JSON.parse(rawEntries);
-        return Array.isArray(parsed) ? parsed : [];
-      } catch {
-        return [];
-      }
-    }
-    return [];
-  } finally {
-    await sql.end();
+  if (error || !data) {
+    return null;
   }
+
+  if (Array.isArray(data.entries)) {
+    return data.entries as PatternEntry[];
+  } else if (typeof data.entries === "string") {
+    try {
+      const parsed = JSON.parse(data.entries);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
 }
 
 /**
@@ -413,25 +406,19 @@ export async function getVersionEntries(
 export async function deletePatternGroup(
   groupId: string
 ): Promise<{ success: boolean; error?: string }> {
-  const sql = getDbConnection();
+  const supabase = await createClient();
 
-  try {
-    await sql`
-      UPDATE console.time_intent_pattern_groups
-      SET deleted_at = now()
-      WHERE id = ${groupId}
-    `;
+  const { error } = await supabase
+    .schema("console")
+    .from("time_intent_pattern_groups")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", groupId);
 
-    return { success: true };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return {
-      success: false,
-      error: message,
-    };
-  } finally {
-    await sql.end();
+  if (error) {
+    return { success: false, error: error.message };
   }
+
+  return { success: true };
 }
 
 // =============================================================================
@@ -447,36 +434,69 @@ export interface ProjectGcalColorMapping {
 /**
  * Get Google Calendar color ID for Toggl projects
  * Maps: Toggl project name -> Coda color name -> GCal color ID
+ *
+ * Note: This requires joining multiple staging tables which may need
+ * an RPC function if the join is too complex for the REST API.
  */
 export async function getProjectGcalColorMappings(): Promise<Map<string, string>> {
-  const sql = getDbConnection();
+  const supabase = await createClient();
 
-  try {
-    // Join Coda mapping with Google Calendar colors to get color IDs
-    // Google Calendar uses color IDs (1-11) mapped by background color hex
-    const rows = await sql`
-      SELECT
-        pm.toggl_project_name,
-        pm.gcal_color_name,
-        cc.color_hex,
-        gc.color_id as gcal_color_id
-      FROM staging.stg_coda__time_toggl_project_to_gcal_color pm
-      JOIN staging.stg_coda__mst_google_calendar_colors cc
-        ON pm.gcal_color_row_id = cc.row_id
-      LEFT JOIN staging.stg_google_calendar__colors gc
-        ON gc.color_kind = 'event'
-        AND gc.background_color = cc.color_hex
-    `;
+  // Get project to color mappings from Coda
+  const { data: projectMappings, error: pmError } = await supabase
+    .schema("staging")
+    .from("stg_coda__time_toggl_project_to_gcal_color")
+    .select("toggl_project_name, gcal_color_row_id");
 
-    const mappings = new Map<string, string>();
-    for (const row of rows) {
-      if (row.gcal_color_id) {
-        mappings.set(row.toggl_project_name, row.gcal_color_id);
+  if (pmError || !projectMappings) {
+    console.error("Failed to get project mappings:", pmError);
+    return new Map();
+  }
+
+  // Get color hex values
+  const { data: codaColors, error: ccError } = await supabase
+    .schema("staging")
+    .from("stg_coda__mst_google_calendar_colors")
+    .select("row_id, color_hex");
+
+  if (ccError || !codaColors) {
+    console.error("Failed to get coda colors:", ccError);
+    return new Map();
+  }
+
+  // Get GCal color IDs
+  const { data: gcalColors, error: gcError } = await supabase
+    .schema("staging")
+    .from("stg_google_calendar__colors")
+    .select("color_id, background_color")
+    .eq("color_kind", "event");
+
+  if (gcError || !gcalColors) {
+    console.error("Failed to get gcal colors:", gcError);
+    return new Map();
+  }
+
+  // Build lookup maps
+  const colorHexMap = new Map<string, string>();
+  for (const c of codaColors) {
+    colorHexMap.set(c.row_id, c.color_hex);
+  }
+
+  const gcalColorIdMap = new Map<string, string>();
+  for (const g of gcalColors) {
+    gcalColorIdMap.set(g.background_color, g.color_id);
+  }
+
+  // Build final mapping
+  const mappings = new Map<string, string>();
+  for (const pm of projectMappings) {
+    const colorHex = colorHexMap.get(pm.gcal_color_row_id);
+    if (colorHex) {
+      const gcalColorId = gcalColorIdMap.get(colorHex);
+      if (gcalColorId) {
+        mappings.set(pm.toggl_project_name, gcalColorId);
       }
     }
-
-    return mappings;
-  } finally {
-    await sql.end();
   }
+
+  return mappings;
 }
