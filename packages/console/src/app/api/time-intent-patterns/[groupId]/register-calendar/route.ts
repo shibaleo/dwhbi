@@ -4,7 +4,7 @@ import { getPattern, type PatternEntry } from "@/lib/patterns";
 import {
   createEvents,
   type CreateEventInput,
-} from "@repo/connector/google-calendar/create-events";
+} from "@/lib/google-calendar";
 
 // Toggl color hex -> GCal colorId (static mapping, no DB query needed)
 // GCal colors: 1=Lavender, 2=Sage, 3=Grape, 4=Flamingo, 5=Banana, 6=Tangerine, 7=Peacock, 8=Graphite, 9=Blueberry, 10=Basil, 11=Tomato
