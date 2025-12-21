@@ -5,11 +5,7 @@ import { getServiceCredentials, saveServiceCredentials } from "@/lib/vault";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 
 function getRedirectUri() {
-  // Vercel環境ではVERCEL_URLを使用
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}/api/oauth/google_calendar/callback`;
-  }
-  // 本番URLが設定されている場合はそれを使用
+  // 本番URLが設定されている場合はそれを使用（最優先）
   if (process.env.NEXT_PUBLIC_APP_URL) {
     return `${process.env.NEXT_PUBLIC_APP_URL}/api/oauth/google_calendar/callback`;
   }
