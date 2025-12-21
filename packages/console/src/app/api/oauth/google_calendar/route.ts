@@ -7,12 +7,8 @@ const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 // calendar scope includes read/write access to events
 const SCOPES = "https://www.googleapis.com/auth/calendar";
 
-function getRedirectUri(request?: Request) {
-  // Vercel環境ではVERCEL_URLを使用、なければリクエストURLから取得
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}/api/oauth/google_calendar/callback`;
-  }
-  // 本番URLが設定されている場合はそれを使用
+function getRedirectUri() {
+  // 本番URLが設定されている場合はそれを使用（最優先）
   if (process.env.NEXT_PUBLIC_APP_URL) {
     return `${process.env.NEXT_PUBLIC_APP_URL}/api/oauth/google_calendar/callback`;
   }
