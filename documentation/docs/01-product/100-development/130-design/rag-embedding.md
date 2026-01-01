@@ -783,9 +783,9 @@ npm登録不要。ローカルパスで直接実行。
 | 項目 | 状態 |
 |------|------|
 | チャンキング戦略 | ✅ 設計完了 |
-| DBスキーマ | ✅ 設計完了 |
+| DBスキーマ | ✅ 実装完了 |
 | パイプライン設計 | ✅ 設計完了 |
 | MCP連携設計 | ✅ 設計完了 |
-| connector/github-contents | ⏳ 実装待ち |
-| analyzer/embedding | ⏳ 実装待ち |
+| connector/github-contents | ✅ 実装完了 |
+| analyzer/embedding | ✅ 実装完了（バッチ処理最適化済み） |
 | mcp-personal-knowledge（別リポジトリ） | ⏳ 実装待ち |
