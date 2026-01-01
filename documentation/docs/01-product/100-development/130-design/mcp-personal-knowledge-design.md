@@ -740,6 +740,104 @@ search_chunks関数は `SECURITY DEFINER` で定義されているため、RLS�
 
 ---
 
+## OAuth認証設定（Claude カスタムコネクタ）
+
+Claude (claude.ai) からリモート MCP サーバーに接続する場合、OAuth 2.1 認証が必要。Supabase OAuth Server (beta) を使用。
+
+### 必須設定
+
+#### 1. JWT Signing Keys の移行（必須）
+
+**これが最も重要な設定。** Supabase はデフォルトで HS256（対称鍵）を使用するが、OAuth Server の ID Token 生成には非対称鍵（ES256/RS256）が必要。
+
+**設定手順:**
+1. Supabase Dashboard → Settings → JWT Keys
+2. 「JWT Signing Keys」タブを選択
+3. 「Migrate JWT secret」をクリック
+4. 「Rotate keys」をクリックして ECC (P-256) を CURRENT KEY に切り替え
+
+**この設定がないと:**
+```
+/oauth/token | 500: Error generating ID token
+```
+というエラーが発生し、トークン交換に失敗する。
+
+#### 2. OAuth Server の有効化
+
+Supabase Dashboard → Authentication → OAuth Server:
+- Enable the Supabase OAuth Server: ON
+- Site URL: `https://dwhbi-console.vercel.app/`
+- Authorization Path: `/auth/consent`
+
+#### 3. OAuth Protected Resource メタデータ
+
+`/.well-known/oauth-protected-resource` エンドポイントを実装:
+
+```typescript
+// packages/console/src/app/.well-known/oauth-protected-resource/route.ts
+export async function GET() {
+  const metadata = {
+    resource: `${baseUrl}/api/mcp`,
+    authorization_servers: [`${supabaseUrl}/auth/v1`],
+    scopes_supported: ["profile", "email"],
+    bearer_methods_supported: ["header"],
+  };
+  return NextResponse.json(metadata);
+}
+```
+
+#### 4. WWW-Authenticate ヘッダー
+
+401 レスポンスに WWW-Authenticate ヘッダーを含める:
+
+```typescript
+function createUnauthorizedResponse(error: string): NextResponse {
+  const resourceMetadataUrl = `${baseUrl}/.well-known/oauth-protected-resource`;
+  return NextResponse.json(
+    { error },
+    {
+      status: 401,
+      headers: {
+        "WWW-Authenticate": `Bearer resource_metadata="${resourceMetadataUrl}"`,
+      },
+    }
+  );
+}
+```
+
+#### 5. Middleware からの除外
+
+`/api/mcp` と `/.well-known` パスを認証リダイレクトから除外:
+
+```typescript
+// proxy.ts
+if (
+  !user &&
+  !request.nextUrl.pathname.startsWith("/api/mcp") &&
+  !request.nextUrl.pathname.startsWith("/.well-known")
+) {
+  // リダイレクト
+}
+```
+
+### 追加設定（検証中）
+
+以下の設定は有効にしたが、必須かどうかは未確認:
+
+- **Allow Dynamic OAuth Apps**: ON（Claude が Dynamic Client Registration を使用する場合に必要かもしれない）
+- **OAuth App の Public Client**: ON（PKCE 必須のため）
+
+### トラブルシューティング
+
+| エラー | 原因 | 解決策 |
+|--------|------|--------|
+| `/oauth/token \| 500: Error generating ID token` | JWT が HS256（対称鍵）のまま | JWT Signing Keys を ES256/RS256 に移行 |
+| `authorization request cannot be processed` | 古い authorization_id を使用 | コネクタを削除して再作成 |
+| MCP エンドポイントが 307 リダイレクト | Middleware が認証リダイレクトを実行 | `/api/mcp` を除外設定 |
+| 401 後に OAuth フローが開始しない | WWW-Authenticate ヘッダーがない | resource_metadata を含むヘッダーを追加 |
+
+---
+
 ## 実装ステータス
 
 | 項目 | 状態 |
@@ -750,8 +848,9 @@ search_chunks関数は `SECURITY DEFINER` で定義されているため、RLS�
 | get_doc実装 | ✅ |
 | list_tags実装 | ✅ |
 | /api/mcp エンドポイント | ✅ |
-| Claude Desktop設定 | ⏳ Vercelデプロイ後にテスト |
-| テスト | ⏳ 動作確認待ち |
+| OAuth認証（カスタムコネクタ） | ✅ |
+| Claude Desktop設定 | ✅ |
+| テスト | ✅ |
 
 ---
 

@@ -7,7 +7,7 @@ import { z } from "zod";
 import { QueryEmbedder } from "./embedder";
 import { DocsRepository } from "./repository";
 
-const SIMILARITY_THRESHOLD = 0.7;
+const SIMILARITY_THRESHOLD = 0.5;
 
 export function createMcpServer(voyageApiKey: string): McpServer {
   const embedder = new QueryEmbedder(voyageApiKey);
