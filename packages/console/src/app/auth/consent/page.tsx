@@ -43,12 +43,22 @@ function OAuthConsentContent() {
       }
 
       try {
+        console.log("[OAuth Consent] Fetching authorization details:", authorizationId);
         const { data, error: authError } = await supabase.auth.oauth.getAuthorizationDetails(
           authorizationId
         );
 
+        console.log("[OAuth Consent] Authorization details result:", { data, error: authError });
+
         if (authError) {
-          setError(authError.message);
+          // Check if authorization is already processed or expired
+          if (authError.message.includes("cannot be processed") ||
+              authError.message.includes("not found") ||
+              authError.message.includes("expired")) {
+            setError("この認可リクエストは無効または期限切れです。Claudeに戻って再度接続をお試しください。");
+          } else {
+            setError(authError.message);
+          }
           setLoading(false);
           return;
         }
@@ -80,7 +90,12 @@ function OAuthConsentContent() {
 
       if (approveError) {
         console.error("[OAuth Consent] Approve error:", approveError);
-        setError(approveError.message);
+        // Check if already processed - try to get details again to see the state
+        if (approveError.message.includes("cannot be processed")) {
+          setError("この認可リクエストは既に処理済みです。Claudeに戻って再度接続をお試しください。");
+        } else {
+          setError(approveError.message);
+        }
         setProcessing(false);
         return;
       }
@@ -168,7 +183,10 @@ function OAuthConsentContent() {
           <h1 className="text-xl font-semibold text-center text-red-600 dark:text-red-400 mb-4">
             エラー
           </h1>
-          <p className="text-zinc-600 dark:text-zinc-400 text-center">{error}</p>
+          <p className="text-zinc-600 dark:text-zinc-400 text-center mb-4">{error}</p>
+          <p className="text-xs text-zinc-500 dark:text-zinc-500 text-center">
+            このページを閉じて、Claudeから再度接続をお試しください。
+          </p>
         </div>
       </div>
     );
