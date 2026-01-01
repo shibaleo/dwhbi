@@ -35,13 +35,15 @@ export async function updateSession(request: NextRequest) {
 
   // 未認証ユーザーをログインページにリダイレクト
   // /api/mcp は独自のOAuth認証を使用するため除外
+  // /.well-known はOAuthメタデータのため除外
   if (
     !user &&
     !request.nextUrl.pathname.startsWith("/login") &&
     !request.nextUrl.pathname.startsWith("/auth") &&
     !request.nextUrl.pathname.startsWith("/setup") &&
     !request.nextUrl.pathname.startsWith("/api/setup") &&
-    !request.nextUrl.pathname.startsWith("/api/mcp")
+    !request.nextUrl.pathname.startsWith("/api/mcp") &&
+    !request.nextUrl.pathname.startsWith("/.well-known")
   ) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";

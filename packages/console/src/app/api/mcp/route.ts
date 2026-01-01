@@ -10,6 +10,26 @@ import { createClient } from "@supabase/supabase-js";
 import { createMcpServer } from "@/lib/mcp/server";
 import { getVoyageConfig } from "@/lib/vault";
 
+// Get the resource metadata URL for WWW-Authenticate header
+function getResourceMetadataUrl(): string {
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://dwhbi-console.vercel.app";
+  return `${baseUrl}/.well-known/oauth-protected-resource`;
+}
+
+// Create 401 response with WWW-Authenticate header
+function createUnauthorizedResponse(error: string): NextResponse {
+  const resourceMetadataUrl = getResourceMetadataUrl();
+  return NextResponse.json(
+    { error },
+    {
+      status: 401,
+      headers: {
+        "WWW-Authenticate": `Bearer resource_metadata="${resourceMetadataUrl}"`,
+      },
+    }
+  );
+}
+
 // Validate OAuth access token using Supabase
 async function validateAccessToken(request: NextRequest): Promise<{ valid: boolean; error?: string }> {
   const authHeader = request.headers.get("authorization");
@@ -78,10 +98,7 @@ export async function POST(request: NextRequest) {
   // Validate OAuth access token
   const authResult = await validateAccessToken(request);
   if (!authResult.valid) {
-    return NextResponse.json(
-      { error: authResult.error },
-      { status: 401 }
-    );
+    return createUnauthorizedResponse(authResult.error || "Unauthorized");
   }
 
   // Get Voyage API key from vault
@@ -114,10 +131,7 @@ export async function GET(request: NextRequest) {
   // Validate OAuth access token
   const authResult = await validateAccessToken(request);
   if (!authResult.valid) {
-    return NextResponse.json(
-      { error: authResult.error },
-      { status: 401 }
-    );
+    return createUnauthorizedResponse(authResult.error || "Unauthorized");
   }
 
   // Get Voyage API key from vault
@@ -162,10 +176,7 @@ export async function DELETE(request: NextRequest) {
   // Validate OAuth access token
   const authResult = await validateAccessToken(request);
   if (!authResult.valid) {
-    return NextResponse.json(
-      { error: authResult.error },
-      { status: 401 }
-    );
+    return createUnauthorizedResponse(authResult.error || "Unauthorized");
   }
 
   const sessionId = request.headers.get("mcp-session-id");
