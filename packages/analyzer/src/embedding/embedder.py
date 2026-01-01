@@ -1,7 +1,7 @@
 """Voyage AI embedding client."""
 
 import time
-from typing import Sequence
+from typing import Any, Sequence
 
 import voyageai
 
@@ -38,7 +38,7 @@ class EmbeddingClient:
         texts: list[str],
         max_retries: int = 3,
         base_delay: float = 1.0,
-    ) -> voyageai.EmbeddingsResponse:
+    ) -> Any:
         """リトライ付きembedding"""
         for attempt in range(max_retries):
             try:
