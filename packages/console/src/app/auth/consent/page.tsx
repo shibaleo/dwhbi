@@ -71,20 +71,30 @@ function OAuthConsentContent() {
     const supabase = createClient();
 
     try {
+      console.log("[OAuth Consent] Approving authorization:", authorizationId);
       const { data, error: approveError } = await supabase.auth.oauth.approveAuthorization(
         authorizationId
       );
 
+      console.log("[OAuth Consent] Approve result:", { data, error: approveError });
+
       if (approveError) {
+        console.error("[OAuth Consent] Approve error:", approveError);
         setError(approveError.message);
         setProcessing(false);
         return;
       }
 
       if (data?.redirect_url) {
+        console.log("[OAuth Consent] Redirecting to:", data.redirect_url);
         window.location.href = data.redirect_url;
+      } else {
+        console.error("[OAuth Consent] No redirect_url in response");
+        setError("リダイレクトURLが取得できませんでした");
+        setProcessing(false);
       }
     } catch (err) {
+      console.error("[OAuth Consent] Exception:", err);
       setError(err instanceof Error ? err.message : "承認処理に失敗しました");
       setProcessing(false);
     }
