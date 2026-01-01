@@ -1,6 +1,7 @@
 ---
 title: Personal Context Edge Function 詳細設計書
 description: MCPサーバーをSupabase Edge Functionsに移行するための詳細設計
+status: Phase 1, 3, 4 完了
 ---
 
 # Personal Context Edge Function 詳細設計書
@@ -8,6 +9,9 @@ description: MCPサーバーをSupabase Edge Functionsに移行するための�
 ## 概要
 
 本ドキュメントは [ADR-010](./131-decisions/adr_010-mcp-server-separation.md) に基づき、MCPサーバーをconsole（Next.js/Vercel）からSupabase Edge Functionsに移行するための詳細設計を記述する。
+
+> **実装状況**: Phase 1（RAG移植）、Phase 3（OAuth設定）、Phase 4（クリーンアップ）完了。
+> Phase 2（KG・Activity）は未着手。
 
 ### 移行の目的
 
@@ -1106,12 +1110,14 @@ supabase functions serve personal-context --env-file .env.local
 ### 本番デプロイ
 
 ```bash
-# デプロイ
-supabase functions deploy personal-context
+# デプロイ（--no-verify-jwt 必須！）
+supabase functions deploy personal-context --no-verify-jwt
 
 # ログ確認
 supabase functions logs personal-context
 ```
+
+> **重要**: `--no-verify-jwt` フラグが必須。このフラグがないとSupabaseがリクエストをEdge Functionに到達させる前に401を返す。カスタム認証（Supabase AuthのOAuthトークン検証）を行うため、Edge Function側で認証処理を実装している。
 
 ---
 
@@ -1142,34 +1148,73 @@ Claudeの「My Connectors」から以下の設定で登録:
 
 ## 移行チェックリスト
 
-### Phase 1: Supabase Edge Function作成
+### Phase 1: Supabase Edge Function作成 ✅ 完了
 
-- [ ] `supabase/functions/personal-context/` 作成
-- [ ] エントリーポイント（index.ts）実装
-- [ ] 認証処理（auth/validator.ts）実装
-- [ ] MCPプロトコル（mcp/）実装
-- [ ] RAGツール移植（rag/）
-- [ ] ローカルテスト
-- [ ] 本番デプロイ
+- [x] `supabase/functions/personal-context/` 作成
+- [x] エントリーポイント（index.ts）実装
+- [x] 認証処理（auth/validator.ts）実装
+- [x] MCPプロトコル（mcp/）実装
+- [x] RAGツール移植（rag/）- 9ツール全て
+- [x] 本番デプロイ（`--no-verify-jwt` フラグ必須）
 
-### Phase 2: KG・Activity機能追加
+### Phase 2: KG・Activity機能追加 📋 未着手
 
 - [ ] KGテーブル作成（migration）
 - [ ] KGリポジトリ・ツール実装
 - [ ] Activityリポジトリ・ツール実装
 - [ ] 統合テスト
 
-### Phase 3: OAuth設定更新
+### Phase 3: OAuth設定更新 ✅ 完了
 
-- [ ] Edge Function URLでOAuth動作確認
-- [ ] Claudeカスタムコネクタ更新
+- [x] Edge Function URLでOAuth動作確認
+- [x] Claudeカスタムコネクタ更新
+- [x] `WWW-Authenticate` ヘッダーにVercel metadata URL設定
 
-### Phase 4: console側クリーンアップ
+### Phase 4: console側クリーンアップ ✅ 完了
 
-- [ ] `/api/mcp` ルート削除
-- [ ] `/lib/mcp/` ディレクトリ削除
-- [ ] MCP関連依存削除（package.json）
-- [ ] Vercel環境変数整理
+- [x] `/api/mcp` ルート削除
+- [x] `/lib/mcp/` ディレクトリ削除
+- [x] MCP関連依存削除（`@modelcontextprotocol/sdk`, `voyageai`）
+- [x] 認証関連は保持（`/auth/consent/`, `/.well-known/oauth-protected-resource/`）
+
+---
+
+## 実装メモ
+
+### アーキテクチャ（実装後）
+
+```
+Claude
+  ↓ MCP Request (Bearer token)
+  ↓
+Supabase Edge Function (personal-context)
+  ↓ 401 Unauthorized + WWW-Authenticate
+  ↓
+Claude → Vercel (/.well-known/oauth-protected-resource)
+  ↓ authorization_servers → Supabase Auth
+  ↓
+Claude → Supabase Auth (OAuth)
+  ↓
+Vercel (/auth/consent) ← consent page
+  ↓
+Access Token発行
+  ↓
+Claude → Edge Function (with Bearer token)
+  ↓
+正常処理
+```
+
+### OAuthメタデータの分離
+
+- **Vercel** (`/.well-known/oauth-protected-resource`): 認可サーバー情報を返す
+- **Edge Function**: `WWW-Authenticate` ヘッダーでVercelのメタデータURLを指す
+
+この分離により、認証フローはVercel側で完結し、MCP処理はEdge Functionで行う。
+
+### Voyage API Key
+
+Supabase Vaultに保存されたAPI Keyを `console.get_service_secret` RPCで取得。
+環境変数ではなくVaultを使用することでセキュリティを確保。
 
 ---
 

@@ -9,7 +9,7 @@ date: 2026-01-01
 
 ## ステータス
 
-提案中
+承認済み（Phase 1, 3, 4 完了）
 
 ## コンテキスト
 
@@ -601,16 +601,16 @@ MCPエンドポイント移行後、以下を削除:
 
 ## 移行計画
 
-### Phase 1: Supabase Edge Function作成
+### Phase 1: Supabase Edge Function作成 ✅ 完了
 
-1. `supabase/functions/personal-context/` 作成
-2. 既存RAGツールをDeno TypeScriptに移植
-3. MCPプロトコル実装（SSE対応）
-4. 認証処理実装（Supabase Auth）
-5. ローカルテスト（`supabase functions serve`）
-6. デプロイ（`supabase functions deploy`）
+1. ✅ `supabase/functions/personal-context/` 作成
+2. ✅ 既存RAGツールをDeno TypeScriptに移植（9ツール全て）
+3. ✅ MCPプロトコル実装（JSON-RPC + SSE対応）
+4. ✅ 認証処理実装（Supabase Auth + service-role bypass）
+5. ⚠️ ローカルテスト（Docker未稼働のためスキップ）
+6. ✅ デプロイ（`supabase functions deploy personal-context --no-verify-jwt`）
 
-### Phase 2: KG・Activity機能追加
+### Phase 2: KG・Activity機能追加 📋 未着手
 
 1. Supabase migrationでKGテーブル作成（`kg_entities`, `kg_relations`）
 2. kg repository実装
@@ -618,19 +618,19 @@ MCPエンドポイント移行後、以下を削除:
 4. activity repository実装（既存raw.*テーブル参照）
 5. activity tools実装（`activity_*`）
 
-### Phase 3: OAuth設定更新
+### Phase 3: OAuth設定更新 ✅ 完了
 
-1. 既存OAuth AppのRedirect URIを更新（Edge Function URL）
-2. OAuth Protected Resource メタデータ更新
-3. Claude カスタムコネクタ更新
-4. 動作確認
+1. ✅ OAuth Protected Resource メタデータ更新（`resource` → Edge Function URL）
+2. ✅ `WWW-Authenticate` ヘッダーにVercelのmetadata URLを設定
+3. ✅ Claude カスタムコネクタ更新（MCP URL変更）
+4. ✅ 動作確認（全9ツール正常動作）
 
-### Phase 4: console側クリーンアップ
+### Phase 4: console側クリーンアップ ✅ 完了
 
-1. `/api/mcp` ルート削除
-2. `/lib/mcp/` ディレクトリ削除
-3. MCP関連依存削除
-4. Vercel環境変数整理
+1. ✅ `/api/mcp` ルート削除
+2. ✅ `/lib/mcp/` ディレクトリ削除
+3. ✅ MCP関連依存削除（`@modelcontextprotocol/sdk`, `voyageai`）
+4. ✅ 認証関連は保持（`/auth/consent/`, `/.well-known/oauth-protected-resource/`）
 
 ## メリット
 
