@@ -228,10 +228,185 @@ export function createMcpServer(voyageApiKey: string): McpServer {
     }
   );
 
-  // list_docs_by_date tool
+  // list_all_docs tool (no embedding required)
+  server.tool(
+    "list_all_docs",
+    "List all documents with pagination. Use offset and limit to navigate through the entire collection. No embedding required.",
+    {
+      offset: z.number().default(0).describe("Starting position (0-indexed)"),
+      limit: z.number().default(20).describe("Number of documents to return (max 100)"),
+    },
+    async ({ offset, limit }) => {
+      try {
+        const actualLimit = Math.min(limit ?? 20, 100); // Cap at 100
+        const result = await repository.listAllDocs(offset ?? 0, actualLimit);
+
+        if (result.docs.length === 0) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "No documents found.",
+              },
+            ],
+          };
+        }
+
+        const formatted = {
+          docs: result.docs.map((d) => ({
+            title: d.title || "(untitled)",
+            file_path: d.file_path,
+            tags: d.tags,
+          })),
+          pagination: {
+            offset: offset ?? 0,
+            limit: actualLimit,
+            total_count: result.total_count,
+            has_more: result.has_more,
+          },
+        };
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(formatted, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error: ${error instanceof Error ? error.message : "Unknown error"}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // search_by_keyword tool (no embedding required)
+  server.tool(
+    "search_by_keyword",
+    "Search documents by keywords in content. Supports multiple keywords (OR search) - useful for searching with synonyms. Returns matching documents with a snippet. No embedding required.",
+    {
+      keywords: z.array(z.string()).describe("Keywords to search for in document content (case-insensitive, OR logic)"),
+      limit: z.number().default(10).describe("Number of results to return"),
+    },
+    async ({ keywords, limit }) => {
+      try {
+        if (!keywords || keywords.length === 0) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "No keywords provided.",
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        const docs = await repository.searchByKeyword(keywords, limit ?? 10);
+
+        if (docs.length === 0) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `No documents found containing: ${keywords.join(", ")}`,
+              },
+            ],
+          };
+        }
+
+        const formatted = docs.map((d) => ({
+          title: d.title || "(untitled)",
+          file_path: d.file_path,
+          tags: d.tags,
+          snippet: d.snippet,
+        }));
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(formatted, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error: ${error instanceof Error ? error.message : "Unknown error"}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // search_by_title tool (no embedding required)
+  server.tool(
+    "search_by_title",
+    "Search documents by title using partial match. Fast and lightweight - no embedding required. Use when you know part of the document title.",
+    {
+      query: z.string().describe("Search query to match against document titles (case-insensitive)"),
+      limit: z.number().default(10).describe("Number of results to return"),
+    },
+    async ({ query, limit }) => {
+      try {
+        const docs = await repository.searchByTitle(query, limit ?? 10);
+
+        if (docs.length === 0) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `No documents found with title matching: ${query}`,
+              },
+            ],
+          };
+        }
+
+        const formatted = docs.map((d) => ({
+          title: d.title || "(untitled)",
+          file_path: d.file_path,
+          tags: d.tags,
+        }));
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(formatted, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error: ${error instanceof Error ? error.message : "Unknown error"}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // list_docs_by_date tool (file path based)
   server.tool(
     "list_docs_by_date",
-    "List documents by date extracted from file path (YYYYMMDD format). Use for finding oldest/newest files or filtering by date range.",
+    "List documents by date extracted from file path (YYYYMMDD format). Use for finding oldest/newest files or filtering by date range based on file naming.",
     {
       sort: z.enum(["asc", "desc"]).default("desc").describe("Sort order: 'asc' for oldest first, 'desc' for newest first"),
       after: z.string().optional().describe("Filter documents after this date (YYYYMMDD format, e.g., '20251201')"),
@@ -262,6 +437,68 @@ export function createMcpServer(voyageApiKey: string): McpServer {
           title: d.title || "(untitled)",
           file_path: d.file_path,
           created_date: d.created_date,
+          tags: d.tags,
+        }));
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(formatted, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error: ${error instanceof Error ? error.message : "Unknown error"}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // list_docs_by_frontmatter_date tool (created/updated in frontmatter)
+  server.tool(
+    "list_docs_by_frontmatter_date",
+    "List documents by created or updated date from frontmatter (ISO 8601). Use for finding recently created/modified documents or filtering by date range.",
+    {
+      date_field: z.enum(["created", "updated"]).default("created").describe("Which date field to use: 'created' or 'updated'"),
+      sort: z.enum(["asc", "desc"]).default("desc").describe("Sort order: 'asc' for oldest first, 'desc' for newest first"),
+      after: z.string().optional().describe("Filter documents after this datetime (ISO 8601, e.g., '2025-12-01T00:00:00+09:00' or '2025-12-01')"),
+      before: z.string().optional().describe("Filter documents before this datetime (ISO 8601, e.g., '2025-12-31T23:59:59+09:00' or '2025-12-31')"),
+      limit: z.number().default(10).describe("Number of documents to return"),
+    },
+    async ({ date_field, sort, after, before, limit }) => {
+      try {
+        const docs = await repository.listDocsByFrontmatterDate(
+          date_field ?? "created",
+          sort ?? "desc",
+          after ?? null,
+          before ?? null,
+          limit ?? 10
+        );
+
+        if (docs.length === 0) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "No documents found matching the criteria.",
+              },
+            ],
+          };
+        }
+
+        const formatted = docs.map((d) => ({
+          title: d.title || "(untitled)",
+          file_path: d.file_path,
+          created_at: d.created_at,
+          updated_at: d.updated_at,
           tags: d.tags,
         }));
 

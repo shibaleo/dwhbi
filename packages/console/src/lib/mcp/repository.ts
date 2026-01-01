@@ -37,6 +37,33 @@ export interface DocWithDate {
   created_date: string;
 }
 
+export interface TitleSearchResult {
+  file_path: string;
+  title: string;
+  tags: string[];
+}
+
+export interface PaginatedDocsResult {
+  docs: DocSummary[];
+  total_count: number;
+  has_more: boolean;
+}
+
+export interface ContentSearchResult {
+  file_path: string;
+  title: string;
+  tags: string[];
+  snippet: string;
+}
+
+export interface DocWithFrontmatterDate {
+  file_path: string;
+  title: string;
+  tags: string[];
+  created_at: string | null;
+  updated_at: string | null;
+}
+
 export class DocsRepository {
   async searchChunks(
     queryEmbedding: number[],
@@ -174,6 +201,163 @@ export class DocsRepository {
       title: d.title || "",
       tags: d.tags || [],
       created_date: d.created_date,
+    }));
+  }
+
+  async searchByTitle(
+    query: string,
+    limit: number
+  ): Promise<TitleSearchResult[]> {
+    const supabase = createClient();
+
+    // Case-insensitive partial match on title
+    const { data, error } = await supabase
+      .schema("raw")
+      .from("docs_github")
+      .select("file_path, frontmatter")
+      .ilike("frontmatter->>title", `%${query}%`)
+      .limit(limit);
+
+    if (error) {
+      throw new Error(`Failed to search by title: ${error.message}`);
+    }
+
+    return (data || []).map((d) => {
+      const frontmatter = d.frontmatter as Record<string, unknown>;
+      return {
+        file_path: d.file_path,
+        title: (frontmatter?.title as string) || "",
+        tags: (frontmatter?.tags as string[]) || [],
+      };
+    });
+  }
+
+  async listAllDocs(
+    offset: number,
+    limit: number
+  ): Promise<PaginatedDocsResult> {
+    const supabase = createClient();
+
+    // Get total count
+    const { count, error: countError } = await supabase
+      .schema("raw")
+      .from("docs_github")
+      .select("*", { count: "exact", head: true });
+
+    if (countError) {
+      throw new Error(`Failed to count docs: ${countError.message}`);
+    }
+
+    // Get paginated docs
+    const { data, error } = await supabase
+      .schema("raw")
+      .from("docs_github")
+      .select("file_path, frontmatter")
+      .order("file_path", { ascending: true })
+      .range(offset, offset + limit - 1);
+
+    if (error) {
+      throw new Error(`Failed to list docs: ${error.message}`);
+    }
+
+    const docs = (data || []).map((d) => {
+      const frontmatter = d.frontmatter as Record<string, unknown>;
+      return {
+        file_path: d.file_path,
+        title: (frontmatter?.title as string) || "",
+        tags: (frontmatter?.tags as string[]) || [],
+      };
+    });
+
+    return {
+      docs,
+      total_count: count || 0,
+      has_more: offset + docs.length < (count || 0),
+    };
+  }
+
+  async searchByKeyword(
+    keywords: string[],
+    limit: number
+  ): Promise<ContentSearchResult[]> {
+    const supabase = createClient();
+
+    // Build OR condition for multiple keywords
+    const orConditions = keywords.map(k => `content.ilike.%${k}%`).join(",");
+
+    // Case-insensitive keyword search in content (OR across keywords)
+    const { data, error } = await supabase
+      .schema("raw")
+      .from("docs_github")
+      .select("file_path, frontmatter, content")
+      .or(orConditions)
+      .limit(limit);
+
+    if (error) {
+      throw new Error(`Failed to search by keyword: ${error.message}`);
+    }
+
+    return (data || []).map((d) => {
+      const frontmatter = d.frontmatter as Record<string, unknown>;
+      const content = d.content as string;
+
+      // Extract snippet around the first matching keyword
+      const lowerContent = content.toLowerCase();
+      let snippet = "";
+
+      for (const keyword of keywords) {
+        const lowerKeyword = keyword.toLowerCase();
+        const index = lowerContent.indexOf(lowerKeyword);
+        if (index !== -1) {
+          const start = Math.max(0, index - 50);
+          const end = Math.min(content.length, index + keyword.length + 100);
+          snippet = (start > 0 ? "..." : "") + content.slice(start, end).trim() + (end < content.length ? "..." : "");
+          break;
+        }
+      }
+
+      return {
+        file_path: d.file_path,
+        title: (frontmatter?.title as string) || "",
+        tags: (frontmatter?.tags as string[]) || [],
+        snippet,
+      };
+    });
+  }
+
+  async listDocsByFrontmatterDate(
+    dateField: "created" | "updated",
+    sortOrder: "asc" | "desc",
+    afterDate: string | null,
+    beforeDate: string | null,
+    limit: number
+  ): Promise<DocWithFrontmatterDate[]> {
+    const supabase = createClient();
+
+    const { data, error } = await supabase.rpc("list_docs_by_frontmatter_date", {
+      date_field: dateField,
+      sort_order: sortOrder,
+      after_date: afterDate,
+      before_date: beforeDate,
+      match_count: limit,
+    });
+
+    if (error) {
+      throw new Error(`Failed to list docs by ${dateField}: ${error.message}`);
+    }
+
+    return (data || []).map((d: {
+      file_path: string;
+      title: string | null;
+      tags: string[] | null;
+      created_at: string | null;
+      updated_at: string | null;
+    }) => ({
+      file_path: d.file_path,
+      title: d.title || "",
+      tags: d.tags || [],
+      created_at: d.created_at,
+      updated_at: d.updated_at,
     }));
   }
 }
