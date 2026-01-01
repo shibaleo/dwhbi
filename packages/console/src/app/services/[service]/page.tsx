@@ -51,6 +51,10 @@ const SERVICE_FIELDS: Record<ServiceName, { key: string; label: string; type?: s
     { key: "api_token", label: "API Token", placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx", required: true, hint: "https://coda.io/account → API settings で取得" },
     { key: "doc_ids", label: "Doc IDs", placeholder: "AbCdEfGhIj\nKlMnOpQrSt\nUvWxYz1234", multiline: true, hint: "1行に1つのDoc IDを入力（複数可）", editable: true },
   ],
+  github_contents: [
+    { key: "token", label: "Personal Access Token", placeholder: "github_pat_xxx...", required: true, hint: "Fine-grained PAT (Contents: Read 権限が必要。全リポジトリにアクセス可能なトークン)" },
+    { key: "repositories", label: "Repositories", placeholder: "owner/repo/path\nowner/another-repo/docs\norg/project/content", multiline: true, required: true, hint: "1行に1つ: owner/repo/path 形式" },
+  ],
 };
 
 export default async function ServicePage({ params }: { params: Params }) {

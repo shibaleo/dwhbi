@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "01-product/100-development/120-specifications/124-console/intent.md",
+                "file": "01-product/100-development/130-design/rag-embedding-connector-design.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "intent"
+              "title": "rag-embedding-connector-design"
             }
           }
         ]
@@ -78,7 +78,8 @@
       }
     ],
     "direction": "horizontal",
-    "width": 300
+    "width": 300,
+    "collapsed": true
   },
   "right": {
     "id": "4321a1bd48499744",
@@ -185,13 +186,18 @@
   },
   "active": "46724a620c0a8d62",
   "lastOpenFiles": [
+    "01-product/100-development/130-design/rag-embedding-connector-design.md.tmp.5044.1767243929143",
+    "01-product/100-development/130-design/rag-embedding.md",
+    "01-product/100-development/130-design/rag-embedding-analyzer-design.md",
+    "01-product/100-development/130-design/rag-embedding-connector-design.md",
+    "01-product/100-development/130-design/rag-embedding-table-definition.md",
+    "01-product/100-development/120-specifications/124-console/intent.md",
     "01-product/100-development/120-specifications/124-console/intent.md.tmp.18932.1765428396931",
     "01-product/100-development/120-specifications/124-console/intent.md.tmp.18932.1765428106930",
     "01-product/000-foundations/020-philosophy/022-user-focus.md",
     "01-product/100-development/120-specifications/124-console/intent.md.tmp.18932.1765422539789",
     "01-product/100-development/120-specifications/124-console/intent.md.tmp.18932.1765418975130",
     "01-product/100-development/120-specifications/124-console/intent.md.tmp.18932.1765413784361",
-    "01-product/100-development/120-specifications/124-console/intent.md",
     "01-product/100-development/120-specifications/124-console/intent.md.tmp.18932.1765412921491",
     "01-product/100-development/120-specifications/123-transform/schema/core/006-intent.md",
     "01-product/100-development/120-specifications/125-analyzer/time/002-adjust-target-by-estimate.md",

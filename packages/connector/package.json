@@ -25,6 +25,10 @@
     "./google-calendar/create-events": {
       "import": "./src/services/google-calendar/create-events.ts",
       "types": "./src/services/google-calendar/create-events.ts"
+    },
+    "./github-contents": {
+      "import": "./src/services/github-contents/index.ts",
+      "types": "./src/services/github-contents/index.ts"
     }
   },
   "scripts": {
@@ -34,10 +38,13 @@
     "test:run": "vitest run",
     "sync:toggl": "npx tsx src/services/toggl-track/cli.ts",
     "sync:gcal": "npx tsx src/services/google-calendar/cli.ts",
-    "sync:coda": "npx tsx src/services/coda/cli.ts"
+    "sync:coda": "npx tsx src/services/coda/cli.ts",
+    "sync:github-contents": "npx tsx src/services/github-contents/index.ts"
   },
   "dependencies": {
+    "@octokit/rest": "^20.0.0",
     "dotenv": "^16.4.0",
+    "gray-matter": "^4.0.3",
     "pg": "^8.13.0"
   },
   "devDependencies": {

@@ -11,6 +11,7 @@ export const SERVICES = [
   "ticktick",
   "airtable",
   "coda",
+  "github_contents",
 ] as const;
 
 export type ServiceName = (typeof SERVICES)[number];
@@ -26,6 +27,7 @@ export const SERVICE_DISPLAY_NAMES: Record<ServiceName, string> = {
   ticktick: "TickTick",
   airtable: "Airtable",
   coda: "Coda",
+  github_contents: "GitHub Contents",
 };
 
 // 認証タイプ
@@ -39,6 +41,7 @@ export const SERVICE_AUTH_TYPES: Record<ServiceName, "api_key" | "oauth"> = {
   ticktick: "oauth",
   airtable: "api_key",
   coda: "api_key",
+  github_contents: "api_key",
 };
 
 export interface ServiceStatus {
@@ -219,6 +222,7 @@ export interface GitHubConfig {
 }
 
 const GITHUB_SECRET_NAME = "github";
+const GITHUB_CONTENTS_SECRET_NAME = "github_contents";
 
 /**
  * GitHub設定を取得
@@ -290,6 +294,111 @@ export async function hasGitHubConfig(): Promise<boolean> {
     .schema("console")
     .rpc("get_service_secret", {
       service_name: GITHUB_SECRET_NAME,
+    });
+
+  return !error && data !== null;
+}
+
+// ============================================
+// GitHub Contents API Token 管理
+// ============================================
+
+export interface GitHubContentsConfig {
+  token: string;
+  repositories: string; // "owner/repo/path" per line
+  expiresAt?: string | null;
+}
+
+/**
+ * Parse repositories string into array of {owner, repo, path}
+ */
+export function parseRepositories(repositories: string): Array<{ owner: string; repo: string; path: string }> {
+  return repositories
+    .split("\n")
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+    .map(line => {
+      const parts = line.split("/");
+      if (parts.length < 3) {
+        throw new Error(`Invalid repository format: ${line}. Expected owner/repo/path`);
+      }
+      return {
+        owner: parts[0],
+        repo: parts[1],
+        path: parts.slice(2).join("/"),
+      };
+    });
+}
+
+/**
+ * GitHub Contents設定を取得
+ */
+export async function getGitHubContentsConfig(): Promise<GitHubContentsConfig | null> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .schema("console")
+    .rpc("get_service_secret", {
+      service_name: GITHUB_CONTENTS_SECRET_NAME,
+    });
+
+  if (error || !data) {
+    return null;
+  }
+
+  return {
+    token: data.token || "",
+    repositories: data.repositories || "",
+    expiresAt: data.expiresAt || null,
+  };
+}
+
+/**
+ * GitHub Contents設定を保存
+ */
+export async function saveGitHubContentsConfig(config: GitHubContentsConfig): Promise<void> {
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .schema("console")
+    .rpc("upsert_service_secret", {
+      service_name: GITHUB_CONTENTS_SECRET_NAME,
+      secret_data: config,
+      secret_description: "GitHub Contents API token for RAG Embedding Connector",
+    });
+
+  if (error) {
+    throw new Error(`Failed to save GitHub Contents config: ${error.message}`);
+  }
+}
+
+/**
+ * GitHub Contents設定を削除
+ */
+export async function deleteGitHubContentsConfig(): Promise<void> {
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .schema("console")
+    .rpc("delete_service_secret", {
+      service_name: GITHUB_CONTENTS_SECRET_NAME,
+    });
+
+  if (error) {
+    throw new Error(`Failed to delete GitHub Contents config: ${error.message}`);
+  }
+}
+
+/**
+ * GitHub Contents設定が存在するかチェック
+ */
+export async function hasGitHubContentsConfig(): Promise<boolean> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .schema("console")
+    .rpc("get_service_secret", {
+      service_name: GITHUB_CONTENTS_SECRET_NAME,
     });
 
   return !error && data !== null;

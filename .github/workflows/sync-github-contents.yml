@@ -1,0 +1,34 @@
+name: GitHub Contents Sync
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sync-github-contents:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: packages/connector
+        run: npm install
+
+      - name: Run GitHub Contents sync
+        working-directory: packages/connector
+        env:
+          DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
+        run: npx tsx src/services/github-contents/index.ts
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ GitHub Contents同期が失敗しました"
+          echo "詳細は Actions ログを確認してください"
