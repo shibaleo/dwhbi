@@ -12,9 +12,11 @@ const logger = setupLogger("github-contents-sync");
 
 export class DocumentSyncer {
   private github: GitHubClient;
+  private config: SyncConfig;
 
   constructor(token: string, config: SyncConfig) {
     this.github = new GitHubClient(token, config);
+    this.config = config;
   }
 
   async sync(): Promise<SyncResult> {
@@ -27,7 +29,7 @@ export class DocumentSyncer {
     };
 
     const currentSha = await this.github.getCurrentSha();
-    const lastSyncedSha = await db.getSyncState();
+    const lastSyncedSha = await db.getSyncState(this.config.owner, this.config.repo);
 
     logger.info(`Current SHA: ${currentSha}`);
     logger.info(`Last synced SHA: ${lastSyncedSha ?? "(none)"}`);
@@ -43,7 +45,7 @@ export class DocumentSyncer {
       await this.incrementalSync(lastSyncedSha, currentSha, result);
     }
 
-    await db.updateSyncState(currentSha);
+    await db.updateSyncState(this.config.owner, this.config.repo, currentSha);
     return result;
   }
 

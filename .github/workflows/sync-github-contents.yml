@@ -1,4 +1,4 @@
-name: GitHub Contents Sync
+name: GitHub Contents Fetch
 
 on:
   workflow_dispatch:

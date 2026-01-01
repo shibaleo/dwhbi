@@ -2,7 +2,7 @@
  * GitHub Contents Connector - Markdown Parser
  */
 
-import * as matter from "gray-matter";
+import matter from "gray-matter";
 import { createHash } from "crypto";
 import type { GitHubFile, ParsedDocument } from "./types.js";
 

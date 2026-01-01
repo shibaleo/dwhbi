@@ -55,12 +55,21 @@ export async function getExistingHashes(): Promise<Map<string, string>> {
 }
 
 /**
+ * リポジトリ識別子を生成
+ */
+function getRepoSource(owner: string, repo: string): string {
+  return `github:${owner}/${repo}`;
+}
+
+/**
  * 同期状態を取得
  */
-export async function getSyncState(): Promise<string | null> {
+export async function getSyncState(owner: string, repo: string): Promise<string | null> {
   const client = await getDbClient();
+  const source = getRepoSource(owner, repo);
   const result = await client.query<{ last_synced_sha: string }>(
-    `SELECT last_synced_sha FROM raw.sync_state WHERE source = 'github'`
+    `SELECT last_synced_sha FROM raw.sync_state WHERE source = $1`,
+    [source]
   );
   return result.rows[0]?.last_synced_sha ?? null;
 }
@@ -68,15 +77,16 @@ export async function getSyncState(): Promise<string | null> {
 /**
  * 同期状態を更新
  */
-export async function updateSyncState(sha: string): Promise<void> {
+export async function updateSyncState(owner: string, repo: string, sha: string): Promise<void> {
   const client = await getDbClient();
+  const source = getRepoSource(owner, repo);
   await client.query(
     `INSERT INTO raw.sync_state (source, last_synced_sha, synced_at)
-     VALUES ('github', $1, NOW())
+     VALUES ($1, $2, NOW())
      ON CONFLICT (source) DO UPDATE SET
        last_synced_sha = EXCLUDED.last_synced_sha,
        synced_at = EXCLUDED.synced_at`,
-    [sha]
+    [source, sha]
   );
-  logger.debug(`Updated sync state to SHA: ${sha}`);
+  logger.debug(`Updated sync state for ${source} to SHA: ${sha}`);
 }
