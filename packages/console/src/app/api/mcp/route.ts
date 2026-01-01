@@ -35,10 +35,12 @@ async function validateAccessToken(request: NextRequest): Promise<{ valid: boole
   const authHeader = request.headers.get("authorization");
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    console.log("[MCP Auth] No authorization header");
     return { valid: false, error: "Missing or invalid Authorization header" };
   }
 
   const accessToken = authHeader.substring(7); // Remove "Bearer " prefix
+  console.log("[MCP Auth] Token received, length:", accessToken.length);
 
   // Create Supabase client and verify the token
   const supabase = createClient(
@@ -49,9 +51,11 @@ async function validateAccessToken(request: NextRequest): Promise<{ valid: boole
   const { data: { user }, error } = await supabase.auth.getUser(accessToken);
 
   if (error || !user) {
+    console.log("[MCP Auth] Token validation failed:", error?.message);
     return { valid: false, error: error?.message || "Invalid access token" };
   }
 
+  console.log("[MCP Auth] Token valid for user:", user.id);
   return { valid: true };
 }
 
@@ -95,31 +99,43 @@ async function getOrCreateTransport(
 }
 
 export async function POST(request: NextRequest) {
+  console.log("[MCP POST] Request received");
+
   // Validate OAuth access token
   const authResult = await validateAccessToken(request);
   if (!authResult.valid) {
+    console.log("[MCP POST] Auth failed:", authResult.error);
     return createUnauthorizedResponse(authResult.error || "Unauthorized");
   }
+
+  console.log("[MCP POST] Auth successful");
 
   // Get Voyage API key from vault
   const voyageConfig = await getVoyageConfig();
   if (!voyageConfig?.api_key) {
+    console.log("[MCP POST] Voyage not configured");
     return NextResponse.json(
       { error: "Voyage AI not configured. Please configure it in settings." },
       { status: 500 }
     );
   }
 
+  console.log("[MCP POST] Voyage configured");
+
   try {
     const sessionId = request.headers.get("mcp-session-id");
+    console.log("[MCP POST] Session ID:", sessionId);
+
     const { transport } = await getOrCreateTransport(sessionId, voyageConfig.api_key);
+    console.log("[MCP POST] Transport ready");
 
     // Convert NextRequest to standard Request and handle
     const response = await transport.handleRequest(request as unknown as Request);
+    console.log("[MCP POST] Response generated");
 
     return response;
   } catch (error) {
-    console.error("MCP POST error:", error);
+    console.error("[MCP POST] Error:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }
