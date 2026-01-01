@@ -25,7 +25,7 @@ jobs:
         working-directory: packages/connector
         env:
           DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
-        run: npx tsx src/services/github-contents/index.ts
+        run: npx tsx src/services/github-contents/cli.ts
 
       - name: Notify on failure
         if: failure()
