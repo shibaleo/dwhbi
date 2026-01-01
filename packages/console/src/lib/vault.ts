@@ -403,3 +403,85 @@ export async function hasGitHubContentsConfig(): Promise<boolean> {
 
   return !error && data !== null;
 }
+
+// ============================================
+// Voyage AI API Key 管理
+// ============================================
+
+const VOYAGE_SECRET_NAME = "voyage";
+
+export interface VoyageConfig {
+  api_key: string;
+}
+
+/**
+ * Voyage AI設定を取得
+ */
+export async function getVoyageConfig(): Promise<VoyageConfig | null> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .schema("console")
+    .rpc("get_service_secret", {
+      service_name: VOYAGE_SECRET_NAME,
+    });
+
+  if (error || !data) {
+    return null;
+  }
+
+  return {
+    api_key: data.api_key || "",
+  };
+}
+
+/**
+ * Voyage AI設定を保存
+ */
+export async function saveVoyageConfig(config: VoyageConfig): Promise<void> {
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .schema("console")
+    .rpc("upsert_service_secret", {
+      service_name: VOYAGE_SECRET_NAME,
+      secret_data: { ...config, _auth_type: "api_key" },
+      secret_description: "Voyage AI API Key for embeddings",
+    });
+
+  if (error) {
+    throw new Error(`Failed to save Voyage config: ${error.message}`);
+  }
+}
+
+/**
+ * Voyage AI設定を削除
+ */
+export async function deleteVoyageConfig(): Promise<void> {
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .schema("console")
+    .rpc("delete_service_secret", {
+      service_name: VOYAGE_SECRET_NAME,
+    });
+
+  if (error) {
+    throw new Error(`Failed to delete Voyage config: ${error.message}`);
+  }
+}
+
+/**
+ * Voyage AI設定が存在するかチェック
+ */
+export async function hasVoyageConfig(): Promise<boolean> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .schema("console")
+    .rpc("get_service_secret", {
+      service_name: VOYAGE_SECRET_NAME,
+    });
+
+  return !error && data !== null;
+}

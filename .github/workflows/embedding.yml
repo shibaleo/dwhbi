@@ -1,0 +1,37 @@
+name: Generate Embeddings
+
+on:
+  workflow_run:
+    workflows: ["GitHub Contents Fetch"]
+    types: [completed]
+  workflow_dispatch:
+
+jobs:
+  embed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -e .
+        working-directory: packages/analyzer
+
+      - name: Run embedding pipeline
+        run: python -m src.embedding.main
+        working-directory: packages/analyzer
+        env:
+          DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "Embedding generation failed"
+          echo "Check the logs for details"
