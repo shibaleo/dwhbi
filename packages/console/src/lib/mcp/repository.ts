@@ -30,6 +30,13 @@ export interface DocSummary {
   tags: string[];
 }
 
+export interface DocWithDate {
+  file_path: string;
+  title: string;
+  tags: string[];
+  created_date: string;
+}
+
 export class DocsRepository {
   async searchChunks(
     queryEmbedding: number[],
@@ -141,5 +148,32 @@ export class DocsRepository {
         };
       });
     }
+  }
+
+  async listDocsByDate(
+    sortOrder: "asc" | "desc",
+    afterDate: string | null,
+    beforeDate: string | null,
+    limit: number
+  ): Promise<DocWithDate[]> {
+    const supabase = createClient();
+
+    const { data, error } = await supabase.rpc("list_docs_by_date", {
+      sort_order: sortOrder,
+      after_date: afterDate,
+      before_date: beforeDate,
+      match_count: limit,
+    });
+
+    if (error) {
+      throw new Error(`Failed to list docs by date: ${error.message}`);
+    }
+
+    return (data || []).map((d: { file_path: string; title: string | null; tags: string[] | null; created_date: string }) => ({
+      file_path: d.file_path,
+      title: d.title || "",
+      tags: d.tags || [],
+      created_date: d.created_date,
+    }));
   }
 }

@@ -228,5 +228,64 @@ export function createMcpServer(voyageApiKey: string): McpServer {
     }
   );
 
+  // list_docs_by_date tool
+  server.tool(
+    "list_docs_by_date",
+    "List documents by date extracted from file path (YYYYMMDD format). Use for finding oldest/newest files or filtering by date range.",
+    {
+      sort: z.enum(["asc", "desc"]).default("desc").describe("Sort order: 'asc' for oldest first, 'desc' for newest first"),
+      after: z.string().optional().describe("Filter documents after this date (YYYYMMDD format, e.g., '20251201')"),
+      before: z.string().optional().describe("Filter documents before this date (YYYYMMDD format, e.g., '20251207')"),
+      limit: z.number().default(5).describe("Number of documents to return"),
+    },
+    async ({ sort, after, before, limit }) => {
+      try {
+        const docs = await repository.listDocsByDate(
+          sort ?? "desc",
+          after ?? null,
+          before ?? null,
+          limit ?? 5
+        );
+
+        if (docs.length === 0) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "No documents found matching the criteria.",
+              },
+            ],
+          };
+        }
+
+        const formatted = docs.map((d) => ({
+          title: d.title || "(untitled)",
+          file_path: d.file_path,
+          created_date: d.created_date,
+          tags: d.tags,
+        }));
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(formatted, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error: ${error instanceof Error ? error.message : "Unknown error"}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
   return server;
 }
