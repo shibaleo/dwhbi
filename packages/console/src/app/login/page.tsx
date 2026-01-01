@@ -1,16 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [checkingSetup, setCheckingSetup] = useState(true);
+
+  const redirectUrl = searchParams.get("redirect");
 
   useEffect(() => {
     // 初回セットアップが必要か確認
@@ -47,7 +50,8 @@ export default function LoginPage() {
       return;
     }
 
-    window.location.href = "/";
+    // Redirect to the original URL or home
+    window.location.href = redirectUrl || "/";
   };
 
   if (checkingSetup) {
@@ -114,5 +118,19 @@ export default function LoginPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-zinc-900">
+          <p className="text-zinc-500 dark:text-zinc-400">読み込み中...</p>
+        </div>
+      }
+    >
+      <LoginContent />
+    </Suspense>
   );
 }

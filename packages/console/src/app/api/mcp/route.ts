@@ -1,12 +1,39 @@
 /**
  * MCP API Route - Streamable HTTP transport for MCP server
  * Uses Web Standard APIs compatible with Next.js App Router
+ * Supports OAuth 2.0 authentication via Supabase OAuth Server
  */
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
 import { createMcpServer } from "@/lib/mcp/server";
 import { getVoyageConfig } from "@/lib/vault";
+
+// Validate OAuth access token using Supabase
+async function validateAccessToken(request: NextRequest): Promise<{ valid: boolean; error?: string }> {
+  const authHeader = request.headers.get("authorization");
+
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return { valid: false, error: "Missing or invalid Authorization header" };
+  }
+
+  const accessToken = authHeader.substring(7); // Remove "Bearer " prefix
+
+  // Create Supabase client and verify the token
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
+  const { data: { user }, error } = await supabase.auth.getUser(accessToken);
+
+  if (error || !user) {
+    return { valid: false, error: error?.message || "Invalid access token" };
+  }
+
+  return { valid: true };
+}
 
 // Session storage for MCP connections
 const sessions = new Map<string, WebStandardStreamableHTTPServerTransport>();
@@ -48,6 +75,15 @@ async function getOrCreateTransport(
 }
 
 export async function POST(request: NextRequest) {
+  // Validate OAuth access token
+  const authResult = await validateAccessToken(request);
+  if (!authResult.valid) {
+    return NextResponse.json(
+      { error: authResult.error },
+      { status: 401 }
+    );
+  }
+
   // Get Voyage API key from vault
   const voyageConfig = await getVoyageConfig();
   if (!voyageConfig?.api_key) {
@@ -75,6 +111,15 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  // Validate OAuth access token
+  const authResult = await validateAccessToken(request);
+  if (!authResult.valid) {
+    return NextResponse.json(
+      { error: authResult.error },
+      { status: 401 }
+    );
+  }
+
   // Get Voyage API key from vault
   const voyageConfig = await getVoyageConfig();
   if (!voyageConfig?.api_key) {
@@ -114,6 +159,15 @@ export async function GET(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  // Validate OAuth access token
+  const authResult = await validateAccessToken(request);
+  if (!authResult.valid) {
+    return NextResponse.json(
+      { error: authResult.error },
+      { status: 401 }
+    );
+  }
+
   const sessionId = request.headers.get("mcp-session-id");
 
   if (sessionId && sessions.has(sessionId)) {
