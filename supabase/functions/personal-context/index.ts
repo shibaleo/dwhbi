@@ -49,8 +49,8 @@ function handleOAuthMetadata(): Response {
 }
 
 function createUnauthorizedResponse(): Response {
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const resourceMetadataUrl = `${supabaseUrl}/functions/v1/personal-context/.well-known/oauth-protected-resource`;
+  // Resource MetadataはVercel (console)にある
+  const resourceMetadataUrl = "https://dwhbi-console.vercel.app/.well-known/oauth-protected-resource";
 
   return new Response(JSON.stringify({ error: "Unauthorized" }), {
     status: 401,
