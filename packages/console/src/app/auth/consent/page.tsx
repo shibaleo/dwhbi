@@ -65,7 +65,7 @@ function OAuthConsentContent() {
   }, [authorizationId]);
 
   const handleApprove = async () => {
-    if (!authorizationId) return;
+    if (!authorizationId || processing) return;
 
     setProcessing(true);
     const supabase = createClient();
@@ -101,7 +101,7 @@ function OAuthConsentContent() {
   };
 
   const handleDeny = async () => {
-    if (!authorizationId) return;
+    if (!authorizationId || processing) return;
 
     setProcessing(true);
     const supabase = createClient();
