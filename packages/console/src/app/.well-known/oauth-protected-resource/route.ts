@@ -5,11 +5,10 @@
 import { NextResponse } from "next/server";
 
 export async function GET() {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://dwhbi-console.vercel.app";
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
   const metadata = {
-    resource: `${baseUrl}/api/mcp`,
+    resource: `${supabaseUrl}/functions/v1/personal-context`,
     authorization_servers: [`${supabaseUrl}/auth/v1`],
     scopes_supported: ["openid", "profile", "email"],
     bearer_methods_supported: ["header"],
