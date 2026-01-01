@@ -7,7 +7,8 @@ import { z } from "zod";
 import { QueryEmbedder } from "./embedder";
 import { DocsRepository } from "./repository";
 
-const SIMILARITY_THRESHOLD = 0.5;
+// No similarity threshold - return top N results by similarity
+const SIMILARITY_THRESHOLD = 0;
 
 export function createMcpServer(voyageApiKey: string): McpServer {
   const embedder = new QueryEmbedder(voyageApiKey);
@@ -112,6 +113,58 @@ export function createMcpServer(voyageApiKey: string): McpServer {
             {
               type: "text" as const,
               text: `# ${doc.title || "(untitled)"}\n\n${tagsLine}---\n\n${doc.content}`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error: ${error instanceof Error ? error.message : "Unknown error"}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // list_docs_by_tag tool
+  server.tool(
+    "list_docs_by_tag",
+    "List documents by tag. Use for browsing by category instead of semantic search. Supports random sampling.",
+    {
+      tag: z.string().describe("Tag to filter by (e.g., 'math', 'daily')"),
+      limit: z.number().default(5).describe("Number of documents to return"),
+      random: z.boolean().default(false).describe("If true, return random documents from the tag"),
+    },
+    async ({ tag, limit, random }) => {
+      try {
+        const docs = await repository.listDocsByTag(tag, limit ?? 5, random ?? false);
+
+        if (docs.length === 0) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `No documents found with tag: ${tag}`,
+              },
+            ],
+          };
+        }
+
+        const formatted = docs.map((d) => ({
+          title: d.title || "(untitled)",
+          file_path: d.file_path,
+          tags: d.tags,
+        }));
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(formatted, null, 2),
             },
           ],
         };

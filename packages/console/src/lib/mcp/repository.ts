@@ -24,6 +24,12 @@ export interface TagInfo {
   count: number;
 }
 
+export interface DocSummary {
+  file_path: string;
+  title: string;
+  tags: string[];
+}
+
 export class DocsRepository {
   async searchChunks(
     queryEmbedding: number[],
@@ -82,5 +88,58 @@ export class DocsRepository {
     }
 
     return data || [];
+  }
+
+  async listDocsByTag(
+    tag: string,
+    limit: number,
+    random: boolean
+  ): Promise<DocSummary[]> {
+    const supabase = createClient();
+
+    let query = supabase
+      .schema("raw")
+      .from("docs_github")
+      .select("file_path, frontmatter")
+      .contains("frontmatter->tags", JSON.stringify([tag]));
+
+    if (random) {
+      // For random, we fetch more and shuffle client-side
+      // This is simpler than using PostgreSQL TABLESAMPLE
+      const { data, error } = await query.limit(Math.min(limit * 3, 100));
+
+      if (error) {
+        throw new Error(`Failed to list docs by tag: ${error.message}`);
+      }
+
+      // Shuffle and take limit
+      const shuffled = (data || [])
+        .sort(() => Math.random() - 0.5)
+        .slice(0, limit);
+
+      return shuffled.map((d) => {
+        const frontmatter = d.frontmatter as Record<string, unknown>;
+        return {
+          file_path: d.file_path,
+          title: (frontmatter?.title as string) || "",
+          tags: (frontmatter?.tags as string[]) || [],
+        };
+      });
+    } else {
+      const { data, error } = await query.limit(limit);
+
+      if (error) {
+        throw new Error(`Failed to list docs by tag: ${error.message}`);
+      }
+
+      return (data || []).map((d) => {
+        const frontmatter = d.frontmatter as Record<string, unknown>;
+        return {
+          file_path: d.file_path,
+          title: (frontmatter?.title as string) || "",
+          tags: (frontmatter?.tags as string[]) || [],
+        };
+      });
+    }
   }
 }

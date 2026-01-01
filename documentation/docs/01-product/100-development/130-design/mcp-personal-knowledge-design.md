@@ -820,12 +820,12 @@ if (
 }
 ```
 
-### 追加設定（検証中）
+### 不要な設定
 
-以下の設定は有効にしたが、必須かどうかは未確認:
+検証の結果、以下の設定は不要であることが確認された:
 
-- **Allow Dynamic OAuth Apps**: ON（Claude が Dynamic Client Registration を使用する場合に必要かもしれない）
-- **OAuth App の Public Client**: ON（PKCE 必須のため）
+- **Allow Dynamic OAuth Apps**: OFF で動作する（Claude は Dynamic Client Registration を使用しない）
+- **OAuth App の Public Client**: OFF で動作する
 
 ### トラブルシューティング
 
