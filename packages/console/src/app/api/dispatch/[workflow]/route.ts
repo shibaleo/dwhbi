@@ -12,6 +12,7 @@ const WORKFLOW_FILES: Record<string, string> = {
   trello: "sync-trello.yml",
   ticktick: "sync-ticktick.yml",
   airtable: "sync-airtable.yml",
+  github_contents: "sync-github-contents.yml",
   daily: "sync-daily.yml",
   dbt: "dbt-run.yml",
 };
