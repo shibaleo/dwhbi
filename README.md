@@ -185,6 +185,56 @@ startDate.setDate(startDate.getDate() - days - 1);
 
 詳細: [test/README.md](test/README.md)
 
+## MCP Server（Claude Desktop / Claude Code 連携）
+
+個人ドキュメントをセマンティック検索できるMCPサーバーを console に統合。Claude Desktop や Claude Code から自然言語でドキュメントを検索可能。
+
+### 利用可能なツール
+
+| ツール | 説明 |
+|--------|------|
+| `search_docs` | セマンティック検索（自然言語クエリ、タグフィルタ対応） |
+| `get_doc` | ドキュメント全文取得 |
+| `list_tags` | 使用されているタグ一覧 |
+
+### Claude Desktop 設定
+
+`%APPDATA%\Claude\claude_desktop_config.json`（Windows）または `~/Library/Application Support/Claude/claude_desktop_config.json`（macOS）に以下を追加:
+
+```json
+{
+  "mcpServers": {
+    "personal-knowledge": {
+      "url": "https://dwhbi-console.vercel.app/api/mcp",
+      "transport": "streamable-http"
+    }
+  }
+}
+```
+
+### Claude Code 設定
+
+`.claude/settings.local.json` に以下を追加:
+
+```json
+{
+  "mcpServers": {
+    "personal-knowledge": {
+      "url": "https://dwhbi-console.vercel.app/api/mcp",
+      "transport": "streamable-http"
+    }
+  }
+}
+```
+
+### 前提条件
+
+- console の Voyage AI 設定が完了していること（[Settings > Voyage AI](https://dwhbi-console.vercel.app/settings/voyage)）
+- GitHub Contents Connector でドキュメントが同期済みであること
+- Embedding Pipeline でベクトルが生成済みであること
+
+---
+
 ## ドキュメント
 
 | カテゴリ | リンク |
@@ -197,6 +247,8 @@ startDate.setDate(startDate.getDate() - days - 1);
 | **Zaim** | [src/services/zaim/README.md](src/services/zaim/README.md) |
 | **GitHub Actions** | [.github/workflows/README.md](.github/workflows/README.md) |
 | **テスト** | [test/README.md](test/README.md) |
+| **RAG Embedding設計** | [documentation/docs/01-product/100-development/130-design/rag-embedding.md](documentation/docs/01-product/100-development/130-design/rag-embedding.md) |
+| **MCP Server設計** | [documentation/docs/01-product/100-development/130-design/mcp-personal-knowledge-design.md](documentation/docs/01-product/100-development/130-design/mcp-personal-knowledge-design.md) |
 
 ## 今後の拡張予定
 

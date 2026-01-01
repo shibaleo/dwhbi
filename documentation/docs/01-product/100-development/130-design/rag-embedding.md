@@ -788,4 +788,4 @@ npm登録不要。ローカルパスで直接実行。
 | MCP連携設計 | ✅ 設計完了 |
 | connector/github-contents | ✅ 実装完了 |
 | analyzer/embedding | ✅ 実装完了（バッチ処理最適化済み） |
-| mcp-personal-knowledge（別リポジトリ） | ⏳ 実装待ち |
+| mcp-personal-knowledge（console統合） | ✅ 実装完了（/api/mcp） |

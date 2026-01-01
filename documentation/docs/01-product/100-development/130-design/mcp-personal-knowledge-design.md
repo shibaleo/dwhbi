@@ -28,27 +28,26 @@ description: RAGベクトル検索をMCPプロトコル経由で提供するサ�
 
 ---
 
-## リポジトリ構成
+## 実装構成
 
-別リポジトリとして `mcp-personal-knowledge` を作成する。
+console（Next.js）に統合して実装する。リモートMCPエンドポイントとして提供。
 
 ```
-mcp-personal-knowledge/
-├── package.json
-├── tsconfig.json
-├── src/
-│   ├── index.ts              # エントリーポイント
+packages/console/src/
+├── app/api/mcp/
+│   └── route.ts              # MCP API エンドポイント
+├── lib/mcp/
 │   ├── server.ts             # MCPサーバー定義
-│   ├── tools/
-│   │   ├── search-docs.ts    # search_docs ツール
-│   │   ├── get-doc.ts        # get_doc ツール
-│   │   └── list-tags.ts      # list_tags ツール
-│   ├── services/
-│   │   ├── embedder.ts       # Voyage AI クライアント
-│   │   └── repository.ts     # Supabase リポジトリ
-│   └── config.ts             # 設定
-└── dist/                     # ビルド出力
+│   ├── embedder.ts           # Voyage AI クエリ用クライアント
+│   └── repository.ts         # Supabase リポジトリ
+└── lib/vault.ts              # Voyage API Key 取得（既存）
 ```
+
+### メリット
+
+- 既存のVercelインフラを活用
+- Supabase認証基盤を共有
+- 環境変数・シークレット管理が統一
 
 ---
 
@@ -572,19 +571,16 @@ export function loadConfig(): Config {
 
 ## Claude Desktop 設定
 
+リモートMCPサーバーとして console の `/api/mcp` エンドポイントを使用する。
+
 ### claude_desktop_config.json
 
 ```json
 {
   "mcpServers": {
     "personal-knowledge": {
-      "command": "node",
-      "args": ["C:/path/to/mcp-personal-knowledge/dist/index.js"],
-      "env": {
-        "SUPABASE_URL": "https://liegivvinbwmeujddzif.supabase.co",
-        "SUPABASE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-        "VOYAGE_API_KEY": "pa-..."
-      }
+      "url": "https://your-console.vercel.app/api/mcp",
+      "transport": "streamable-http"
     }
   }
 }
@@ -596,23 +592,37 @@ export function loadConfig(): Config {
 - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - Linux: `~/.config/Claude/claude_desktop_config.json`
 
+**注意**: Voyage API Key は console の設定画面で Supabase Vault に保存済みなので、環境変数の設定は不要。
+
 ---
 
 ## Claude Code 設定
 
-Claude Codeでは `.claude/settings.local.json` で設定する。
+Claude Code でも同様にリモート MCP として設定する。
+
+### .claude/settings.local.json
 
 ```json
 {
   "mcpServers": {
     "personal-knowledge": {
-      "command": "node",
-      "args": ["C:/path/to/mcp-personal-knowledge/dist/index.js"],
-      "env": {
-        "SUPABASE_URL": "https://liegivvinbwmeujddzif.supabase.co",
-        "SUPABASE_KEY": "...",
-        "VOYAGE_API_KEY": "..."
-      }
+      "url": "https://your-console.vercel.app/api/mcp",
+      "transport": "streamable-http"
+    }
+  }
+}
+```
+
+### ローカル開発時
+
+ローカルで console を起動している場合:
+
+```json
+{
+  "mcpServers": {
+    "personal-knowledge": {
+      "url": "http://localhost:3000/api/mcp",
+      "transport": "streamable-http"
     }
   }
 }
@@ -734,13 +744,14 @@ search_chunks関数は `SECURITY DEFINER` で定義されているため、RLS�
 
 | 項目 | 状態 |
 |------|------|
-| 設計完了 | - |
-| Supabase RPC関数作成 | - |
-| search_docs実装 | - |
-| get_doc実装 | - |
-| list_tags実装 | - |
-| Claude Desktop設定 | - |
-| テスト | - |
+| 設計完了 | ✅ |
+| Supabase RPC関数作成 | ✅ search_chunks, list_all_tags |
+| search_docs実装 | ✅ |
+| get_doc実装 | ✅ |
+| list_tags実装 | ✅ |
+| /api/mcp エンドポイント | ✅ |
+| Claude Desktop設定 | ⏳ Vercelデプロイ後にテスト |
+| テスト | ⏳ 動作確認待ち |
 
 ---
 
