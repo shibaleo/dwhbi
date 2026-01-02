@@ -8,7 +8,7 @@ const WORKFLOW_FILES: Record<string, string> = {
   fitbit: "sync-fitbit.yml",
   zaim: "sync-zaim.yml",
   google_calendar: "sync-google-calendar.yml",
-  tanita: "sync-tanita.yml",
+  tanita_health_planet: "sync-tanita.yml",
   trello: "sync-trello.yml",
   ticktick: "sync-ticktick.yml",
   airtable: "sync-airtable.yml",

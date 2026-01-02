@@ -33,7 +33,7 @@ const WORKFLOW_TO_SERVICE: Record<string, string> = {
   "Fitbit Fetch": "fitbit",
   "Zaim Fetch": "zaim",
   "Google Calendar Fetch": "google_calendar",
-  "Tanita Fetch": "tanita",
+  "Tanita Fetch": "tanita_health_planet",
   "Trello Fetch": "trello",
   "TickTick Fetch": "ticktick",
   "Airtable Fetch": "airtable",

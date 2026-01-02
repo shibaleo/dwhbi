@@ -9,6 +9,7 @@ type Params = Promise<{ service: string }>;
 // OAuthコールバックURLのパス定義
 const OAUTH_CALLBACK_PATHS: Partial<Record<ServiceName, string>> = {
   google_calendar: "/api/oauth/google_calendar/callback",
+  tanita_health_planet: "/api/oauth/tanita_health_planet/callback",
 };
 
 // サービスごとの入力フィールド定義
@@ -39,8 +40,8 @@ const SERVICE_FIELDS: Record<ServiceName, { key: string; label: string; type?: s
     { key: "client_secret", label: "Client Secret", type: "password" },
     { key: "calendar_id", label: "Calendar ID (オプション)", placeholder: "自動検出されます" },
   ],
-  tanita: [
-    { key: "client_id", label: "Client ID" },
+  tanita_health_planet: [
+    { key: "client_id", label: "Client ID", hint: "Health Planet アプリ管理画面で取得" },
     { key: "client_secret", label: "Client Secret", type: "password" },
   ],
   ticktick: [

@@ -23,7 +23,7 @@ interface ServiceFormProps {
 }
 
 // OAuthをサポートするサービス
-const OAUTH_SERVICES: ServiceName[] = ["google_calendar"];
+const OAUTH_SERVICES: ServiceName[] = ["google_calendar", "tanita_health_planet"];
 
 export function ServiceForm({ service, fields, authType, oauthCallbackUrl }: ServiceFormProps) {
   const router = useRouter();
