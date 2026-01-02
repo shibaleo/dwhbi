@@ -1,7 +1,8 @@
 import { McpRequest, McpResponse, MCP_ERROR, ToolDefinition } from "./types.ts";
 import { ragTools } from "../rag/tools.ts";
+import { getSupabaseTools } from "../supabase/tools.ts";
 
-const allTools: ToolDefinition[] = [...ragTools];
+const allTools: ToolDefinition[] = [...ragTools, ...getSupabaseTools()];
 
 export async function processRequest(
   request: McpRequest,
