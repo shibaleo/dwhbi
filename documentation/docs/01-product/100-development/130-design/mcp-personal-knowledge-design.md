@@ -1,9 +1,12 @@
 ---
 title: MCP Personal Knowledge Server 詳細設計書
 description: RAGベクトル検索をMCPプロトコル経由で提供するサーバーの設計
+status: Supabase Edge Functionに移行済み
 ---
 
 # MCP Personal Knowledge Server 詳細設計書
+
+> **Note**: 本ドキュメントは歴史的経緯を含む。現在の実装は [Personal Context Edge Function 詳細設計書](./personal-context-edge-function-design.md) を参照。
 
 ## 概要
 
@@ -11,43 +14,75 @@ description: RAGベクトル検索をMCPプロトコル経由で提供するサ�
 
 ### 責務
 
-- Claude Desktop / Claude Code からの検索リクエストを受付
+- Claude Desktop / Claude Code / claude.ai からの検索リクエストを受付
 - クエリテキストをVoyage AIでembedding化
 - Supabase pgvectorでベクトル類似検索
 - 検索結果を整形して返却
 
-### 技術スタック
+### 技術スタック（現行）
+
+| 項目 | 選定 | 理由 |
+|------|------|------|
+| ランタイム | Deno | Supabase Edge Functions標準 |
+| フレームワーク | Supabase Edge Functions | パフォーマンス・コスト最適化 |
+| MCP実装 | 直接HTTP実装 | SDKなしでシンプルに |
+| DB接続 | @supabase/supabase-js (Deno) | 既存パターン踏襲 |
+| Embedding | fetch API直接呼び出し | Deno環境対応 |
+| Transport | Streamable HTTP (SSE) | リモートMCP対応 |
+
+### 技術スタック（旧: console統合版）
 
 | 項目 | 選定 | 理由 |
 |------|------|------|
 | 言語 | TypeScript | MCP SDK公式サポート |
-| MCP SDK | @modelcontextprotocol/server | 公式SDK |
+| MCP SDK | @modelcontextprotocol/sdk | 公式SDK |
 | DB接続 | @supabase/supabase-js | 既存パターン踏襲 |
 | Embedding | voyageai | クエリ用embedding生成 |
-| Transport | stdio | ローカル実行 |
+| Transport | Streamable HTTP (SSE) | リモートMCP対応 |
 
 ---
 
 ## 実装構成
 
-console（Next.js）に統合して実装する。リモートMCPエンドポイントとして提供。
+### 現行（Supabase Edge Function）
+
+```
+supabase/functions/
+└── personal-context/
+    ├── index.ts              # エントリーポイント（Deno.serve）
+    ├── mcp/
+    │   ├── protocol.ts       # MCPプロトコル処理
+    │   ├── handler.ts        # リクエストハンドラ
+    │   └── types.ts          # MCP型定義
+    ├── auth/
+    │   └── validator.ts      # OAuth トークン検証
+    ├── rag/
+    │   ├── repository.ts     # Docs検索
+    │   ├── embedder.ts       # Voyage embedding（fetch）
+    │   └── tools.ts          # RAGツール定義
+    └── supabase/
+        ├── api.ts            # Management API クライアント
+        └── tools.ts          # Supabase管理ツール（16個）
+```
+
+### 旧構成（console統合版、削除済み）
 
 ```
 packages/console/src/
 ├── app/api/mcp/
-│   └── route.ts              # MCP API エンドポイント
+│   └── route.ts              # MCP API エンドポイント（削除済み）
 ├── lib/mcp/
-│   ├── server.ts             # MCPサーバー定義
-│   ├── embedder.ts           # Voyage AI クエリ用クライアント
-│   └── repository.ts         # Supabase リポジトリ
-└── lib/vault.ts              # Voyage API Key 取得（既存）
+│   ├── server.ts             # MCPサーバー定義（削除済み）
+│   ├── embedder.ts           # Voyage AI クライアント（削除済み）
+│   └── repository.ts         # Supabase リポジトリ（削除済み）
+└── lib/vault.ts              # Voyage API Key 取得（保持）
 ```
 
-### メリット
+### 移行のメリット
 
-- 既存のVercelインフラを活用
-- Supabase認証基盤を共有
-- 環境変数・シークレット管理が統一
+- **パフォーマンス向上**: DB接続・認証が同一インフラで高速化（50-200ms → 1-10ms）
+- **デプロイ独立性**: console再デプロイ不要
+- **コスト効率**: Vercel課金不要
 
 ---
 
@@ -840,30 +875,39 @@ if (
 
 ## 実装ステータス
 
+### 現行（Supabase Edge Function）
+
 | 項目 | 状態 |
 |------|------|
-| 設計完了 | ✅ |
+| Supabase Edge Function移行 | ✅ 完了 |
+| RAGツール（9個） | ✅ 完了 |
+| Supabase管理ツール（16個） | ✅ 完了 |
+| OAuth認証（カスタムコネクタ） | ✅ 完了 |
+| Claude Desktop/Code/claude.ai設定 | ✅ 完了 |
+
+### 旧（console統合版）
+
+| 項目 | 状態 |
+|------|------|
+| 設計完了 | ✅ → Edge Functionに移行済み |
 | Supabase RPC関数作成 | ✅ search_chunks, list_all_tags |
-| search_docs実装 | ✅ |
-| get_doc実装 | ✅ |
-| list_tags実装 | ✅ |
-| /api/mcp エンドポイント | ✅ |
-| OAuth認証（カスタムコネクタ） | ✅ |
-| Claude Desktop設定 | ✅ |
-| テスト | ✅ |
+| search_docs実装 | ✅ → Edge Functionに移行済み |
+| get_doc実装 | ✅ → Edge Functionに移行済み |
+| list_tags実装 | ✅ → Edge Functionに移行済み |
+| /api/mcp エンドポイント | ❌ 削除済み |
 
 ---
 
 ## 関連ドキュメント
 
+- [Personal Context Edge Function 詳細設計書](./personal-context-edge-function-design.md) ← **現行の実装**
+- [Supabase MCP Tools 詳細設計書](./supabase-mcp-remote-design.md)
 - [RAG Embedding設計](./rag-embedding.md)
 - [Analyzer/Embedding 詳細設計](./rag-embedding-analyzer-design.md)
-- [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk)
 
 ---
 
 ## Sources
 
-- [GitHub - modelcontextprotocol/typescript-sdk](https://github.com/modelcontextprotocol/typescript-sdk)
-- [@modelcontextprotocol/sdk - npm](https://www.npmjs.com/package/@modelcontextprotocol/sdk)
-- [MCP Server Documentation](https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/server.md)
+- [Supabase Edge Functions Documentation](https://supabase.com/docs/guides/functions)
+- [Deploy MCP servers on Edge Functions](https://supabase.com/docs/guides/getting-started/byo-mcp)

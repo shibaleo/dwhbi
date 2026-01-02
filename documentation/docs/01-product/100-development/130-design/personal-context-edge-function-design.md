@@ -1,7 +1,7 @@
 ---
 title: Personal Context Edge Function 詳細設計書
 description: MCPサーバーをSupabase Edge Functionsに移行するための詳細設計
-status: Phase 1, 3, 4 完了
+status: Phase 1, 3, 4, Supabase Tools 完了
 ---
 
 # Personal Context Edge Function 詳細設計書
@@ -10,7 +10,7 @@ status: Phase 1, 3, 4 完了
 
 本ドキュメントは [ADR-010](./131-decisions/adr_010-mcp-server-separation.md) に基づき、MCPサーバーをconsole（Next.js/Vercel）からSupabase Edge Functionsに移行するための詳細設計を記述する。
 
-> **実装状況**: Phase 1（RAG移植）、Phase 3（OAuth設定）、Phase 4（クリーンアップ）完了。
+> **実装状況**: Phase 1（RAG移植）、Phase 3（OAuth設定）、Phase 4（クリーンアップ）、Supabase Tools（16ツール）完了。
 > Phase 2（KG・Activity）は未着手。
 
 ### 移行の目的
@@ -49,11 +49,14 @@ dwhbi/
 │       │   ├── rag/
 │       │   │   ├── repository.ts     # Docs検索
 │       │   │   ├── embedder.ts       # Voyage embedding（fetch）
-│       │   │   └── tools.ts          # RAGツール定義
-│       │   ├── kg/
+│       │   │   └── tools.ts          # RAGツール定義（9ツール）
+│       │   ├── supabase/             # 追加済み
+│       │   │   ├── api.ts            # Management API クライアント
+│       │   │   └── tools.ts          # Supabase管理ツール（16ツール）
+│       │   ├── kg/                   # Phase 2: 未着手
 │       │   │   ├── repository.ts     # KG操作
 │       │   │   └── tools.ts          # KGツール定義
-│       │   └── activity/
+│       │   └── activity/             # Phase 2: 未着手
 │       │       ├── repository.ts     # Activity検索
 │       │       └── tools.ts          # Activityツール定義
 │       │
@@ -1177,6 +1180,16 @@ Claudeの「My Connectors」から以下の設定で登録:
 - [x] MCP関連依存削除（`@modelcontextprotocol/sdk`, `voyageai`）
 - [x] 認証関連は保持（`/auth/consent/`, `/.well-known/oauth-protected-resource/`）
 
+### Supabase Management Tools ✅ 完了
+
+- [x] `supabase/api.ts` 作成（Management APIクライアント）
+- [x] `supabase/tools.ts` 作成（16ツール）
+- [x] `mcp/protocol.ts` 修正（ツール登録）
+- [x] `SB_MANAGEMENT_PAT` 環境変数設定（注: `SUPABASE_`プレフィックスは予約済み）
+- [x] デプロイ・テスト完了
+
+詳細は [Supabase MCP Tools 詳細設計書](./supabase-mcp-remote-design.md) を参照。
+
 ---
 
 ## 実装メモ
@@ -1221,5 +1234,6 @@ Supabase Vaultに保存されたAPI Keyを `console.get_service_secret` RPCで�
 ## 関連ドキュメント
 
 - [ADR-010 MCPサーバーのSupabase Edge Functions移行](./131-decisions/adr_010-mcp-server-separation.md)
-- [MCP Personal Knowledge Server 詳細設計書](./mcp-personal-knowledge-design.md)
+- [Supabase MCP Tools 詳細設計書](./supabase-mcp-remote-design.md) ← Supabase管理ツール（16個）
+- [MCP Personal Knowledge Server 詳細設計書](./mcp-personal-knowledge-design.md) ← 歴史的経緯を含む
 - [Supabase Edge Functions Documentation](https://supabase.com/docs/guides/functions)

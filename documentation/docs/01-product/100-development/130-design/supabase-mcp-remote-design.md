@@ -29,7 +29,7 @@ status: 実装完了
 | **統合先** | personal-context Edge Function（新規Edge Functionは作成しない） |
 | **認証** | 既存のOAuth 2.1 + Consent Screen認証を共有 |
 | **API呼び出し** | Supabase Management API (REST) をfetchで呼び出し |
-| **PAT管理** | 環境変数 `SUPABASE_PAT` として設定 |
+| **PAT管理** | 環境変数 `SB_MANAGEMENT_PAT` として設定（`SUPABASE_`プレフィックスは予約済みのため使用不可） |
 
 ### メリット
 
@@ -321,9 +321,9 @@ function getProjectRef(): string {
 }
 
 export function getSupabaseTools(): ToolDefinition[] {
-  const pat = Deno.env.get("SUPABASE_PAT");
+  const pat = Deno.env.get("SB_MANAGEMENT_PAT");
   if (!pat) {
-    console.warn("SUPABASE_PAT not set, Supabase management tools disabled");
+    console.warn("SB_MANAGEMENT_PAT not set, Supabase management tools disabled");
     return [];
   }
 
@@ -490,7 +490,8 @@ export async function processRequest(
 
 ```bash
 # PAT設定（既存のpersonal-contextに追加）
-supabase secrets set SUPABASE_PAT=sbp_xxxxxxxxxxxxxxxxxxxxxxxx
+# 注意: SUPABASE_で始まる名前は予約されているため使用不可
+supabase secrets set SB_MANAGEMENT_PAT=sbp_xxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 ### デプロイコマンド
@@ -506,6 +507,46 @@ supabase functions logs personal-context
 ### Claude設定
 
 既存のpersonal-context設定をそのまま使用。追加設定不要。
+
+#### Claude Code (VSCode拡張)
+
+プロジェクトルートに`.mcp.json`を配置:
+
+```json
+{
+  "mcpServers": {
+    "personal-context": {
+      "type": "http",
+      "url": "https://<project-ref>.supabase.co/functions/v1/personal-context",
+      "headers": {
+        "Authorization": "Bearer ${SUPABASE_SERVICE_ROLE_KEY:-<fallback-token>}"
+      }
+    }
+  }
+}
+```
+
+> **既知の問題（2026-01時点）**: Claude Code VSCode拡張（v2.0.74）では、`.mcp.json`の`headers`フィールドが正しく送信されない問題が確認されている。
+>
+> **回避策**:
+> 1. Edge Function側で認証をオプショナルにする（個人利用のため許容）
+> 2. `index.ts`でAuthorizationヘッダーがない場合は認証をスキップ
+>
+> ```typescript
+> // 認証チェック（Authorizationヘッダーがない場合はスキップ）
+> const authHeader = req.headers.get("authorization");
+> let userId = "anonymous";
+>
+> if (authHeader) {
+>   const authResult = await validateToken(req);
+>   if (!authResult.valid) {
+>     return createUnauthorizedResponse();
+>   }
+>   userId = authResult.userId!;
+> }
+> ```
+
+#### Claude Desktop / claude.ai
 
 ```json
 {
