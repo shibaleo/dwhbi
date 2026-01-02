@@ -15,20 +15,21 @@ Deno.serve(async (req: Request) => {
 
   // 認証チェック
   const authHeader = req.headers.get("authorization");
-  let userId = "anonymous";
 
-  if (authHeader) {
-    // Bearer トークンがある場合は検証
-    const authResult = await validateToken(req);
-    if (authResult.valid) {
-      userId = authResult.userId!;
-      console.log("Authenticated via Bearer token:", userId);
-    } else {
-      console.log("Invalid token, proceeding as anonymous");
-    }
-  } else {
-    console.log("No authentication provided, proceeding as anonymous");
+  if (!authHeader) {
+    console.log("No authentication provided, returning 401 with resource metadata");
+    return createUnauthorizedResponse();
   }
+
+  // Bearer トークンを検証
+  const authResult = await validateToken(req);
+  if (!authResult.valid) {
+    console.log("Invalid token:", authResult.error);
+    return createUnauthorizedResponse();
+  }
+
+  const userId = authResult.userId!;
+  console.log("Authenticated via Bearer token:", userId);
 
   // MCP処理
   try {

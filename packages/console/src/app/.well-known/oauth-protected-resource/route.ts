@@ -9,8 +9,7 @@ export async function GET() {
 
   const metadata = {
     resource: `${supabaseUrl}/functions/v1/personal-context`,
-    // Claude Web fetches /.well-known/oauth-authorization-server from this URL
-    // which only works at /auth/v1 level (not /auth/v1/oauth)
+    // Supabase Auth serves /.well-known/oauth-authorization-server at /auth/v1
     authorization_servers: [`${supabaseUrl}/auth/v1`],
     scopes_supported: ["openid", "profile", "email"],
     bearer_methods_supported: ["header"],
