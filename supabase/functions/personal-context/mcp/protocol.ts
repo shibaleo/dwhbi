@@ -13,8 +13,16 @@ export async function processRequest(
   try {
     switch (method) {
       case "initialize":
+        // クライアントが要求したバージョンを確認し、サポートするバージョンを返す
+        const clientVersion = (params as { protocolVersion?: string })?.protocolVersion;
+        // 2024-11-05 と 2025-03-26 の両方をサポート
+        const supportedVersions = ["2024-11-05", "2025-03-26"];
+        const negotiatedVersion = clientVersion && supportedVersions.includes(clientVersion)
+          ? clientVersion
+          : "2024-11-05";
+
         return createResponse(id, {
-          protocolVersion: "2024-11-05",
+          protocolVersion: negotiatedVersion,
           capabilities: { tools: {} },
           serverInfo: { name: "personal-context", version: "1.0.0" },
         });

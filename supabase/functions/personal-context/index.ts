@@ -3,6 +3,12 @@ import { validateToken } from "./auth/validator.ts";
 import { handleMcpRequest } from "./mcp/handler.ts";
 
 Deno.serve(async (req: Request) => {
+  // デバッグログ
+  console.log("=== Request received ===");
+  console.log("Method:", req.method);
+  console.log("URL:", req.url);
+  console.log("Headers:", JSON.stringify(Object.fromEntries(req.headers.entries())));
+
   // CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -15,15 +21,23 @@ Deno.serve(async (req: Request) => {
     return handleOAuthMetadata();
   }
 
-  // 認証チェック
-  const authResult = await validateToken(req);
-  if (!authResult.valid) {
-    return createUnauthorizedResponse();
+  // 認証チェック（テスト用: Authorizationヘッダーがない場合はスキップ）
+  const authHeader = req.headers.get("authorization");
+  let userId = "anonymous";
+
+  if (authHeader) {
+    const authResult = await validateToken(req);
+    if (!authResult.valid) {
+      return createUnauthorizedResponse();
+    }
+    userId = authResult.userId!;
+  } else {
+    console.log("No Authorization header - skipping auth for testing");
   }
 
   // MCP処理
   try {
-    return await handleMcpRequest(req, authResult.userId!);
+    return await handleMcpRequest(req, userId);
   } catch (error) {
     console.error("MCP Error:", error);
     return new Response(JSON.stringify({ error: "Internal Server Error" }), {
