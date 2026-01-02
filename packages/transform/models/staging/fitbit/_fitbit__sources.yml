@@ -1,0 +1,23 @@
+version: 2
+
+sources:
+  - name: raw_fitbit
+    description: "Fitbit Web API raw responses"
+    schema: raw
+    tables:
+      - name: fitbit__sleep
+        description: "Fitbit sleep logs"
+      - name: fitbit__activity
+        description: "Fitbit daily activity summary"
+      - name: fitbit__heart_rate
+        description: "Fitbit daily heart rate data"
+      - name: fitbit__hrv
+        description: "Fitbit daily HRV (heart rate variability)"
+      - name: fitbit__spo2
+        description: "Fitbit daily SpO2 (blood oxygen)"
+      - name: fitbit__breathing_rate
+        description: "Fitbit daily breathing rate"
+      - name: fitbit__cardio_score
+        description: "Fitbit daily cardio score (VO2 Max)"
+      - name: fitbit__temperature_skin
+        description: "Fitbit daily skin temperature"

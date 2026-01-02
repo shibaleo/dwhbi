@@ -25,6 +25,14 @@
     "./google-calendar/create-events": {
       "import": "./src/services/google-calendar/create-events.ts",
       "types": "./src/services/google-calendar/create-events.ts"
+    },
+    "./tanita-health-planet": {
+      "import": "./src/services/tanita-health-planet/index.ts",
+      "types": "./src/services/tanita-health-planet/index.ts"
+    },
+    "./fitbit": {
+      "import": "./src/services/fitbit/index.ts",
+      "types": "./src/services/fitbit/index.ts"
     }
   },
   "scripts": {
@@ -36,7 +44,8 @@
     "sync:gcal": "npx tsx src/services/google-calendar/cli.ts",
     "sync:coda": "npx tsx src/services/coda/cli.ts",
     "sync:github-contents": "npx tsx src/services/github-contents/cli.ts",
-    "sync:tanita": "npx tsx src/services/tanita-health-planet/cli.ts"
+    "sync:tanita": "npx tsx src/services/tanita-health-planet/cli.ts",
+    "sync:fitbit": "npx tsx src/services/fitbit/cli.ts"
   },
   "dependencies": {
     "@octokit/rest": "^20.0.0",
