@@ -240,12 +240,12 @@ def build_embedding_text(
 
 ## DBスキーマ
 
-### raw.docs_github（生データ）
+### raw.github_contents__documents（生データ）
 
 connectorが保存する生Markdownデータ。命名規則は`raw.{entity}_{source}`パターン（将来`raw.docs_dropbox`等を追加可能）。
 
 ```sql
-CREATE TABLE raw.docs_github (
+CREATE TABLE raw.github_contents__documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     file_path TEXT NOT NULL UNIQUE,
     frontmatter JSONB NOT NULL DEFAULT '{}',
@@ -254,8 +254,8 @@ CREATE TABLE raw.docs_github (
     fetched_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX docs_github_frontmatter_tags_idx
-    ON raw.docs_github USING GIN ((frontmatter->'tags'));
+CREATE INDEX github_contents__documents_frontmatter_tags_idx
+    ON raw.github_contents__documents USING GIN ((frontmatter->'tags'));
 ```
 
 **frontmatterに含まれるフィールド**:
@@ -270,7 +270,7 @@ analyzerが生成するチャンクとembedding。`context_previous`はembedding
 ```sql
 CREATE TABLE rag.chunks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    document_id UUID NOT NULL REFERENCES raw.docs_github(id) ON DELETE CASCADE,
+    document_id UUID NOT NULL REFERENCES raw.github_contents__documents(id) ON DELETE CASCADE,
     chunk_index INT NOT NULL,
     parent_heading TEXT NOT NULL,
     heading TEXT NOT NULL,
@@ -301,7 +301,7 @@ SELECT
     ARRAY(SELECT jsonb_array_elements_text(d.frontmatter->'tags')) AS tags,
     ARRAY(SELECT jsonb_array_elements_text(d.frontmatter->'aliases')) AS aliases,
     d.content_hash
-FROM raw.docs_github d;
+FROM raw.github_contents__documents d;
 ```
 
 ---
@@ -352,7 +352,7 @@ LIMIT 5;
 
 ### Embedding再生成の判断
 
-| 操作 | raw.docs_github | rag.chunks |
+| 操作 | raw.github_contents__documents | rag.chunks |
 |------|-----------------|------------|
 | 新規作成 | INSERT | 生成 |
 | 内容修正 | UPDATE（hash変更） | 再生成 |
@@ -408,7 +408,7 @@ def filter_latest_only(all_docs: list[dict]) -> list[dict]:
 ```
 
 **処理フロー**:
-1. raw.docs_githubには全バージョンを保存（履歴として価値あり）
+1. raw.github_contents__documentsには全バージョンを保存（履歴として価値あり）
 2. rag.chunksには最新版のみ保存（検索ノイズ回避）
 3. `previous`で参照されているファイルはembedding対象外
 
@@ -432,13 +432,13 @@ ELT（Extract-Load-Transform）パターンに従い、責務を分離。
 │  │ 1. Git trees APIで変更ファイル検出（SHA比較）               ││
 │  │ 2. 変更ファイルのみContents APIで取得                       ││
 │  │ 3. frontmatter解析、content_hash計算                        ││
-│  │ 4. raw.docs_github にUPSERT                                 ││
+│  │ 4. raw.github_contents__documents にUPSERT                                 ││
 │  └─────────────────────────────────────────────────────────────┘│
 └─────────────────────────┬───────────────────────────────────────┘
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                     raw.docs_github                              │
+│                     raw.github_contents__documents                              │
 │  (file_path, frontmatter JSONB, content, content_hash)          │
 └─────────────────────────┬───────────────────────────────────────┘
                           │
@@ -582,7 +582,7 @@ Claude DesktopおよびClaude CodeからMCP（Model Context Protocol）経由で
                           ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  Supabase                                                        │
-│  ├── raw.docs_github (生データ)                                  │
+│  ├── raw.github_contents__documents (生データ)                                  │
 │  └── rag.chunks (ベクトル)                                       │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -701,7 +701,7 @@ BEGIN
     d.file_path,
     1 - (c.embedding <=> query_embedding) AS similarity
   FROM rag.chunks c
-  JOIN raw.docs_github d ON c.document_id = d.id
+  JOIN raw.github_contents__documents d ON c.document_id = d.id
   WHERE
     (filter_tags IS NULL OR d.frontmatter->'tags' ?| filter_tags)
     AND 1 - (c.embedding <=> query_embedding) >= similarity_threshold

@@ -1,6 +1,6 @@
 ---
 title: Analyzer/Embedding 詳細設計書
-description: raw.docs_githubからチャンキング・embedding生成を行いrag.chunksに保存するanalyzerの設計
+description: raw.github_contents__documentsからチャンキング・embedding生成を行いrag.chunksに保存するanalyzerの設計
 ---
 
 # Analyzer/Embedding 詳細設計書
@@ -11,7 +11,7 @@ description: raw.docs_githubからチャンキング・embedding生成を行いr
 
 ### 責務
 
-- raw.docs_githubから変更されたドキュメントを検出
+- raw.github_contents__documentsから変更されたドキュメントを検出
 - `##`（h2）でチャンキング（32K超過時は`###`で再分割）
 - context_previous, parent_headingの付加
 - Voyage AI APIでembedding生成
@@ -72,7 +72,7 @@ class FrontmatterDict(TypedDict, total=False):
 
 @dataclass
 class RawDocument:
-    """raw.docs_githubから取得したドキュメント"""
+    """raw.github_contents__documentsから取得したドキュメント"""
     id: str
     file_path: str
     frontmatter: FrontmatterDict

@@ -408,7 +408,7 @@ Supabaseに保存済みの行動データへのアクセスを提供。
 ┌─────────────────────────────────────────────────────────┐
 │                    Analyzer Pipeline                     │
 ├─────────────────────────────────────────────────────────┤
-│  1. GitHub → raw.docs_github (既存)                      │
+│  1. GitHub → raw.github_contents__documents (既存)                      │
 │  2. Markdown解析 → frontmatter抽出 (既存)                │
 │  3. チャンク分割 → Embedding → docs_chunks (既存)        │
 │  4. 【新規】KG抽出 → kg_entities, kg_relations           │
@@ -527,7 +527,7 @@ CREATE POLICY "Users can CRUD own relations" ON kg_relations
 
 ### 既存テーブル（変更なし）
 
-- `raw.docs_github` - ドキュメント本体
+- `raw.github_contents__documents` - ドキュメント本体
 - `public.docs_chunks` - チャンク＋embedding
 - `search_chunks` RPC - ベクトル検索
 - `list_all_tags` RPC - タグ一覧

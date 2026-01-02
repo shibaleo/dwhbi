@@ -1,6 +1,6 @@
 ---
 title: Connector/GitHub Contents 詳細設計書
-description: GitHub Contents APIからドキュメントを取得しraw.docs_githubに保存するconnectorの設計
+description: GitHub Contents APIからドキュメントを取得しraw.github_contents__documentsに保存するconnectorの設計
 ---
 
 # Connector/GitHub Contents 詳細設計書
@@ -13,7 +13,7 @@ description: GitHub Contents APIからドキュメントを取得しraw.docs_git
 
 - GitHub Contents APIからMarkdown文書を取得
 - frontmatterの解析とcontent_hash計算
-- raw.docs_githubへのUPSERT
+- raw.github_contents__documentsへのUPSERT
 - 削除されたファイルのDELETE
 
 ### 技術スタック
@@ -138,7 +138,7 @@ export async function upsertDocument(doc: ParsedDocument): Promise<void> {
   };
 
   await client.query(
-    `INSERT INTO raw.docs_github (file_path, frontmatter, content, content_hash, fetched_at)
+    `INSERT INTO raw.github_contents__documents (file_path, frontmatter, content, content_hash, fetched_at)
      VALUES ($1, $2, $3, $4, NOW())
      ON CONFLICT (file_path) DO UPDATE SET
        frontmatter = EXCLUDED.frontmatter,
@@ -155,7 +155,7 @@ export async function upsertDocument(doc: ParsedDocument): Promise<void> {
 export async function deleteDocument(filePath: string): Promise<void> {
   const client = await getDbClient();
   await client.query(
-    'DELETE FROM raw.docs_github WHERE file_path = $1',
+    'DELETE FROM raw.github_contents__documents WHERE file_path = $1',
     [filePath]
   );
 }
@@ -166,7 +166,7 @@ export async function deleteDocument(filePath: string): Promise<void> {
 export async function getExistingHashes(): Promise<Map<string, string>> {
   const client = await getDbClient();
   const result = await client.query<{ file_path: string; content_hash: string }>(
-    'SELECT file_path, content_hash FROM raw.docs_github'
+    'SELECT file_path, content_hash FROM raw.github_contents__documents'
   );
   return new Map(result.rows.map(row => [row.file_path, row.content_hash]));
 }

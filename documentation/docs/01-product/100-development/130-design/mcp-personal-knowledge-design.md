@@ -154,7 +154,7 @@ export interface DocumentResult {
 
 **処理フロー:**
 
-1. `raw.docs_github` から `file_path` で検索
+1. `raw.github_contents__documents` から `file_path` で検索
 2. frontmatter + content を返却
 
 ### list_tags
@@ -177,7 +177,7 @@ export interface TagInfo {
 
 **処理フロー:**
 
-1. `raw.docs_github` の `frontmatter->'tags'` を集計
+1. `raw.github_contents__documents` の `frontmatter->'tags'` を集計
 2. タグと使用回数を返却
 
 ---
@@ -219,7 +219,7 @@ BEGIN
     d.file_path,
     1 - (c.embedding <=> query_embedding) AS similarity
   FROM rag.chunks c
-  JOIN raw.docs_github d ON c.document_id = d.id
+  JOIN raw.github_contents__documents d ON c.document_id = d.id
   WHERE
     (filter_tags IS NULL OR d.frontmatter->'tags' ?| filter_tags)
     AND 1 - (c.embedding <=> query_embedding) >= similarity_threshold
@@ -249,7 +249,7 @@ AS $$
   SELECT
     tag,
     COUNT(*) as count
-  FROM raw.docs_github,
+  FROM raw.github_contents__documents,
     LATERAL jsonb_array_elements_text(frontmatter->'tags') AS tag
   GROUP BY tag
   ORDER BY count DESC, tag;
@@ -330,7 +330,7 @@ export class DocsRepository {
 
   async getDocument(filePath: string): Promise<DocumentResult | null> {
     const { data, error } = await this.supabase
-      .from("docs_github")
+      .from("github_contents__documents")
       .select("file_path, frontmatter, content")
       .eq("file_path", filePath)
       .single();

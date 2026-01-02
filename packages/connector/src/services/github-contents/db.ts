@@ -21,7 +21,7 @@ export async function upsertDocument(doc: ParsedDocument): Promise<void> {
   };
 
   await client.query(
-    `INSERT INTO raw.docs_github (file_path, frontmatter, content, content_hash, fetched_at)
+    `INSERT INTO raw.github_contents__documents (file_path, frontmatter, content, content_hash, fetched_at)
      VALUES ($1, $2, $3, $4, NOW())
      ON CONFLICT (file_path) DO UPDATE SET
        frontmatter = EXCLUDED.frontmatter,
@@ -37,7 +37,7 @@ export async function upsertDocument(doc: ParsedDocument): Promise<void> {
  */
 export async function deleteDocument(filePath: string): Promise<void> {
   const client = await getDbClient();
-  await client.query("DELETE FROM raw.docs_github WHERE file_path = $1", [
+  await client.query("DELETE FROM raw.github_contents__documents WHERE file_path = $1", [
     filePath,
   ]);
   logger.debug(`Deleted document: ${filePath}`);
@@ -49,7 +49,7 @@ export async function deleteDocument(filePath: string): Promise<void> {
 export async function getExistingHashes(): Promise<Map<string, string>> {
   const client = await getDbClient();
   const result = await client.query<{ file_path: string; content_hash: string }>(
-    "SELECT file_path, content_hash FROM raw.docs_github"
+    "SELECT file_path, content_hash FROM raw.github_contents__documents"
   );
   return new Map(result.rows.map((row) => [row.file_path, row.content_hash]));
 }

@@ -522,7 +522,7 @@ export async function getDocument(filePath: string): Promise<DocumentResult | nu
 
   const { data, error } = await supabase
     .schema("raw")
-    .from("docs_github")
+    .from("github_contents__documents")
     .select("file_path, frontmatter, content")
     .eq("file_path", filePath)
     .single();

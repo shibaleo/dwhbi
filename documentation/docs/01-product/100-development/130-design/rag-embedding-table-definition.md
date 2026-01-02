@@ -24,14 +24,14 @@ description: RAG Embeddingシステムの全テーブル・関数定義
 
 | テーブル | スキーマ | 説明 |
 |---------|---------|------|
-| docs_github | raw | GitHub から取得した生Markdownデータ |
+| github_contents__documents | raw | GitHub から取得した生Markdownデータ |
 | sync_state | raw | connector同期状態管理 |
 | chunks | rag | チャンキング済みテキストとembedding |
 | embedding_state | rag | embedding生成状態管理 |
 
 ---
 
-## raw.docs_github
+## raw.github_contents__documents
 
 ### 概要
 
@@ -40,7 +40,7 @@ GitHub Contents APIから取得したMarkdown文書の生データを格納。
 ### テーブル定義
 
 ```sql
-CREATE TABLE raw.docs_github (
+CREATE TABLE raw.github_contents__documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     file_path TEXT NOT NULL UNIQUE,
     frontmatter JSONB NOT NULL DEFAULT '{}',
@@ -77,16 +77,16 @@ CREATE TABLE raw.docs_github (
 ### インデックス
 
 ```sql
-CREATE INDEX docs_github_frontmatter_tags_idx
-    ON raw.docs_github USING GIN ((frontmatter->'tags'));
+CREATE INDEX github_contents__documents_frontmatter_tags_idx
+    ON raw.github_contents__documents USING GIN ((frontmatter->'tags'));
 ```
 
 ### 制約
 
 | 制約名 | 種別 | 対象 |
 |--------|------|------|
-| docs_github_pkey | PRIMARY KEY | id |
-| docs_github_file_path_key | UNIQUE | file_path |
+| github_contents__documents_pkey | PRIMARY KEY | id |
+| github_contents__documents_file_path_key | UNIQUE | file_path |
 
 ---
 
@@ -127,7 +127,7 @@ CREATE TABLE raw.sync_state (
 ```sql
 CREATE TABLE rag.chunks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    document_id UUID NOT NULL REFERENCES raw.docs_github(id) ON DELETE CASCADE,
+    document_id UUID NOT NULL REFERENCES raw.github_contents__documents(id) ON DELETE CASCADE,
     chunk_index INT NOT NULL,
     parent_heading TEXT NOT NULL,
     heading TEXT NOT NULL,
@@ -169,7 +169,7 @@ CREATE INDEX chunks_document_id_idx ON rag.chunks (document_id);
 | 制約名 | 種別 | 対象 |
 |--------|------|------|
 | chunks_pkey | PRIMARY KEY | id |
-| chunks_document_id_fkey | FOREIGN KEY | document_id → raw.docs_github(id) CASCADE |
+| chunks_document_id_fkey | FOREIGN KEY | document_id → raw.github_contents__documents(id) CASCADE |
 | chunks_document_chunk_key | UNIQUE | (document_id, chunk_index) |
 
 ---
@@ -184,7 +184,7 @@ embedding生成状態を追跡。content_hash比較で再生成が必要なド�
 
 ```sql
 CREATE TABLE rag.embedding_state (
-    document_id UUID PRIMARY KEY REFERENCES raw.docs_github(id) ON DELETE CASCADE,
+    document_id UUID PRIMARY KEY REFERENCES raw.github_contents__documents(id) ON DELETE CASCADE,
     content_hash TEXT NOT NULL,
     embedded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -203,7 +203,7 @@ CREATE TABLE rag.embedding_state (
 | 制約名 | 種別 | 対象 |
 |--------|------|------|
 | embedding_state_pkey | PRIMARY KEY | document_id |
-| embedding_state_document_id_fkey | FOREIGN KEY | document_id → raw.docs_github(id) CASCADE |
+| embedding_state_document_id_fkey | FOREIGN KEY | document_id → raw.github_contents__documents(id) CASCADE |
 
 ---
 
@@ -222,7 +222,7 @@ SELECT
     ARRAY(SELECT jsonb_array_elements_text(d.frontmatter->'tags')) AS tags,
     ARRAY(SELECT jsonb_array_elements_text(d.frontmatter->'aliases')) AS aliases,
     d.content_hash
-FROM raw.docs_github d;
+FROM raw.github_contents__documents d;
 ```
 
 ---
@@ -260,7 +260,7 @@ BEGIN
         d.file_path,
         1 - (c.embedding <=> query_embedding) AS similarity
     FROM rag.chunks c
-    JOIN raw.docs_github d ON c.document_id = d.id
+    JOIN raw.github_contents__documents d ON c.document_id = d.id
     WHERE
         (filter_tags IS NULL OR d.frontmatter->'tags' ?| filter_tags)
         AND 1 - (c.embedding <=> query_embedding) >= similarity_threshold
@@ -302,7 +302,7 @@ BEGIN
         d.frontmatter,
         d.content,
         d.content_hash
-    FROM raw.docs_github d
+    FROM raw.github_contents__documents d
     LEFT JOIN rag.embedding_state es ON d.id = es.document_id
     WHERE
         es.document_id IS NULL
@@ -325,9 +325,9 @@ AS $$
 BEGIN
     RETURN QUERY
     SELECT DISTINCT d2.id
-    FROM raw.docs_github d1
+    FROM raw.github_contents__documents d1
     CROSS JOIN LATERAL jsonb_array_elements_text(d1.frontmatter->'previous') AS prev_file
-    JOIN raw.docs_github d2 ON d2.file_path ~ (prev_file || '\.md$')
+    JOIN raw.github_contents__documents d2 ON d2.file_path ~ (prev_file || '\.md$')
     WHERE d1.frontmatter ? 'previous';
 END;
 $$;
@@ -349,8 +349,8 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE SCHEMA IF NOT EXISTS raw;
 CREATE SCHEMA IF NOT EXISTS rag;
 
--- raw.docs_github
-CREATE TABLE raw.docs_github (
+-- raw.github_contents__documents
+CREATE TABLE raw.github_contents__documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     file_path TEXT NOT NULL UNIQUE,
     frontmatter JSONB NOT NULL DEFAULT '{}',
@@ -359,8 +359,8 @@ CREATE TABLE raw.docs_github (
     fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX docs_github_frontmatter_tags_idx
-    ON raw.docs_github USING GIN ((frontmatter->'tags'));
+CREATE INDEX github_contents__documents_frontmatter_tags_idx
+    ON raw.github_contents__documents USING GIN ((frontmatter->'tags'));
 
 -- raw.sync_state
 CREATE TABLE raw.sync_state (
@@ -372,7 +372,7 @@ CREATE TABLE raw.sync_state (
 -- rag.chunks
 CREATE TABLE rag.chunks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    document_id UUID NOT NULL REFERENCES raw.docs_github(id) ON DELETE CASCADE,
+    document_id UUID NOT NULL REFERENCES raw.github_contents__documents(id) ON DELETE CASCADE,
     chunk_index INT NOT NULL,
     parent_heading TEXT NOT NULL,
     heading TEXT NOT NULL,
@@ -386,7 +386,7 @@ CREATE INDEX chunks_document_id_idx ON rag.chunks (document_id);
 
 -- rag.embedding_state
 CREATE TABLE rag.embedding_state (
-    document_id UUID PRIMARY KEY REFERENCES raw.docs_github(id) ON DELETE CASCADE,
+    document_id UUID PRIMARY KEY REFERENCES raw.github_contents__documents(id) ON DELETE CASCADE,
     content_hash TEXT NOT NULL,
     embedded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -400,7 +400,7 @@ SELECT
     ARRAY(SELECT jsonb_array_elements_text(d.frontmatter->'tags')) AS tags,
     ARRAY(SELECT jsonb_array_elements_text(d.frontmatter->'aliases')) AS aliases,
     d.content_hash
-FROM raw.docs_github d;
+FROM raw.github_contents__documents d;
 
 -- RPC関数
 CREATE OR REPLACE FUNCTION search_chunks(
@@ -429,7 +429,7 @@ BEGIN
         d.file_path,
         1 - (c.embedding <=> query_embedding) AS similarity
     FROM rag.chunks c
-    JOIN raw.docs_github d ON c.document_id = d.id
+    JOIN raw.github_contents__documents d ON c.document_id = d.id
     WHERE
         (filter_tags IS NULL OR d.frontmatter->'tags' ?| filter_tags)
         AND 1 - (c.embedding <=> query_embedding) >= similarity_threshold
@@ -456,7 +456,7 @@ BEGIN
         d.frontmatter,
         d.content,
         d.content_hash
-    FROM raw.docs_github d
+    FROM raw.github_contents__documents d
     LEFT JOIN rag.embedding_state es ON d.id = es.document_id
     WHERE
         es.document_id IS NULL
@@ -471,9 +471,9 @@ AS $$
 BEGIN
     RETURN QUERY
     SELECT DISTINCT d2.id
-    FROM raw.docs_github d1
+    FROM raw.github_contents__documents d1
     CROSS JOIN LATERAL jsonb_array_elements_text(d1.frontmatter->'previous') AS prev_file
-    JOIN raw.docs_github d2 ON d2.file_path ~ (prev_file || '\.md$')
+    JOIN raw.github_contents__documents d2 ON d2.file_path ~ (prev_file || '\.md$')
     WHERE d1.frontmatter ? 'previous';
 END;
 $$;
@@ -514,7 +514,7 @@ CREATE INDEX chunks_embedding_idx ON rag.chunks
 
 | テーブル | バックアップ必要性 | 理由 |
 |---------|-------------------|------|
-| raw.docs_github | 低 | GitHubから再取得可能 |
+| raw.github_contents__documents | 低 | GitHubから再取得可能 |
 | raw.sync_state | 低 | 再取得可能（フル同期すれば復旧） |
 | rag.chunks | 高 | embedding再生成にAPI呼び出しが必要 |
 | rag.embedding_state | 低 | 再計算可能 |

@@ -9,7 +9,8 @@ export async function GET() {
 
   const metadata = {
     resource: `${supabaseUrl}/functions/v1/personal-context`,
-    authorization_servers: [`${supabaseUrl}/auth/v1`],
+    // Claude Web expects to append /authorize directly to this URL
+    authorization_servers: [`${supabaseUrl}/auth/v1/oauth`],
     scopes_supported: ["openid", "profile", "email"],
     bearer_methods_supported: ["header"],
   };

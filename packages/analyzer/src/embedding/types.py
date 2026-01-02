@@ -14,7 +14,7 @@ class FrontmatterDict(TypedDict, total=False):
 
 @dataclass
 class RawDocument:
-    """raw.docs_githubから取得したドキュメント"""
+    """raw.github_contents__documentsから取得したドキュメント"""
     id: str
     file_path: str
     frontmatter: FrontmatterDict

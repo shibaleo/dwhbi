@@ -84,7 +84,7 @@ export async function getDocument(
 
   const { data, error } = await supabase
     .schema("raw")
-    .from("docs_github")
+    .from("github_contents__documents")
     .select("file_path, frontmatter, content")
     .eq("file_path", filePath)
     .single();
@@ -125,7 +125,7 @@ export async function listDocsByTag(
 
   const query = supabase
     .schema("raw")
-    .from("docs_github")
+    .from("github_contents__documents")
     .select("file_path, frontmatter")
     .contains("frontmatter->tags", JSON.stringify([tag]));
 
@@ -246,7 +246,7 @@ export async function searchByTitle(
 
   const { data, error } = await supabase
     .schema("raw")
-    .from("docs_github")
+    .from("github_contents__documents")
     .select("file_path, frontmatter")
     .ilike("frontmatter->>title", `%${query}%`)
     .limit(limit);
@@ -273,7 +273,7 @@ export async function listAllDocs(
 
   const { count, error: countError } = await supabase
     .schema("raw")
-    .from("docs_github")
+    .from("github_contents__documents")
     .select("*", { count: "exact", head: true });
 
   if (countError) {
@@ -282,7 +282,7 @@ export async function listAllDocs(
 
   const { data, error } = await supabase
     .schema("raw")
-    .from("docs_github")
+    .from("github_contents__documents")
     .select("file_path, frontmatter")
     .order("file_path", { ascending: true })
     .range(offset, offset + limit - 1);
@@ -317,7 +317,7 @@ export async function searchByKeyword(
 
   const { data, error } = await supabase
     .schema("raw")
-    .from("docs_github")
+    .from("github_contents__documents")
     .select("file_path, frontmatter, content")
     .or(orConditions)
     .limit(limit);
