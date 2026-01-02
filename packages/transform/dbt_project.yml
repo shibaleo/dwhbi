@@ -37,6 +37,8 @@ models:
         +tags: ['toggl', 'time_tracking']
       google_calendar:
         +tags: ['google', 'calendar']
+      tanita_health_planet:
+        +tags: ['tanita', 'health']
 
     # ref層: ソース非依存の共有マスタ・マッピング
     ref:

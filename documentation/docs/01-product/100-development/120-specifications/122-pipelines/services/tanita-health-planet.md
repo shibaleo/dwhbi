@@ -7,9 +7,10 @@ description: Tanita Health Planet 同期モジュールの仕様
 
 | 項目 | 内容 |
 |------|------|
-| 対象ファイル | `pipelines/services/tanita.py` |
+| 対象ファイル | `packages/connector/src/services/tanita-health-planet/` |
 | 認証方式 | OAuth 2.0 |
 | API | Tanita Health Planet API |
+| Vault名 | `tanita_health_planet` |
 
 ## 概要
 
@@ -27,6 +28,7 @@ Tanita Health Planet API から体組成データ・血圧データを取得し�
 | 認証方式 | OAuth 2.0 Authorization Code Flow |
 | トークン有効期限 | 3時間 |
 | リフレッシュ閾値 | 30分前 |
+| OAuthクライアント管理 | https://www.healthplanet.jp/apis_account.do |
 
 ### 必要な認証情報
 
@@ -79,28 +81,46 @@ Tanita Health Planet API から体組成データ・血圧データを取得し�
 
 ## データベーススキーマ
 
-### raw.tanita_body_composition
+JSONB形式でAPIレスポンスをそのまま保存するパターンを採用。
+
+### raw.tanita_health_planet__body_composition
 
 | カラム | 型 | NULL | 説明 |
 |--------|-----|------|------|
-| id | UUID | NO | PK |
-| measured_at | TIMESTAMPTZ | NO | UNIQUE, 測定日時 |
-| weight | NUMERIC | YES | 体重 (kg) |
-| body_fat_percent | NUMERIC | YES | 体脂肪率 (%) |
-| model | TEXT | YES | 測定機器 |
-| synced_at | TIMESTAMPTZ | YES | 同期日時 |
+| source_id | TEXT | NO | PK, `{date}_{tag}` 形式 |
+| data | JSONB | NO | APIレスポンスデータ |
+| synced_at | TIMESTAMPTZ | NO | 同期日時 |
+| api_version | TEXT | YES | APIバージョン |
 
-### raw.tanita_blood_pressure
+**data JSONBの構造:**
+```json
+{
+  "measured_at": "2026-01-01T10:00:00+09:00",
+  "weight": 65.5,
+  "body_fat_percent": 20.1,
+  "model": "BC-123"
+}
+```
+
+### raw.tanita_health_planet__blood_pressure
 
 | カラム | 型 | NULL | 説明 |
 |--------|-----|------|------|
-| id | UUID | NO | PK |
-| measured_at | TIMESTAMPTZ | NO | UNIQUE, 測定日時 |
-| systolic | INTEGER | YES | 最高血圧 (mmHg) |
-| diastolic | INTEGER | YES | 最低血圧 (mmHg) |
-| pulse | INTEGER | YES | 脈拍 (bpm) |
-| model | TEXT | YES | 測定機器 |
-| synced_at | TIMESTAMPTZ | YES | 同期日時 |
+| source_id | TEXT | NO | PK, `{date}_{tag}` 形式 |
+| data | JSONB | NO | APIレスポンスデータ |
+| synced_at | TIMESTAMPTZ | NO | 同期日時 |
+| api_version | TEXT | YES | APIバージョン |
+
+**data JSONBの構造:**
+```json
+{
+  "measured_at": "2026-01-01T08:00:00+09:00",
+  "systolic": 120,
+  "diastolic": 80,
+  "pulse": 65,
+  "model": "BP-123"
+}
+```
 
 ## 日付フォーマット
 
@@ -130,3 +150,4 @@ def parse_tanita_date(date_str: str) -> str:
 ## 参考資料
 
 - [Health Planet API仕様書](https://www.healthplanet.jp/apis/api.html)
+- [OAuthクライアント管理](https://www.healthplanet.jp/apis_account.do)
