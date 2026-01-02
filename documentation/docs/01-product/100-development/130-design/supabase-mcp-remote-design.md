@@ -517,10 +517,7 @@ supabase functions logs personal-context
   "mcpServers": {
     "personal-context": {
       "type": "http",
-      "url": "https://<project-ref>.supabase.co/functions/v1/personal-context",
-      "headers": {
-        "Authorization": "Bearer ${SUPABASE_SERVICE_ROLE_KEY:-<fallback-token>}"
-      }
+      "url": "https://<project-ref>.supabase.co/functions/v1/personal-context?token=${MCP_API_KEY}"
     }
   }
 }
@@ -528,23 +525,12 @@ supabase functions logs personal-context
 
 > **既知の問題（2026-01時点）**: Claude Code VSCode拡張（v2.0.74）では、`.mcp.json`の`headers`フィールドが正しく送信されない問題が確認されている。
 >
-> **回避策**:
-> 1. Edge Function側で認証をオプショナルにする（個人利用のため許容）
-> 2. `index.ts`でAuthorizationヘッダーがない場合は認証をスキップ
+> **回避策**: クエリパラメータでAPIキーを渡す方式を採用。
 >
-> ```typescript
-> // 認証チェック（Authorizationヘッダーがない場合はスキップ）
-> const authHeader = req.headers.get("authorization");
-> let userId = "anonymous";
->
-> if (authHeader) {
->   const authResult = await validateToken(req);
->   if (!authResult.valid) {
->     return createUnauthorizedResponse();
->   }
->   userId = authResult.userId!;
-> }
-> ```
+> **設定手順**:
+> 1. Supabase Secretsに`MCP_API_KEY`を設定: `supabase secrets set MCP_API_KEY=<random-key>`
+> 2. ローカル環境変数に`MCP_API_KEY`を設定（`.mcp.json`の`${MCP_API_KEY}`が展開される）
+> 3. Edge Functionはクエリパラメータの`token`と環境変数`MCP_API_KEY`を比較して認証
 
 #### Claude Desktop / claude.ai
 
