@@ -13,21 +13,22 @@ Deno.serve(async (req: Request) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
-  // 認証チェック（Bearer トークンのみ）
+  // 認証チェック
   const authHeader = req.headers.get("authorization");
+  let userId = "anonymous";
 
-  if (!authHeader) {
-    console.log("No authentication provided");
-    return createUnauthorizedResponse();
+  if (authHeader) {
+    // Bearer トークンがある場合は検証
+    const authResult = await validateToken(req);
+    if (authResult.valid) {
+      userId = authResult.userId!;
+      console.log("Authenticated via Bearer token:", userId);
+    } else {
+      console.log("Invalid token, proceeding as anonymous");
+    }
+  } else {
+    console.log("No authentication provided, proceeding as anonymous");
   }
-
-  const authResult = await validateToken(req);
-  if (!authResult.valid) {
-    return createUnauthorizedResponse();
-  }
-
-  const userId = authResult.userId!;
-  console.log("Authenticated via Bearer token:", userId);
 
   // MCP処理
   try {
