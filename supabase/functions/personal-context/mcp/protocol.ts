@@ -28,6 +28,12 @@ export async function processRequest(
           })),
         });
 
+      case "resources/list":
+        return createResponse(id, { resources: [] });
+
+      case "prompts/list":
+        return createResponse(id, { prompts: [] });
+
       case "tools/call":
         return await handleToolCall(
           id,
@@ -36,6 +42,10 @@ export async function processRequest(
         );
 
       case "ping":
+        return createResponse(id, {});
+
+      case "notifications/initialized":
+        // クライアントからの初期化完了通知（レスポンス不要だが空レスポンスを返す）
         return createResponse(id, {});
 
       default:
