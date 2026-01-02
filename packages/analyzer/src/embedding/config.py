@@ -32,9 +32,9 @@ def _get_voyage_api_key_from_vault(database_url: str) -> str:
 
 def load_config() -> Config:
     """環境変数から設定を読み込み"""
-    database_url = os.environ.get("DATABASE_URL")
+    database_url = os.environ.get("DIRECT_DATABASE_URL")
     if not database_url:
-        raise ValueError("DATABASE_URL is required")
+        raise ValueError("DIRECT_DATABASE_URL is required")
 
     # 環境変数にあればそれを使用、なければVaultから取得
     voyage_api_key = os.environ.get("VOYAGE_API_KEY")

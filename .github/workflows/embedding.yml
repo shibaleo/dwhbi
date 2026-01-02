@@ -27,7 +27,7 @@ jobs:
         run: python -m src.embedding.main
         working-directory: packages/analyzer
         env:
-          DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
+          DIRECT_DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
           VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
 
       - name: Notify on failure
