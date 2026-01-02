@@ -1,12 +1,22 @@
-# Starlight Starter Kit: Basics
+# LIFETRACER Documentation
 
 [![Built with Starlight](https://astro.badg.es/v2/built-with-starlight/tiny.svg)](https://starlight.astro.build)
 
-```
-npm create astro@latest -- --template starlight
+## Claude Code MCP 設定
+
+CLIコマンドで MCP サーバーを登録:
+
+```bash
+claude mcp add personal-context \
+  --transport http \
+  --header "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+  --scope project \
+  "https://liegivvinbwmeujddzif.supabase.co/functions/v1/personal-context"
 ```
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+**注意**: `.mcp.json` を直接編集するのではなく、CLI コマンドで登録する必要があります。直接編集した場合、認証ヘッダーが初回リクエストで送信されず `needs-auth` エラーが発生します。
+
+---
 
 ## 🚀 Project Structure
 

@@ -214,18 +214,17 @@ startDate.setDate(startDate.getDate() - days - 1);
 
 ### Claude Code 設定
 
-`.claude/settings.local.json` に以下を追加:
+CLIコマンドで MCP サーバーを登録:
 
-```json
-{
-  "mcpServers": {
-    "personal-knowledge": {
-      "url": "https://dwhbi-console.vercel.app/api/mcp",
-      "transport": "streamable-http"
-    }
-  }
-}
+```bash
+claude mcp add personal-context \
+  --transport http \
+  --header "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+  --scope project \
+  "https://liegivvinbwmeujddzif.supabase.co/functions/v1/personal-context"
 ```
+
+**注意**: `.mcp.json` を直接編集するのではなく、CLI コマンドで登録する必要があります。直接編集した場合、認証ヘッダーが初回リクエストで送信されず `needs-auth` エラーが発生します。
 
 ### 前提条件
 
