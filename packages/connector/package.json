@@ -35,7 +35,8 @@
     "sync:toggl": "npx tsx src/services/toggl-track/cli.ts",
     "sync:gcal": "npx tsx src/services/google-calendar/cli.ts",
     "sync:coda": "npx tsx src/services/coda/cli.ts",
-    "sync:github-contents": "npx tsx src/services/github-contents/cli.ts"
+    "sync:github-contents": "npx tsx src/services/github-contents/cli.ts",
+    "sync:tanita": "npx tsx src/services/tanita-health-planet/cli.ts"
   },
   "dependencies": {
     "@octokit/rest": "^20.0.0",

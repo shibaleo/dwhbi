@@ -5,48 +5,42 @@ on:
   workflow_dispatch:
     inputs:
       sync_days:
-        description: "同期日数"
+        description: "同期する日数"
         required: false
         default: "3"
-        type: choice
-        options:
-          - "3"
-          - "7"
-          - "14"
-          - "30"
-          - "90"
+        type: string
 
 jobs:
   sync-tanita:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: ./.github/actions/python-setup
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: packages/connector
+        run: npm install
 
       - name: Run Tanita sync
+        working-directory: packages/connector
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           DIRECT_DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
           SYNC_DAYS: ${{ inputs.sync_days || '3' }}
-        run: |
-          python -c "
-          import asyncio
-          import os
-          from services.tanita import sync_tanita
-          days = int(os.environ.get('SYNC_DAYS', '3'))
-          result = asyncio.run(sync_tanita(days=days))
-          print(result)
-          if not result.get('success'):
-              exit(1)
-          "
+        run: npm run sync:tanita -- --days $SYNC_DAYS
 
       - name: Notify on failure
         if: failure()
         run: |
-          echo "❌ Tanita日次同期が失敗しました"
+          echo "❌ Tanita Health Planet同期が失敗しました"
+          echo "タイムアウトの場合はローカルで実行してください："
+          echo "  cd packages/connector && npm run sync:tanita"
           echo "詳細は Actions ログを確認してください"

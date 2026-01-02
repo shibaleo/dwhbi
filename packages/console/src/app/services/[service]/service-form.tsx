@@ -452,7 +452,7 @@ export function ServiceForm({ service, fields, authType, oauthCallbackUrl }: Ser
           {oauthCallbackUrl && (
             <div className="mb-4 p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
               <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
-                Google Cloud Consoleに登録するコールバックURL:
+                OAuthプロバイダに登録するコールバックURL:
               </p>
               <code className="text-sm text-zinc-800 dark:text-zinc-200 break-all select-all">
                 {oauthCallbackUrl}
