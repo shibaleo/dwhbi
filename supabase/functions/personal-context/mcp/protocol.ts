@@ -4,6 +4,7 @@ import { getSupabaseTools } from "../tools/supabase/tools.ts";
 import { getNotionTools } from "../tools/notion/tools.ts";
 import { getGoogleCalendarTools } from "../tools/google-calendar/tools.ts";
 import { getJiraTools } from "../tools/jira/tools.ts";
+import { getGitHubTools } from "../tools/github/tools.ts";
 
 const allTools: ToolDefinition[] = [
   ...ragTools,
@@ -11,6 +12,7 @@ const allTools: ToolDefinition[] = [
   ...getNotionTools(),
   ...getGoogleCalendarTools(),
   ...getJiraTools(),
+  ...getGitHubTools(),
 ];
 
 export async function processRequest(
