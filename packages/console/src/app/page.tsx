@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ServiceList } from "@/components/service-list";
-import { hasGitHubConfig, hasVoyageConfig, hasNotionConfig } from "@/lib/vault";
+import { hasGitHubConfig, hasVoyageConfig, hasNotionConfig, hasJiraConfig } from "@/lib/vault";
 
 export default async function Home() {
   const supabase = await createClient();
@@ -14,6 +14,7 @@ export default async function Home() {
   const githubConfigured = await hasGitHubConfig();
   const voyageConfigured = await hasVoyageConfig();
   const notionConfigured = await hasNotionConfig();
+  const jiraConfigured = await hasJiraConfig();
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900">
@@ -53,6 +54,31 @@ export default async function Home() {
               </p>
               <div className="flex items-center gap-1.5 mt-1">
                 {notionConfigured ? (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-green-500" />
+                    <span className="text-sm text-green-600 dark:text-green-400">
+                      連携中
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-zinc-300 dark:bg-zinc-600" />
+                    <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                      未設定
+                    </span>
+                  </>
+                )}
+              </div>
+            </a>
+            <a
+              href="/settings/jira"
+              className="p-4 bg-white dark:bg-zinc-950 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
+            >
+              <p className="font-medium text-zinc-900 dark:text-zinc-100">
+                Jira
+              </p>
+              <div className="flex items-center gap-1.5 mt-1">
+                {jiraConfigured ? (
                   <>
                     <span className="w-2 h-2 rounded-full bg-green-500" />
                     <span className="text-sm text-green-600 dark:text-green-400">
