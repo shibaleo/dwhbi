@@ -485,3 +485,85 @@ export async function hasVoyageConfig(): Promise<boolean> {
 
   return !error && data !== null;
 }
+
+// ============================================
+// Notion API Token 管理
+// ============================================
+
+const NOTION_SECRET_NAME = "notion";
+
+export interface NotionConfig {
+  api_token: string;
+}
+
+/**
+ * Notion設定を取得
+ */
+export async function getNotionConfig(): Promise<NotionConfig | null> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .schema("console")
+    .rpc("get_service_secret", {
+      service_name: NOTION_SECRET_NAME,
+    });
+
+  if (error || !data) {
+    return null;
+  }
+
+  return {
+    api_token: data.api_token || "",
+  };
+}
+
+/**
+ * Notion設定を保存
+ */
+export async function saveNotionConfig(config: NotionConfig): Promise<void> {
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .schema("console")
+    .rpc("upsert_service_secret", {
+      service_name: NOTION_SECRET_NAME,
+      secret_data: { ...config, _auth_type: "api_key" },
+      secret_description: "Notion API Token for MCP integration",
+    });
+
+  if (error) {
+    throw new Error(`Failed to save Notion config: ${error.message}`);
+  }
+}
+
+/**
+ * Notion設定を削除
+ */
+export async function deleteNotionConfig(): Promise<void> {
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .schema("console")
+    .rpc("delete_service_secret", {
+      service_name: NOTION_SECRET_NAME,
+    });
+
+  if (error) {
+    throw new Error(`Failed to delete Notion config: ${error.message}`);
+  }
+}
+
+/**
+ * Notion設定が存在するかチェック
+ */
+export async function hasNotionConfig(): Promise<boolean> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .schema("console")
+    .rpc("get_service_secret", {
+      service_name: NOTION_SECRET_NAME,
+    });
+
+  return !error && data !== null;
+}
