@@ -2,11 +2,13 @@ import { McpRequest, McpResponse, MCP_ERROR, ToolDefinition } from "./types.ts";
 import { ragTools } from "../tools/rag/tools.ts";
 import { getSupabaseTools } from "../tools/supabase/tools.ts";
 import { getNotionTools } from "../tools/notion/tools.ts";
+import { getGoogleCalendarTools } from "../tools/google-calendar/tools.ts";
 
 const allTools: ToolDefinition[] = [
   ...ragTools,
   ...getSupabaseTools(),
   ...getNotionTools(),
+  ...getGoogleCalendarTools(),
 ];
 
 export async function processRequest(
