@@ -15,6 +15,7 @@ import { setupLogger } from "../../lib/logger.js";
 import { upsertRaw, type RawRecord } from "../../db/raw-client.js";
 import {
   fetchActivityRange,
+  fetchActivityTimeSeriesWithChunks,
   fetchHeartRate,
   fetchHrv,
   fetchSpo2,
@@ -24,6 +25,7 @@ import {
   fetchWithChunks,
   CHUNK_LIMITS,
   type ActivitySummary,
+  type ActivityTimeSeriesMerged,
   type HeartRateDay,
   type HrvDay,
   type Spo2Day,
@@ -64,12 +66,20 @@ function activityToRawRecord(activity: ActivitySummary): RawRecord {
   };
 }
 
-export async function syncActivity(days: number = 30): Promise<number> {
-  logger.info(`Syncing activity data (${days} days)...`);
+export async function syncActivity(startDateOrDays: Date | number = 30, endDateParam?: Date): Promise<number> {
+  let startDate: Date;
+  let endDate: Date;
 
-  const endDate = new Date();
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days);
+  if (typeof startDateOrDays === "number") {
+    endDate = new Date();
+    startDate = new Date();
+    startDate.setDate(startDate.getDate() - startDateOrDays);
+    logger.info(`Syncing activity data (${startDateOrDays} days)...`);
+  } else {
+    startDate = startDateOrDays;
+    endDate = endDateParam || new Date();
+    logger.info(`Syncing activity data (${startDate.toISOString().slice(0, 10)} to ${endDate.toISOString().slice(0, 10)})...`);
+  }
 
   const activities = await fetchActivityRange(startDate, endDate);
 
@@ -82,6 +92,78 @@ export async function syncActivity(days: number = 30): Promise<number> {
   const result = await upsertRaw(ACTIVITY_TABLE, records, API_VERSION);
 
   logger.info(`Synced ${result.total} activity records`);
+  return result.total;
+}
+
+// =============================================================================
+// Activity (Time Series API) - Faster, uses ~70% fewer API calls
+// =============================================================================
+//
+// @deprecated Time Series API implementation is deprecated.
+// Use Daily Summary API (syncActivity) instead - simpler and gets all fields.
+//
+
+/** @deprecated */
+const API_VERSION_TIMESERIES = "v1-timeseries";
+
+/** @deprecated */
+function activityTimeSeriesMergedToRawRecord(activity: ActivityTimeSeriesMerged): RawRecord {
+  return {
+    sourceId: activity.date,
+    data: {
+      date: activity.date,
+      steps: activity.steps,
+      distance_km: activity.distance_km,
+      floors: activity.floors,
+      calories_total: activity.calories_total,
+      calories_bmr: null, // Not available in Time Series API
+      calories_activity: activity.calories_activity,
+      sedentary_minutes: activity.sedentary_minutes,
+      lightly_active_minutes: activity.lightly_active_minutes,
+      fairly_active_minutes: activity.fairly_active_minutes,
+      very_active_minutes: activity.very_active_minutes,
+      active_zone_minutes: null, // Not available in Time Series API
+    },
+  };
+}
+
+/**
+ * Sync activity data using Time Series API
+ *
+ * Faster than syncActivity (~70% fewer API calls):
+ * - Daily Summary: 1 request per day = 2040 requests for 5+ years
+ * - Time Series: 9 requests per 30-day chunk = 612 requests for 5+ years
+ *
+ * Trade-off: calories_bmr and active_zone_minutes not available
+ *
+ * @deprecated Use syncActivity (Daily Summary API) instead - simpler and gets all fields
+ */
+export async function syncActivityTimeSeries(startDateOrDays: Date | number = 30, endDateParam?: Date): Promise<number> {
+  let startDate: Date;
+  let endDate: Date;
+
+  if (typeof startDateOrDays === "number") {
+    endDate = new Date();
+    startDate = new Date();
+    startDate.setDate(startDate.getDate() - startDateOrDays);
+    logger.info(`Syncing activity data via Time Series API (${startDateOrDays} days)...`);
+  } else {
+    startDate = startDateOrDays;
+    endDate = endDateParam || new Date();
+    logger.info(`Syncing activity data via Time Series API (${startDate.toISOString().slice(0, 10)} to ${endDate.toISOString().slice(0, 10)})...`);
+  }
+
+  const activities = await fetchActivityTimeSeriesWithChunks(startDate, endDate);
+
+  if (activities.length === 0) {
+    logger.info("No activity data to sync");
+    return 0;
+  }
+
+  const records = activities.map(activityTimeSeriesMergedToRawRecord);
+  const result = await upsertRaw(ACTIVITY_TABLE, records, API_VERSION_TIMESERIES);
+
+  logger.info(`Synced ${result.total} activity records via Time Series API`);
   return result.total;
 }
 
@@ -102,12 +184,20 @@ function heartRateToRawRecord(hr: HeartRateDay): RawRecord {
   };
 }
 
-export async function syncHeartRate(days: number = 30): Promise<number> {
-  logger.info(`Syncing heart rate data (${days} days)...`);
+export async function syncHeartRate(startDateOrDays: Date | number = 30, endDateParam?: Date): Promise<number> {
+  let startDate: Date;
+  let endDate: Date;
 
-  const endDate = new Date();
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days);
+  if (typeof startDateOrDays === "number") {
+    endDate = new Date();
+    startDate = new Date();
+    startDate.setDate(startDate.getDate() - startDateOrDays);
+    logger.info(`Syncing heart rate data (${startDateOrDays} days)...`);
+  } else {
+    startDate = startDateOrDays;
+    endDate = endDateParam || new Date();
+    logger.info(`Syncing heart rate data (${startDate.toISOString().slice(0, 10)} to ${endDate.toISOString().slice(0, 10)})...`);
+  }
 
   const heartRates = await fetchWithChunks(
     startDate,
@@ -145,12 +235,20 @@ function hrvToRawRecord(hrv: HrvDay): RawRecord {
   };
 }
 
-export async function syncHrv(days: number = 30): Promise<number> {
-  logger.info(`Syncing HRV data (${days} days)...`);
+export async function syncHrv(startDateOrDays: Date | number = 30, endDateParam?: Date): Promise<number> {
+  let startDate: Date;
+  let endDate: Date;
 
-  const endDate = new Date();
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days);
+  if (typeof startDateOrDays === "number") {
+    endDate = new Date();
+    startDate = new Date();
+    startDate.setDate(startDate.getDate() - startDateOrDays);
+    logger.info(`Syncing HRV data (${startDateOrDays} days)...`);
+  } else {
+    startDate = startDateOrDays;
+    endDate = endDateParam || new Date();
+    logger.info(`Syncing HRV data (${startDate.toISOString().slice(0, 10)} to ${endDate.toISOString().slice(0, 10)})...`);
+  }
 
   const hrvData = await fetchWithChunks(
     startDate,
@@ -189,12 +287,20 @@ function spo2ToRawRecord(spo2: Spo2Day): RawRecord {
   };
 }
 
-export async function syncSpo2(days: number = 30): Promise<number> {
-  logger.info(`Syncing SpO2 data (${days} days)...`);
+export async function syncSpo2(startDateOrDays: Date | number = 30, endDateParam?: Date): Promise<number> {
+  let startDate: Date;
+  let endDate: Date;
 
-  const endDate = new Date();
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days);
+  if (typeof startDateOrDays === "number") {
+    endDate = new Date();
+    startDate = new Date();
+    startDate.setDate(startDate.getDate() - startDateOrDays);
+    logger.info(`Syncing SpO2 data (${startDateOrDays} days)...`);
+  } else {
+    startDate = startDateOrDays;
+    endDate = endDateParam || new Date();
+    logger.info(`Syncing SpO2 data (${startDate.toISOString().slice(0, 10)} to ${endDate.toISOString().slice(0, 10)})...`);
+  }
 
   const spo2Data = await fetchWithChunks(
     startDate,
@@ -231,12 +337,20 @@ function breathingRateToRawRecord(br: BreathingRateDay): RawRecord {
   };
 }
 
-export async function syncBreathingRate(days: number = 30): Promise<number> {
-  logger.info(`Syncing breathing rate data (${days} days)...`);
+export async function syncBreathingRate(startDateOrDays: Date | number = 30, endDateParam?: Date): Promise<number> {
+  let startDate: Date;
+  let endDate: Date;
 
-  const endDate = new Date();
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days);
+  if (typeof startDateOrDays === "number") {
+    endDate = new Date();
+    startDate = new Date();
+    startDate.setDate(startDate.getDate() - startDateOrDays);
+    logger.info(`Syncing breathing rate data (${startDateOrDays} days)...`);
+  } else {
+    startDate = startDateOrDays;
+    endDate = endDateParam || new Date();
+    logger.info(`Syncing breathing rate data (${startDate.toISOString().slice(0, 10)} to ${endDate.toISOString().slice(0, 10)})...`);
+  }
 
   const brData = await fetchWithChunks(
     startDate,
@@ -292,12 +406,20 @@ function cardioScoreToRawRecord(cs: CardioScoreDay): RawRecord {
   };
 }
 
-export async function syncCardioScore(days: number = 30): Promise<number> {
-  logger.info(`Syncing cardio score data (${days} days)...`);
+export async function syncCardioScore(startDateOrDays: Date | number = 30, endDateParam?: Date): Promise<number> {
+  let startDate: Date;
+  let endDate: Date;
 
-  const endDate = new Date();
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days);
+  if (typeof startDateOrDays === "number") {
+    endDate = new Date();
+    startDate = new Date();
+    startDate.setDate(startDate.getDate() - startDateOrDays);
+    logger.info(`Syncing cardio score data (${startDateOrDays} days)...`);
+  } else {
+    startDate = startDateOrDays;
+    endDate = endDateParam || new Date();
+    logger.info(`Syncing cardio score data (${startDate.toISOString().slice(0, 10)} to ${endDate.toISOString().slice(0, 10)})...`);
+  }
 
   const csData = await fetchWithChunks(
     startDate,
@@ -335,12 +457,20 @@ function temperatureSkinToRawRecord(ts: TemperatureSkinDay): RawRecord {
   };
 }
 
-export async function syncTemperatureSkin(days: number = 30): Promise<number> {
-  logger.info(`Syncing temperature skin data (${days} days)...`);
+export async function syncTemperatureSkin(startDateOrDays: Date | number = 30, endDateParam?: Date): Promise<number> {
+  let startDate: Date;
+  let endDate: Date;
 
-  const endDate = new Date();
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days);
+  if (typeof startDateOrDays === "number") {
+    endDate = new Date();
+    startDate = new Date();
+    startDate.setDate(startDate.getDate() - startDateOrDays);
+    logger.info(`Syncing temperature skin data (${startDateOrDays} days)...`);
+  } else {
+    startDate = startDateOrDays;
+    endDate = endDateParam || new Date();
+    logger.info(`Syncing temperature skin data (${startDate.toISOString().slice(0, 10)} to ${endDate.toISOString().slice(0, 10)})...`);
+  }
 
   const tsData = await fetchWithChunks(
     startDate,

@@ -26,7 +26,10 @@ const logger = setupLogger("fitbit-api");
 const FITBIT_TOKEN_URL = "https://api.fitbit.com/oauth2/token";
 const FITBIT_API_BASE = "https://api.fitbit.com";
 const DEFAULT_THRESHOLD_MINUTES = 60;
-const DEFAULT_RETRY_DELAY_SEC = 1;
+const DEFAULT_RETRY_DELAY_SEC = 60; // Default wait time when Retry-After header is missing
+const MAX_RETRY_DELAY_SEC = 3600; // Max 1 hour wait
+const BACKOFF_MULTIPLIER = 2; // Exponential backoff multiplier
+const RATE_LIMIT_BUFFER = 5; // Stop when remaining requests drops to this number
 
 // Chunk limits per data type
 export const CHUNK_LIMITS = {
@@ -37,7 +40,8 @@ export const CHUNK_LIMITS = {
   breathingRate: 30,
   cardioScore: 30,
   temperatureSkin: 30,
-  activity: 1, // Must fetch one day at a time
+  activity: 1, // Must fetch one day at a time (Daily Summary API)
+  activityTimeSeries: 30, // Time Series API supports up to 30 days
 } as const;
 
 // Types
@@ -60,6 +64,7 @@ interface TokenResponse {
 // Authentication Cache
 let cachedAuth: AuthInfo | null = null;
 let cachedExpiresAt: Date | null = null;
+let refreshInProgress: Promise<AuthInfo> | null = null; // Prevent concurrent refresh
 
 /**
  * Reset cache (for testing)
@@ -80,28 +85,90 @@ function handleRateLimit(response: Response): number {
       return seconds;
     }
   }
+
+  // Fallback: use Fitbit-Rate-Limit-Reset header (seconds until reset)
+  const resetSeconds = response.headers.get("Fitbit-Rate-Limit-Reset");
+  if (resetSeconds) {
+    const seconds = parseInt(resetSeconds, 10);
+    if (!isNaN(seconds) && seconds > 0) {
+      return seconds;
+    }
+  }
+
   return DEFAULT_RETRY_DELAY_SEC;
 }
 
 /**
+ * Check rate limit headers and wait proactively if quota is low
+ * Returns true if we waited, false otherwise
+ */
+async function checkRateLimitProactively(response: Response): Promise<boolean> {
+  const remaining = response.headers.get("Fitbit-Rate-Limit-Remaining");
+  const resetSeconds = response.headers.get("Fitbit-Rate-Limit-Reset");
+
+  if (remaining && resetSeconds) {
+    const remainingCount = parseInt(remaining, 10);
+    const resetSec = parseInt(resetSeconds, 10);
+
+    if (!isNaN(remainingCount) && !isNaN(resetSec)) {
+      // Log current quota status periodically
+      if (remainingCount % 25 === 0 || remainingCount <= 10) {
+        logger.info(`Rate limit: ${remainingCount} requests remaining, resets in ${Math.ceil(resetSec / 60)} min`);
+      }
+
+      // Proactively wait if quota is nearly exhausted
+      if (remainingCount <= RATE_LIMIT_BUFFER) {
+        const waitSeconds = resetSec + 5; // Add 5 seconds buffer
+        const waitMinutes = (waitSeconds / 60).toFixed(1);
+        logger.info(`Rate limit nearly exhausted (${remainingCount} remaining). Waiting ${waitMinutes} min for reset...`);
+        await new Promise(r => setTimeout(r, waitSeconds * 1000));
+        logger.info("Resuming after proactive rate limit wait");
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
  * HTTP request with retry for rate limits
+ * Uses exponential backoff when Retry-After header is not provided
+ * Also proactively waits when quota is nearly exhausted
  */
 async function requestWithRetry(
   url: string,
   options: RequestInit = {}
 ): Promise<Response> {
   let serverErrorRetried = false;
+  let consecutiveRateLimits = 0;
 
   while (true) {
     const response = await fetch(url, options);
 
     if (response.ok) {
+      consecutiveRateLimits = 0; // Reset on success
+
+      // Check if we should wait proactively before next request
+      await checkRateLimitProactively(response);
+
       return response;
     }
 
     if (response.status === 429) {
-      const waitSeconds = handleRateLimit(response);
-      logger.warn(`Rate limited (429). Waiting ${waitSeconds}s...`);
+      consecutiveRateLimits++;
+      let waitSeconds = handleRateLimit(response);
+
+      // If no Retry-After header, use exponential backoff
+      if (waitSeconds === DEFAULT_RETRY_DELAY_SEC && consecutiveRateLimits > 1) {
+        waitSeconds = Math.min(
+          DEFAULT_RETRY_DELAY_SEC * Math.pow(BACKOFF_MULTIPLIER, consecutiveRateLimits - 1),
+          MAX_RETRY_DELAY_SEC
+        );
+      }
+
+      const waitMinutes = (waitSeconds / 60).toFixed(1);
+      logger.warn(`Rate limited (429). Waiting ${waitSeconds}s (${waitMinutes}min)... [attempt ${consecutiveRateLimits}]`);
       await new Promise((r) => setTimeout(r, waitSeconds * 1000));
       continue;
     }
@@ -110,7 +177,7 @@ async function requestWithRetry(
       if (!serverErrorRetried) {
         serverErrorRetried = true;
         logger.warn(`Server error (${response.status}). Retrying once...`);
-        await new Promise((r) => setTimeout(r, DEFAULT_RETRY_DELAY_SEC * 1000));
+        await new Promise((r) => setTimeout(r, 5 * 1000)); // 5 seconds for server errors
         continue;
       }
     }
@@ -149,19 +216,9 @@ async function refreshTokenFromApi(
 }
 
 /**
- * Get authentication info (cached with auto-refresh)
+ * Internal: Actually perform the auth refresh
  */
-export async function getAuthInfo(forceRefresh: boolean = false): Promise<AuthInfo> {
-  // Check cache
-  if (!forceRefresh && cachedAuth !== null && cachedExpiresAt !== null) {
-    const minutesUntilExpiry =
-      (cachedExpiresAt.getTime() - Date.now()) / 1000 / 60;
-    if (minutesUntilExpiry > DEFAULT_THRESHOLD_MINUTES) {
-      logger.debug(`Using cached auth (${Math.round(minutesUntilExpiry)} min until expiry)`);
-      return cachedAuth;
-    }
-  }
-
+async function doGetAuthInfo(forceRefresh: boolean): Promise<AuthInfo> {
   // Load from vault
   logger.debug("Loading credentials from vault...");
   const result = await getCredentials("fitbit");
@@ -230,6 +287,37 @@ export async function getAuthInfo(forceRefresh: boolean = false): Promise<AuthIn
 
   logger.debug("Auth initialized");
   return cachedAuth;
+}
+
+/**
+ * Get authentication info (cached with auto-refresh)
+ * Uses a lock to prevent concurrent refresh requests
+ */
+export async function getAuthInfo(forceRefresh: boolean = false): Promise<AuthInfo> {
+  // Check cache first (fast path, no lock needed)
+  if (!forceRefresh && cachedAuth !== null && cachedExpiresAt !== null) {
+    const minutesUntilExpiry =
+      (cachedExpiresAt.getTime() - Date.now()) / 1000 / 60;
+    if (minutesUntilExpiry > DEFAULT_THRESHOLD_MINUTES) {
+      logger.debug(`Using cached auth (${Math.round(minutesUntilExpiry)} min until expiry)`);
+      return cachedAuth;
+    }
+  }
+
+  // If refresh is already in progress, wait for it
+  if (refreshInProgress !== null) {
+    logger.debug("Waiting for existing refresh to complete...");
+    return refreshInProgress;
+  }
+
+  // Start refresh with lock
+  refreshInProgress = doGetAuthInfo(forceRefresh);
+
+  try {
+    return await refreshInProgress;
+  } finally {
+    refreshInProgress = null;
+  }
 }
 
 // =============================================================================
@@ -655,7 +743,7 @@ export async function fetchWithChunks<T>(
 }
 
 /**
- * Fetch activity data day by day
+ * Fetch activity data day by day (Daily Summary API)
  */
 export async function fetchActivityRange(
   startDate: Date,
@@ -670,6 +758,218 @@ export async function fetchActivityRange(
       results.push(data);
     }
     currentDate = new Date(currentDate.getTime() + 24 * 60 * 60 * 1000);
+  }
+
+  return results;
+}
+
+// =============================================================================
+// Activity Time Series API
+// =============================================================================
+//
+// @deprecated Time Series API implementation is deprecated.
+// While it uses ~70% fewer API calls, the complexity of rate limit management
+// (parallel requests, burst prevention, token refresh locks) outweighs the benefits.
+// Use Daily Summary API (fetchActivityRange) instead - simpler and gets all fields.
+//
+
+/**
+ * Activity Time Series resources
+ * Each resource requires a separate API call
+ * @deprecated Use Daily Summary API instead
+ */
+export const ACTIVITY_TIME_SERIES_RESOURCES = [
+  "steps",
+  "floors",
+  "distance",
+  "calories",
+  "minutesSedentary",
+  "minutesLightlyActive",
+  "minutesFairlyActive",
+  "minutesVeryActive",
+  "activityCalories",
+] as const;
+
+export type ActivityTimeSeriesResource = typeof ACTIVITY_TIME_SERIES_RESOURCES[number];
+
+export interface ActivityTimeSeriesEntry {
+  dateTime: string;
+  value: string;
+}
+
+interface ActivityTimeSeriesResponse {
+  [key: string]: ActivityTimeSeriesEntry[];
+}
+
+/**
+ * Fetch a single activity time series resource for date range
+ * Max 30 days per request
+ * @deprecated Use Daily Summary API instead
+ */
+export async function fetchActivityTimeSeries(
+  resource: ActivityTimeSeriesResource,
+  startDate: Date,
+  endDate: Date
+): Promise<ActivityTimeSeriesEntry[]> {
+  const start = formatDate(startDate);
+  const end = formatDate(endDate);
+
+  const data = await apiRequest<ActivityTimeSeriesResponse>(
+    `/1/user/-/activities/${resource}/date/${start}/${end}.json`
+  );
+
+  // Response key is like "activities-steps", "activities-floors", etc.
+  const responseKey = `activities-${resource}`;
+  const results = data[responseKey] || [];
+
+  logger.debug(`Response: ${results.length} ${resource} records`);
+  return results;
+}
+
+/**
+ * Merged activity data from Time Series API
+ * Same structure as ActivitySummary for DB compatibility
+ * @deprecated Use Daily Summary API instead
+ */
+export interface ActivityTimeSeriesMerged {
+  date: string;
+  steps: number;
+  floors: number;
+  distance_km: number;
+  calories_total: number;
+  calories_activity: number;
+  sedentary_minutes: number;
+  lightly_active_minutes: number;
+  fairly_active_minutes: number;
+  very_active_minutes: number;
+}
+
+/**
+ * Fetch all activity time series resources and merge by date
+ * Uses 9 API calls per chunk (vs 30 calls for daily summary)
+ * @deprecated Use Daily Summary API instead
+ */
+export async function fetchActivityTimeSeriesRange(
+  startDate: Date,
+  endDate: Date
+): Promise<ActivityTimeSeriesMerged[]> {
+  const start = formatDate(startDate);
+  const end = formatDate(endDate);
+
+  logger.debug(`Fetching activity time series (${start} to ${end})...`);
+
+  // Fetch all resources in parallel (within same chunk)
+  const [
+    stepsData,
+    floorsData,
+    distanceData,
+    caloriesData,
+    sedentaryData,
+    lightlyActiveData,
+    fairlyActiveData,
+    veryActiveData,
+    activityCaloriesData,
+  ] = await Promise.all([
+    fetchActivityTimeSeries("steps", startDate, endDate),
+    fetchActivityTimeSeries("floors", startDate, endDate),
+    fetchActivityTimeSeries("distance", startDate, endDate),
+    fetchActivityTimeSeries("calories", startDate, endDate),
+    fetchActivityTimeSeries("minutesSedentary", startDate, endDate),
+    fetchActivityTimeSeries("minutesLightlyActive", startDate, endDate),
+    fetchActivityTimeSeries("minutesFairlyActive", startDate, endDate),
+    fetchActivityTimeSeries("minutesVeryActive", startDate, endDate),
+    fetchActivityTimeSeries("activityCalories", startDate, endDate),
+  ]);
+
+  // Build lookup maps by date
+  const stepsMap = new Map(stepsData.map(d => [d.dateTime, d.value]));
+  const floorsMap = new Map(floorsData.map(d => [d.dateTime, d.value]));
+  const distanceMap = new Map(distanceData.map(d => [d.dateTime, d.value]));
+  const caloriesMap = new Map(caloriesData.map(d => [d.dateTime, d.value]));
+  const sedentaryMap = new Map(sedentaryData.map(d => [d.dateTime, d.value]));
+  const lightlyActiveMap = new Map(lightlyActiveData.map(d => [d.dateTime, d.value]));
+  const fairlyActiveMap = new Map(fairlyActiveData.map(d => [d.dateTime, d.value]));
+  const veryActiveMap = new Map(veryActiveData.map(d => [d.dateTime, d.value]));
+  const activityCaloriesMap = new Map(activityCaloriesData.map(d => [d.dateTime, d.value]));
+
+  // Collect all unique dates
+  const allDates = new Set<string>();
+  stepsData.forEach(d => allDates.add(d.dateTime));
+
+  // Merge into single records
+  const results: ActivityTimeSeriesMerged[] = [];
+
+  for (const date of allDates) {
+    const steps = parseInt(stepsMap.get(date) || "0", 10);
+    // Skip days with no activity (all zeros)
+    if (steps === 0) continue;
+
+    results.push({
+      date,
+      steps,
+      floors: parseInt(floorsMap.get(date) || "0", 10),
+      distance_km: parseFloat(distanceMap.get(date) || "0"),
+      calories_total: parseInt(caloriesMap.get(date) || "0", 10),
+      calories_activity: parseInt(activityCaloriesMap.get(date) || "0", 10),
+      sedentary_minutes: parseInt(sedentaryMap.get(date) || "0", 10),
+      lightly_active_minutes: parseInt(lightlyActiveMap.get(date) || "0", 10),
+      fairly_active_minutes: parseInt(fairlyActiveMap.get(date) || "0", 10),
+      very_active_minutes: parseInt(veryActiveMap.get(date) || "0", 10),
+    });
+  }
+
+  // Sort by date
+  results.sort((a, b) => a.date.localeCompare(b.date));
+
+  logger.debug(`Merged ${results.length} activity records from time series`);
+  return results;
+}
+
+// Rate limit management for parallel requests
+const RATE_LIMIT_PER_HOUR = 150;
+const REQUESTS_PER_CHUNK = 9; // 9 parallel requests per chunk
+const SAFE_CHUNKS_PER_HOUR = Math.floor(RATE_LIMIT_PER_HOUR / REQUESTS_PER_CHUNK); // 16 chunks
+const RATE_LIMIT_WAIT_MS = 60 * 60 * 1000; // 1 hour in ms
+
+/**
+ * Fetch activity time series with chunking (30 days per chunk)
+ * Includes rate limit management: waits after every 16 chunks to avoid 429
+ * @deprecated Use Daily Summary API instead
+ */
+export async function fetchActivityTimeSeriesWithChunks(
+  startDate: Date,
+  endDate: Date
+): Promise<ActivityTimeSeriesMerged[]> {
+  const results: ActivityTimeSeriesMerged[] = [];
+  let currentStart = new Date(startDate);
+  const chunkDays = CHUNK_LIMITS.activityTimeSeries;
+  let chunkCount = 0;
+
+  while (currentStart < endDate) {
+    // Rate limit check: after 16 chunks (144 requests), wait 1 hour
+    if (chunkCount > 0 && chunkCount % SAFE_CHUNKS_PER_HOUR === 0) {
+      const waitMinutes = RATE_LIMIT_WAIT_MS / 1000 / 60;
+      logger.info(`Rate limit prevention: processed ${chunkCount} chunks (${chunkCount * REQUESTS_PER_CHUNK} requests). Waiting ${waitMinutes} minutes...`);
+      await new Promise(r => setTimeout(r, RATE_LIMIT_WAIT_MS));
+      logger.info("Resuming after rate limit wait...");
+    }
+
+    const chunkEnd = new Date(
+      Math.min(
+        currentStart.getTime() + chunkDays * 24 * 60 * 60 * 1000 - 1,
+        endDate.getTime()
+      )
+    );
+
+    const data = await fetchActivityTimeSeriesRange(currentStart, chunkEnd);
+    results.push(...data);
+    chunkCount++;
+
+    const start = formatDate(currentStart);
+    const end = formatDate(chunkEnd);
+    logger.info(`Chunk ${chunkCount}: ${start} to ${end} - ${data.length} records`);
+
+    currentStart = new Date(chunkEnd.getTime() + 24 * 60 * 60 * 1000);
   }
 
   return results;

@@ -50,15 +50,24 @@ function toRawRecord(sleep: SleepLog): RawRecord {
 /**
  * Sync sleep data
  *
- * @param days - Number of days to sync (default 30)
+ * @param startDateOrDays - Start date or number of days to sync (default 30)
+ * @param endDateParam - End date (optional, defaults to today)
  * @returns Number of records synced
  */
-export async function syncSleep(days: number = 30): Promise<number> {
-  logger.info(`Syncing sleep data (${days} days)...`);
+export async function syncSleep(startDateOrDays: Date | number = 30, endDateParam?: Date): Promise<number> {
+  let startDate: Date;
+  let endDate: Date;
 
-  const endDate = new Date();
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days);
+  if (typeof startDateOrDays === "number") {
+    endDate = new Date();
+    startDate = new Date();
+    startDate.setDate(startDate.getDate() - startDateOrDays);
+    logger.info(`Syncing sleep data (${startDateOrDays} days)...`);
+  } else {
+    startDate = startDateOrDays;
+    endDate = endDateParam || new Date();
+    logger.info(`Syncing sleep data (${startDate.toISOString().slice(0, 10)} to ${endDate.toISOString().slice(0, 10)})...`);
+  }
 
   // Fetch with chunking for periods > 100 days
   const sleepLogs = await fetchWithChunks(
