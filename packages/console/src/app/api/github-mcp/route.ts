@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getGitHubConfig, saveGitHubConfig, deleteGitHubConfig } from "@/lib/vault";
+import { getGitHubMcpConfig, saveGitHubMcpConfig, deleteGitHubMcpConfig } from "@/lib/vault";
 
 function maskToken(token: string): string {
   if (token.length <= 12) return "****";
@@ -56,7 +56,7 @@ export async function GET() {
   }
 
   try {
-    const config = await getGitHubConfig();
+    const config = await getGitHubMcpConfig();
 
     if (!config || !config.pat) {
       return NextResponse.json({ configured: false });
@@ -67,9 +67,9 @@ export async function GET() {
       pat: maskToken(config.pat),
     });
   } catch (error) {
-    console.error("Failed to get GitHub config:", error);
+    console.error("Failed to get GitHub MCP config:", error);
     return NextResponse.json(
-      { error: "Failed to get GitHub config" },
+      { error: "Failed to get GitHub MCP config" },
       { status: 500 }
     );
   }
@@ -102,19 +102,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: validation.error }, { status: 400 });
     }
 
-    // 既存の設定を取得してPATのみ更新
-    const existingConfig = await getGitHubConfig();
-    await saveGitHubConfig({
-      pat,
-      owner: existingConfig?.owner || "",
-      repo: existingConfig?.repo || "",
-    });
+    await saveGitHubMcpConfig({ pat });
 
     return NextResponse.json({ success: true, username: validation.username });
   } catch (error) {
-    console.error("Failed to save GitHub config:", error);
+    console.error("Failed to save GitHub MCP config:", error);
     return NextResponse.json(
-      { error: "Failed to save GitHub config" },
+      { error: "Failed to save GitHub MCP config" },
       { status: 500 }
     );
   }
@@ -131,12 +125,12 @@ export async function DELETE() {
   }
 
   try {
-    await deleteGitHubConfig();
+    await deleteGitHubMcpConfig();
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Failed to delete GitHub config:", error);
+    console.error("Failed to delete GitHub MCP config:", error);
     return NextResponse.json(
-      { error: "Failed to delete GitHub config" },
+      { error: "Failed to delete GitHub MCP config" },
       { status: 500 }
     );
   }

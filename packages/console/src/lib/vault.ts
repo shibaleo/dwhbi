@@ -211,7 +211,7 @@ export async function updateServiceCredentials(
 }
 
 // ============================================
-// GitHub PAT 管理
+// GitHub PAT 管理 (Actions dispatch用)
 // ============================================
 
 export interface GitHubConfig {
@@ -223,6 +223,7 @@ export interface GitHubConfig {
 
 const GITHUB_SECRET_NAME = "github";
 const GITHUB_CONTENTS_SECRET_NAME = "github_contents";
+const GITHUB_MCP_SECRET_NAME = "github_mcp";
 
 /**
  * GitHub設定を取得
@@ -649,6 +650,86 @@ export async function hasJiraConfig(): Promise<boolean> {
     .schema("console")
     .rpc("get_service_secret", {
       service_name: JIRA_SECRET_NAME,
+    });
+
+  return !error && data !== null;
+}
+
+// ============================================
+// GitHub MCP API Token 管理
+// ============================================
+
+export interface GitHubMcpConfig {
+  pat: string;
+}
+
+/**
+ * GitHub MCP設定を取得
+ */
+export async function getGitHubMcpConfig(): Promise<GitHubMcpConfig | null> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .schema("console")
+    .rpc("get_service_secret", {
+      service_name: GITHUB_MCP_SECRET_NAME,
+    });
+
+  if (error || !data) {
+    return null;
+  }
+
+  return {
+    pat: data.pat || "",
+  };
+}
+
+/**
+ * GitHub MCP設定を保存
+ */
+export async function saveGitHubMcpConfig(config: GitHubMcpConfig): Promise<void> {
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .schema("console")
+    .rpc("upsert_service_secret", {
+      service_name: GITHUB_MCP_SECRET_NAME,
+      secret_data: { ...config, _auth_type: "api_key" },
+      secret_description: "GitHub PAT for MCP integration",
+    });
+
+  if (error) {
+    throw new Error(`Failed to save GitHub MCP config: ${error.message}`);
+  }
+}
+
+/**
+ * GitHub MCP設定を削除
+ */
+export async function deleteGitHubMcpConfig(): Promise<void> {
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .schema("console")
+    .rpc("delete_service_secret", {
+      service_name: GITHUB_MCP_SECRET_NAME,
+    });
+
+  if (error) {
+    throw new Error(`Failed to delete GitHub MCP config: ${error.message}`);
+  }
+}
+
+/**
+ * GitHub MCP設定が存在するかチェック
+ */
+export async function hasGitHubMcpConfig(): Promise<boolean> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .schema("console")
+    .rpc("get_service_secret", {
+      service_name: GITHUB_MCP_SECRET_NAME,
     });
 
   return !error && data !== null;

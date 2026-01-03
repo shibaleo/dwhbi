@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ServiceList } from "@/components/service-list";
-import { hasGitHubConfig, hasVoyageConfig, hasNotionConfig, hasJiraConfig } from "@/lib/vault";
+import { hasGitHubConfig, hasGitHubMcpConfig, hasVoyageConfig, hasNotionConfig, hasJiraConfig } from "@/lib/vault";
 
 export default async function Home() {
   const supabase = await createClient();
@@ -12,6 +12,7 @@ export default async function Home() {
   }
 
   const githubConfigured = await hasGitHubConfig();
+  const githubMcpConfigured = await hasGitHubMcpConfig();
   const voyageConfigured = await hasVoyageConfig();
   const notionConfigured = await hasNotionConfig();
   const jiraConfigured = await hasJiraConfig();
@@ -103,7 +104,7 @@ export default async function Home() {
                 GitHub
               </p>
               <div className="flex items-center gap-1.5 mt-1">
-                {githubConfigured ? (
+                {githubMcpConfigured ? (
                   <>
                     <span className="w-2 h-2 rounded-full bg-green-500" />
                     <span className="text-sm text-green-600 dark:text-green-400">
