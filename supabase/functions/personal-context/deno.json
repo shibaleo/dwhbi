@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "lib": ["deno.window", "deno.ns"],
+    "strict": true
+  },
+  "imports": {
+    "hono": "npm:hono@^4",
+    "hono/cors": "npm:hono@^4/cors",
+    "hono/factory": "npm:hono@^4/factory",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2"
+  }
+}
