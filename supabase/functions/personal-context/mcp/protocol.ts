@@ -1,8 +1,13 @@
 import { McpRequest, McpResponse, MCP_ERROR, ToolDefinition } from "./types.ts";
 import { ragTools } from "../tools/rag/tools.ts";
 import { getSupabaseTools } from "../tools/supabase/tools.ts";
+import { getNotionTools } from "../tools/notion/tools.ts";
 
-const allTools: ToolDefinition[] = [...ragTools, ...getSupabaseTools()];
+const allTools: ToolDefinition[] = [
+  ...ragTools,
+  ...getSupabaseTools(),
+  ...getNotionTools(),
+];
 
 export async function processRequest(
   request: McpRequest,
