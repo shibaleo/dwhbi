@@ -1,4 +1,4 @@
-import { ToolDefinition, McpToolResult } from "../mcp/types.ts";
+import { ToolDefinition, McpToolResult } from "../../mcp/types.ts";
 import { embedQuery } from "./embedder.ts";
 import * as repository from "./repository.ts";
 

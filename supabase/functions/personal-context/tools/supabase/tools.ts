@@ -1,10 +1,9 @@
-// supabase/functions/personal-context/supabase/tools.ts
-// Supabase Management API ツール定義
+// Supabase Management API Tools
 
-import { ToolDefinition, McpToolResult } from "../mcp/types.ts";
+import { ToolDefinition, McpToolResult } from "../../mcp/types.ts";
 import { createManagementApi } from "./api.ts";
 
-// 環境変数からproject_refを抽出
+// Extract project_ref from SUPABASE_URL
 function getProjectRef(): string {
   const url = Deno.env.get("SUPABASE_URL") || "";
   const match = url.match(/https:\/\/([^.]+)\.supabase\.co/);

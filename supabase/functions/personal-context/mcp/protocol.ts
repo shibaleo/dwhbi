@@ -1,6 +1,6 @@
 import { McpRequest, McpResponse, MCP_ERROR, ToolDefinition } from "./types.ts";
-import { ragTools } from "../rag/tools.ts";
-import { getSupabaseTools } from "../supabase/tools.ts";
+import { ragTools } from "../tools/rag/tools.ts";
+import { getSupabaseTools } from "../tools/supabase/tools.ts";
 
 const allTools: ToolDefinition[] = [...ragTools, ...getSupabaseTools()];
 

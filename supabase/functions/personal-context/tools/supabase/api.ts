@@ -1,5 +1,4 @@
-// supabase/functions/personal-context/supabase/api.ts
-// Supabase Management API クライアント
+// Supabase Management API Client
 
 const MANAGEMENT_API_URL = "https://api.supabase.com";
 
@@ -101,7 +100,7 @@ export function createManagementApi(options: ManagementApiOptions) {
       );
     }
 
-    // 204 No Content の場合は空オブジェクトを返す
+    // 204 No Content
     if (response.status === 204) {
       return {} as T;
     }

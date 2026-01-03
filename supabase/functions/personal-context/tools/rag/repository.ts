@@ -1,4 +1,10 @@
-import { createClient } from "../../_shared/supabase.ts";
+import { createClient } from "@supabase/supabase-js";
+
+function getSupabaseClient() {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+  return createClient(supabaseUrl, supabaseKey);
+}
 
 export interface SearchResult {
   id: string;
@@ -61,7 +67,7 @@ export async function searchChunks(
   limit: number,
   threshold: number
 ): Promise<SearchResult[]> {
-  const supabase = createClient();
+  const supabase = getSupabaseClient();
 
   const { data, error } = await supabase.rpc("search_chunks", {
     query_embedding: `[${queryEmbedding.join(",")}]`,
@@ -80,7 +86,7 @@ export async function searchChunks(
 export async function getDocument(
   filePath: string
 ): Promise<DocumentResult | null> {
-  const supabase = createClient();
+  const supabase = getSupabaseClient();
 
   const { data, error } = await supabase
     .schema("raw")
@@ -105,7 +111,7 @@ export async function getDocument(
 }
 
 export async function listTags(): Promise<TagInfo[]> {
-  const supabase = createClient();
+  const supabase = getSupabaseClient();
 
   const { data, error } = await supabase.rpc("list_all_tags");
 
@@ -121,7 +127,7 @@ export async function listDocsByTag(
   limit: number,
   random: boolean
 ): Promise<DocSummary[]> {
-  const supabase = createClient();
+  const supabase = getSupabaseClient();
 
   const query = supabase
     .schema("raw")
@@ -172,7 +178,7 @@ export async function listDocsByDate(
   beforeDate: string | null,
   limit: number
 ): Promise<DocWithDate[]> {
-  const supabase = createClient();
+  const supabase = getSupabaseClient();
 
   const { data, error } = await supabase.rpc("list_docs_by_date", {
     sort_order: sortOrder,
@@ -207,7 +213,7 @@ export async function listDocsByFrontmatterDate(
   beforeDate: string | null,
   limit: number
 ): Promise<DocWithFrontmatterDate[]> {
-  const supabase = createClient();
+  const supabase = getSupabaseClient();
 
   const { data, error } = await supabase.rpc("list_docs_by_frontmatter_date", {
     date_field: dateField,
@@ -242,7 +248,7 @@ export async function searchByTitle(
   query: string,
   limit: number
 ): Promise<DocSummary[]> {
-  const supabase = createClient();
+  const supabase = getSupabaseClient();
 
   const { data, error } = await supabase
     .schema("raw")
@@ -269,7 +275,7 @@ export async function listAllDocs(
   offset: number,
   limit: number
 ): Promise<PaginatedDocsResult> {
-  const supabase = createClient();
+  const supabase = getSupabaseClient();
 
   const { count, error: countError } = await supabase
     .schema("raw")
@@ -311,7 +317,7 @@ export async function searchByKeyword(
   keywords: string[],
   limit: number
 ): Promise<ContentSearchResult[]> {
-  const supabase = createClient();
+  const supabase = getSupabaseClient();
 
   const orConditions = keywords.map((k) => `content.ilike.%${k}%`).join(",");
 

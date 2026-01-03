@@ -1,10 +1,16 @@
-import { createClient } from "../../_shared/supabase.ts";
+import { createClient } from "@supabase/supabase-js";
 
 const VOYAGE_API_URL = "https://api.voyageai.com/v1/embeddings";
 const MODEL = "voyage-3-lite";
 
+function getSupabaseClient() {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+  return createClient(supabaseUrl, supabaseKey);
+}
+
 async function getVoyageApiKey(): Promise<string> {
-  const supabase = createClient();
+  const supabase = getSupabaseClient();
 
   const { data, error } = await supabase
     .schema("console")

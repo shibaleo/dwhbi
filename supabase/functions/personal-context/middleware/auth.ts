@@ -3,20 +3,20 @@ import { Context } from "hono";
 import { createClient } from "@supabase/supabase-js";
 
 // =============================================================================
-// 型定義
+// Types
 // =============================================================================
 type Variables = {
   userId: string;
 };
 
 // =============================================================================
-// 認証ミドルウェア
+// Auth Middleware
 // =============================================================================
 export const authMiddleware = createMiddleware<{ Variables: Variables }>(
   async (c, next) => {
     const authHeader = c.req.header("Authorization");
 
-    // Bearerトークンチェック
+    // Bearer token check
     if (!authHeader?.startsWith("Bearer ")) {
       return createUnauthorizedResponse(c);
     }
@@ -24,14 +24,14 @@ export const authMiddleware = createMiddleware<{ Variables: Variables }>(
     const token = authHeader.substring(7);
 
     try {
-      // Service Role Key チェック（テスト/内部用）
+      // Service Role Key check (for testing/internal use)
       const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
       if (serviceRoleKey && token === serviceRoleKey) {
         c.set("userId", "service-role");
         return next();
       }
 
-      // ユーザートークン検証
+      // User token validation
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
       const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
       const supabase = createClient(supabaseUrl, supabaseAnonKey);
@@ -46,7 +46,7 @@ export const authMiddleware = createMiddleware<{ Variables: Variables }>(
         return createUnauthorizedResponse(c);
       }
 
-      // 認証成功 - userIdをコンテキストにセット
+      // Auth success - set userId in context
       c.set("userId", user.id);
       return next();
     } catch (error) {
@@ -57,10 +57,10 @@ export const authMiddleware = createMiddleware<{ Variables: Variables }>(
 );
 
 // =============================================================================
-// 401レスポンス生成
+// 401 Response
 // =============================================================================
 function createUnauthorizedResponse(c: Context): Response {
-  // Resource MetadataはVercel (console)にある
+  // Resource Metadata is on Vercel (console)
   const resourceMetadataUrl =
     "https://dwhbi-console.vercel.app/.well-known/oauth-protected-resource";
 
